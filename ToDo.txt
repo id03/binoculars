@@ -1,0 +1,16 @@
+The next 4 items are priorities
+finished 1. open compressed images as well as regular edf's
+2. open in arbitrary folder
+3. correct for mon
+4. Get rid of the stripes
+5. Correct for theta
+
+# - UB matrix in zapline (spec)
+# - correct for mon from spec
+# - HKL limits determination
+# - fully autonomous distributed calculations on Oar cluster (we need working opid03 account on Nice)
+# - detector distance / pixel angular size
+# - better control interface
+# - patch arbitrary scans
+# - possibly: patch onto 2theta
+
