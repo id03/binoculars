@@ -6,7 +6,7 @@ import random
 import glob
 from PyMca import SixCircle
 from PyMca import specfilewrapper
-import edf
+import EdfFile
 
 import matplotlib.pyplot as pyplot
 import matplotlib.colors
@@ -393,76 +393,3 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     args.func(args)
-
-    raise SystemExit(0)
-
-    spec = MultiSpecFile((
-        ('/mntdirect/_data_id03_inhouse/2012/Sep12/si2515/sixcvertical_si2515.spec', 1),
-        ('/mntdirect/_data_id03_inhouse/2012/Sep12/si2515/sixcvertical_si2515_b.spec', 1300),
-    ))
-  
-    USE_MULTIPROCESSING = 1
-    
-    action = sys.argv[1]
-
-    if action == 'arc':
-        scanno = int(sys.argv[2])
-        mesh = process(scanno)
-        pickle.dump(mesh, gzip.open('arcs/arc-{0}.pickle.gz'.format(scanno), 'wb'), pickle.HIGHEST_PROTOCOL)
-    elif action == 'sum':
-        first, last = int(sys.argv[2]), int(sys.argv[3])
-        globalmesh = Space(set)
-        for no in range(first, last+1):
-            print no
-            result = pickle.load(gzip.open('arcs/arc-{0}.pickle.gz'.format(no)))
-            if result is not None:
-                globalmesh += result
-        pickle.dump(globalmesh, open('sum-{0}-{1}.pickle'.format(first, last), 'w'), pickle.HIGHEST_PROTOCOL)
-    elif action == 'sumfiles':
-        outfile = sys.argv[2]
-        files = sys.argv[3:]
-        globalmesh = Space(set)
-        for f in files:
-            print f
-            result = pickle.load(open(f))
-            if result is not None:
-                globalmesh += result
-        pickle.dump(globalmesh, open(outfile, 'w'), pickle.HIGHEST_PROTOCOL)
-    elif action == 'genmesh':
-        infile = sys.argv[2]
-        outfile = sys.argv[3]
-        space = pickle.load(open(infile))
-        mesh = space()
-        pickle.dump(mesh, open(outfile, 'w'), pickle.HIGHEST_PROTOCOL)
-    elif action == 'genarc':
-        first, last = int(sys.argv[2]), int(sys.argv[3])
-        for no in range(first, last+1):
-            print 'arc {0}'.format(no)
-    elif action == 'local':
-        if USE_MULTIPROCESSING:
-            pool = multiprocessing.Pool()
-
-        #makemesh(217, 287)
-        #makemesh(359, 370)
-        #makemesh(416, 486)
-        #makemesh(563, 575)
-        #makemesh(656, 680)
-        #makemesh(689, 722)
-        #makemesh(725, 830)
-        #makemesh(835, 853)
-        #makemesh(890, 908)
-        #makemesh(955, 974)
-        #makemesh(1039, 1058)
-        #makemesh(1059, 1078)
-        #makemesh(1079, 1185)
-        #makemesh(1310, 1368)
-        #makemesh(1397, 1415) 
-        #makemesh(1506, 1524)
-        #makemesh(1557, 1576)
-        #makemesh(1588, 1606)
-        #makemesh(1654, 1672)
-        #makemesh(1685, 1703)
-        #makemesh(1750, 1768) # no data, sample was not in beam
-        #makemesh(1775, 1793)
-        #makemesh(1802, 1820)
-        #makemesh(1831, 1849)
