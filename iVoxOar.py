@@ -7,6 +7,8 @@ import glob
 from PyMca import SixCircle
 from PyMca import specfilewrapper
 import EdfFile
+import getconfig
+
 
 import matplotlib.pyplot as pyplot
 import matplotlib.colors
@@ -93,13 +95,15 @@ class NotAZaplineError(Exception):
 
 
 class Arc(object):
-    def __init__(self,spec,scanno):
+    def __init__(self,spec,scanno,set):
         scan = spec.select('{0}.1'.format(scanno))
+        self.set = set
         if not scan.header('S')[0].split()[2] == 'zapline':
             raise NotAZaplineError
 
         scanheaderC = scan.header('C')
-        self.imagefolder = scanheaderC[0].split(' ')[-1]
+        folder = scanheaderC[0].split(' ')[-1].split('/')[-1]
+        self.imagefolder = os.path.join(set['imagefolder'],folder)
         self.scannumber = int(scanheaderC[2].split(' ')[-1])
         self.imagenumber = int(scanheaderC[3].split(' ')[-1])
         self.buildfilelist()
@@ -155,7 +159,7 @@ class Arc(object):
 def process(scanno):
     mesh = Space(set)
     try:
-        a = Arc(spec, scanno)
+        a = Arc(spec, scanno,set)
     except NotAZaplineError:
         return None
     print scanno
@@ -214,19 +218,6 @@ def makeplot(space, dest=None):
 
 
 if __name__ == "__main__":
-
-    set = {}
-    set['Hres'] = 0.001
-    set['Kres'] = 0.001
-    set['Lres'] = 1
-    set['minH'] = -0.2
-    set['maxH'] = 2.5
-    set['minK'] = -.7
-    set['maxK'] = 2
-    set['minL'] = 0
-    set['maxL'] = 1
-
-
     def run(*command):
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         output, unused_err = process.communicate()
@@ -272,7 +263,7 @@ if __name__ == "__main__":
         parts = []
         for scanno in range(args.firstscan, args.lastscan+1):
             part = '{0}/{1}-part-{2}.zpi'.format(args.tmpdir, prefix, scanno)
-            jobs.append(oarsub('--hkres', str(args.hkres), '--lres', str(args.lres), '_part', args.specfile, str(scanno), '-o', part))
+            jobs.append(oarsub('--hkres', str(args.hkres), '--lres', str(args.lres), '_part', set['specfile'], str(scanno), '-o', part))
             parts.append(part)
         print 'submitted {0} jobs, waiting...'.format(len(jobs))
         oarwait(jobs)
@@ -301,7 +292,7 @@ if __name__ == "__main__":
 
     def part(args):
         global spec
-        spec = specfilewrapper.Specfile(args.specfile)
+        spec = specfilewrapper.Specfile(set['specfile'])
         space = process(args.scan)
         pickle.dump(space, gzip.GzipFile(fileobj=args.outfile), pickle.HIGHEST_PROTOCOL)
 
@@ -322,10 +313,10 @@ if __name__ == "__main__":
 
     def local(args):
         global spec
-        spec = specfilewrapper.Specfile(args.specfile)
+        spec = specfilewrapper.Specfile(set['specfile'])
 
-        set['Hres'] = set['Kres'] = args.hkres
-        set['Lres'] = args.lres
+#        set['Hres'] = set['Kres'] = args.hkres
+#        set['Lres'] = args.lres
 
         scanlist = range(args.firstscan, args.lastscan+1)
         globalspace = Space(set)
@@ -339,7 +330,10 @@ if __name__ == "__main__":
         for result in iter:
             if result is not None:
                 globalspace += result
-        pickle.dump(globalspace, gzip.GzipFile(fileobj=args.outfile), pickle.HIGHEST_PROTOCOL)
+
+#        pickle.dump(globalspace, gzip.GzipFile(fileobj=set['outputfilename'],mode = 'w'), pickle.HIGHEST_PROTOCOL)
+        pickle.dump(globalspace, gzip.open(set['outputfilename'],'w+'), pickle.HIGHEST_PROTOCOL)
+                    
 
         if args.plot:
             if args.plot is True:
@@ -348,10 +342,16 @@ if __name__ == "__main__":
                 makeplot(globalspace, args.plot)
 
     def plot(args):
-        space = pickle.load(gzip.GzipFile(fileobj=args.infile))
+        space = pickle.load(gzip.GzipFile(set['outputfilename']))
+        print space
         makeplot(space, args.outfile)
 
+    def test(args):
+        print set
+        print 'So far so good...'
+    
     parser = argparse.ArgumentParser(prog='iVoxOar')
+    parser.add_argument('--config',default='./config')
     parser.add_argument('--hkres', type=float, default=0.001)
     parser.add_argument('--lres', type=float, default=1.)
     subparsers = parser.add_subparsers()
@@ -378,18 +378,24 @@ if __name__ == "__main__":
     parser_sum.set_defaults(func=sum)
 
     parser_local = subparsers.add_parser('local')
-    parser_local.add_argument('specfile')
+#    parser_local.add_argument('specfile')
     parser_local.add_argument('firstscan', type=int)
     parser_local.add_argument('lastscan', type=int)
-    parser_local.add_argument('-o', '--outfile', type=argparse.FileType('wb'), required=True)
+#    parser_local.add_argument('-o', '--outfile', type=argparse.FileType('wb'), required=True)
     parser_local.add_argument('-p', '--plot', nargs='?', const=True)
     parser_local.add_argument('-m', '--multiprocessing', action='store_true')
     parser_local.set_defaults(func=local)
 
     parser_plot = subparsers.add_parser('plot')
-    parser_plot.add_argument('infile', type=argparse.FileType('rb'))
+#    parser_plot.add_argument('infile', type=argparse.FileType('rb'))
     parser_plot.add_argument('outfile', nargs='?')
     parser_plot.set_defaults(func=plot)
 
+    parser_plot = subparsers.add_parser('test')
+    parser_plot.set_defaults(func=test)
+
     args = parser.parse_args()
+    
+    set = getconfig.configdict(args.config)
+    
     args.func(args)

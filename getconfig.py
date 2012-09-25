@@ -1,0 +1,56 @@
+import ConfigParser
+import numpy
+
+class ConfigError(Exception):
+    def __init__(self,key):
+        self.key = key
+    def __str__(self):
+        return repr('{0} missing in configfile'.format(self.key))
+
+def parserange(r):
+	if '-' in r:
+		a, b = r.split('-')
+		return range(int(a), int(b)+1)
+	else:
+		return [int(r)]
+
+def parsemultirange(s):
+	out = []
+	ranges = s.split(',')
+	for r in ranges:
+		out.extend(parserange(r))
+	return out
+
+def configdict(configfile):
+    configdict = {}
+    config = ConfigParser.RawConfigParser(allow_no_value=True)
+    config.optionxform = lambda option: option
+    config.read(configfile)
+    for n in config.sections():
+        for m in config.options(n):
+            configdict[m] = config.get(n,m)
+    test(configdict)
+    
+    configdict['xmask'] = parsemultirange(configdict['xmask'])
+    configdict['ymask'] = parsemultirange(configdict['ymask'])
+    
+    for n in ['centralpixel','app']:
+        configdict[n] = numpy.array(configdict[n].split(','),dtype = numpy.float)
+    for n in configdict.keys():
+        try: configdict[n] = float(configdict[n])
+        except: continue
+    
+    return configdict
+
+def test(configdict):
+    must = ['specfile','imagefolder', 'outputfolder', 'Hres','Kres','Lres','centralpixel','app','ymask','xmask']
+    for n in must:
+        if n not in configdict.keys(): raise ConfigError(n)
+
+    for n in configdict.keys():
+        if configdict[n] == None: print 'Warning: empty input for {0}'.format(n)
+
+if __name__ == "__main__":
+    print configdict('config')
+
+    

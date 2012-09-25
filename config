@@ -1,0 +1,25 @@
+[folders]
+specfile = /Volumes/Onderwaater/DataExperiments/Si2515/sixcvertical_si2515.spec
+imagefolder = /Volumes/Onderwaater/DataExperiments/Si2515/images
+outputfolder = /Users/onderwaater/Documents/PhD/python/Vox
+outputfilename = /Users/onderwaater/Documents/PhD/python/Vox/test.zpi
+
+[settings]
+#resolution of the binning
+Hres = 0.005
+Kres = 0.005
+Lres = 1
+#range of the bining
+minH = -0.2
+maxH = 2.5
+minK = -.7
+maxK = 2
+minL = 0
+maxL = 1
+#values for interpreting the images
+centralpixel = 40 , 255
+app = 0.003125, 0.003125
+ymask = 160-256,262-400
+xmask = 40-255
+wavelength = 0.6888074966
+
