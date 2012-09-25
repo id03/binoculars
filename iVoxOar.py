@@ -103,7 +103,7 @@ class Arc(object):
         self.scannumber = int(scanheaderC[2].split(' ')[-1])
         self.imagenumber = int(scanheaderC[3].split(' ')[-1])
         self.buildfilelist()
-        self.edf = edf.edf(self.filelist[0])
+        self.edf = EdfFile.EdfFile(self.filelist[0])
         self.delt,self.theta,self.chi,self.phi,self.mu,self.gam = numpy.array(scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
         if scanno < 405:
             self.UB = numpy.array([2.628602629,0.2730763688,-0.001032444885,1.202301748,2.877587966,-0.001081570571,0.002600281749,0.002198663001,1.54377945])
@@ -118,7 +118,7 @@ class Arc(object):
         filelist = list()
         imagedict = {}
         for file in allfiles:        
-            filename, extension = os.path.basename(file).split('.')
+            filename = os.path.basename(file).split('.')[0]
             scanno, pointno, imageno = filename.split('_')[-3:]
             scanno, pointno, imageno = int(scanno), int(pointno), int(imageno)
             if not scanno in imagedict:
@@ -234,7 +234,7 @@ if __name__ == "__main__":
         return retcode, output
 
     def oarsub(*args):
-        scriptname = './blisspython /data/id03/inhouse/2012/Sep12/si2515/iVox/iVoxOar.py '
+        scriptname = './blisspython /data/id03/inhouse/2012/Sep12/si2515/iVoxOar/iVoxOar.py '
         command = '{0} {1}'.format(scriptname, ' '.join(args))
         ret, output = run('oarsub', command)
         if ret == 0:
