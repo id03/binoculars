@@ -7,6 +7,10 @@ class ConfigError(Exception):
     def __str__(self):
         return repr('{0} missing in configfile'.format(self.key))
 
+class Struct(object):
+	def __init__(self, **kwargs):
+		self.__dict__.update(kwargs)
+
 def parserange(r):
 	if '-' in r:
 		a, b = r.split('-')
@@ -21,7 +25,7 @@ def parsemultirange(s):
 		out.extend(parserange(r))
 	return out
 
-def configdict(configfile):
+def cfg(configfile):
     configdict = {}
     config = ConfigParser.RawConfigParser(allow_no_value=True)
     config.optionxform = lambda option: option
@@ -40,7 +44,7 @@ def configdict(configfile):
         try: configdict[n] = float(configdict[n])
         except: continue
     
-    return configdict
+    return Struct(**configdict)
 
 def test(configdict):
     must = ['specfile','imagefolder', 'outputfolder', 'Hres','Kres','Lres','centralpixel','app','ymask','xmask']
@@ -51,6 +55,6 @@ def test(configdict):
         if configdict[n] == None: print 'Warning: empty input for {0}'.format(n)
 
 if __name__ == "__main__":
-    print configdict('config')
+    cfg = cfg('config')
 
     

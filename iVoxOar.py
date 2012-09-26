@@ -41,12 +41,12 @@ import argparse
 
 
 class Space(object):
-    def __init__(self, set):
-        self.set = set
-        minH, maxH = set['minH'], set['maxH']
-        minK, maxK = set['minK'], set['maxK']
-        minL, maxL = set['minL'], set['maxL']
-        Hres, Kres, Lres = set['Hres'], set['Kres'], set['Lres']
+    def __init__(self, cfg):
+        self.cfg = cfg
+        minH, maxH = cfg.minH, cfg.maxH
+        minK, maxK = cfg.minK, cfg.maxK
+        minL, maxL = cfg.minL, cfg.maxL
+        Hres, Kres, Lres = cfg.Hres , cfg.Kres, cfg.Lres
 
         self.Hcount = int(round((maxH-minH)/Hres))+1
         self.Kcount = int(round((maxK-minK)/Kres))+1
@@ -65,18 +65,18 @@ class Space(object):
     def __iadd__(self, other):
         if not isinstance(other, Space):
             return NotImplemented
-        if self.set != other.set:
+        if self.cfg != other.cfg:
             raise ValueError('cannot add spaces with different H/K/L range or resolution')
         self.photons += other.photons
         self.contributions += other.contributions
         return self
 
 class Box(object):
-    def __init__(self,set,H,K,L,Intensity):
-        minH, maxH = set['minH'], set['maxH']
-        minK, maxK = set['minK'], set['maxK']
-        minL, maxL = set['minL'], set['maxL']
-        Hres, Kres, Lres = set['Hres'], set['Kres'], set['Lres']
+    def __init__(self,cfg,H,K,L,Intensity):
+        minH, maxH = cfg.minH, cfg.maxH
+        minK, maxK = cfg.minK, cfg.maxK
+        minL, maxL = cfg.minL, cfg.maxL
+        Hres, Kres, Lres = cfg.Hres , cfg.Kres, cfg.Lres
 
         Kcount = int(round((maxK-minK)/Kres))+1
         Lcount = int(round((maxL-minL)/Lres))+1
@@ -95,30 +95,32 @@ class NotAZaplineError(Exception):
 
 
 class Arc(object):
-    def __init__(self,spec,scanno,set):
+    def __init__(self,spec,scanno,cfg):
         scan = spec.select('{0}.1'.format(scanno))
-        self.set = set
+        self.cfg = cfg
         if not scan.header('S')[0].split()[2] == 'zapline':
             raise NotAZaplineError
 
         scanheaderC = scan.header('C')
-        folder = scanheaderC[0].split(' ')[-1].split('/')[-1]
-        self.imagefolder = os.path.join(set['imagefolder'],folder)
+        folder = os.path.split(scanheaderC[0].split(' ')[-1])[-1]
+        self.imagefolder = os.path.join(cfg.imagefolder,folder)
         self.scannumber = int(scanheaderC[2].split(' ')[-1])
         self.imagenumber = int(scanheaderC[3].split(' ')[-1])
+        self.scanname = scanheaderC[1].split(' ')[-1]
         self.buildfilelist()
         self.edf = EdfFile.EdfFile(self.filelist[0])
         self.delt,self.theta,self.chi,self.phi,self.mu,self.gam = numpy.array(scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
+        #UB matrix will be installed in new versions of the zapline, until then i keep this here.
         if scanno < 405:
             self.UB = numpy.array([2.628602629,0.2730763688,-0.001032444885,1.202301748,2.877587966,-0.001081570571,0.002600281749,0.002198663001,1.54377945])
         else:
             self.UB = numpy.array([2.624469378,0.2632191474,-0.001028869827,1.211297551,2.878506363,-0.001084906521,0.002600359765,0.002198324744,1.54377945])
-        self.wavelength = 0.6888074966
+        self.wavelength = float(scan.header('G')[1].split(' ')[-1])
         self.theta = scan.data()[0,:]
         self.length = numpy.alen(self.theta)
             
     def buildfilelist(self):
-        allfiles =  glob.glob(os.path.join(self.imagefolder,'*si2515_mpx*'))
+        allfiles =  glob.glob(os.path.join(self.imagefolder,'*{0}_mpx*'.format(self.scanname)))
         filelist = list()
         imagedict = {}
         for file in allfiles:        
@@ -135,12 +137,12 @@ class Arc(object):
             raise NameError('Empty filelist, check if the specified imagefolder corresponds to the location of the images')
         
     def getImdata(self,n):
-        ymask = numpy.asarray(range(160, 256) + range(262, 400))
-        xmask = numpy.arange(40, 255)
+        ymask = numpy.asarray(self.cfg.ymask)
+        xmask = numpy.asarray(self.cfg.xmask)
 
         self.data = self.edf.GetData(n)
-        app = [0.003125, 0.003125] #angle per pixel (delta,gamma)
-        centralpixel = [314,160] #(row,column)=(delta,gamma)
+        app = self.cfg.app #angle per pixel (delta,gamma)
+        centralpixel = self.cfg.centralpixel #(row,column)=(delta,gamma)
         self.gamma = app[1]*(numpy.arange(self.data.shape[1])-centralpixel[1])+self.gam
         self.delta = app[0]*(numpy.arange(self.data.shape[0])-centralpixel[0])+self.delt
         self.gamma = self.gamma[ymask]
@@ -157,21 +159,21 @@ class Arc(object):
         return H,K,L, intensity
 
 def process(scanno):
-    mesh = Space(set)
+    mesh = Space(cfg)
     try:
-        a = Arc(spec, scanno,set)
+        a = Arc(spec, scanno,cfg)
     except NotAZaplineError:
         return None
     print scanno
     for m in range(a.length):
         H,K,L, intensity = a.getImdata(m)
-        b = Box(set, H,K,L, intensity)
+        b = Box(cfg, H,K,L, intensity)
         mesh.fill(b)
     return mesh
 
 def makemesh(firstscan, lastscan):
     scanlist = range(firstscan, lastscan+1)
-    globalmesh = Space(set)
+    globalmesh = Space(cfg)
 
     if USE_MULTIPROCESSING:
         iter = pool.imap_unordered(process, scanlist, 1)
@@ -185,7 +187,7 @@ def makemesh(firstscan, lastscan):
     pickle.dump(m, open('mesh-{0}-{1}.pickle'.format(firstscan, lastscan), 'w'), pickle.HIGHEST_PROTOCOL)
 
 
-def makeplot(space, dest=None):
+def makeplot(space, args):
     clipping = 0.02
    
     mesh = space() 
@@ -197,27 +199,36 @@ def makeplot(space, dest=None):
     
     invmask = ~data.mask
     hlims = numpy.flatnonzero(invmask.sum(axis=1))
-    hlims = hlims.min()*space.set['Hres'] + space.set['minH'] - 0.1, hlims.max()*space.set['Hres'] + space.set['minH'] + 0.1
+    hlims = hlims.min()*space.cfg.Hres + space.cfg.minH - 0.1, hlims.max()*space.cfg.Hres + space.cfg.minH + 0.1
     klims = numpy.flatnonzero(invmask.sum(axis=0))
-    klims = klims.min()*space.set['Kres'] + space.set['minK'] - 0.1, klims.max()*space.set['Kres'] + space.set['minK'] + 0.1
+    klims = klims.min()*space.cfg.Kres + space.cfg.minK - 0.1, klims.max()*space.cfg.Kres + space.cfg.minK + 0.1
     
     pyplot.figure(figsize=(12,9))
     #pyplot.imshow(space.contributions.reshape((space.Hcount, space.Kcount, space.Lcount), order='C')[:,:,0].transpose(), origin='lower', extent=(space.set['minH'], space.set['maxH'], space.set['minK'], space.set['maxK']), aspect='auto')#, norm=matplotlib.colors.Normalize(vmin, vmax))
 
-    pyplot.imshow(data.transpose(), origin='lower', extent=(space.set['minH'], space.set['maxH'], space.set['minK'], space.set['maxK']), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
+    pyplot.imshow(data.transpose(), origin='lower', extent=(space.cfg.minH, space.cfg.maxH, space.cfg.minK, space.cfg.maxK), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
     pyplot.xlabel('H')
     pyplot.ylabel('K')
     #pyplot.suptitle() TODO
     pyplot.colorbar()
     pyplot.xlim(*hlims)
     pyplot.ylim(*klims)
-    if dest:
-        pyplot.savefig(dest)
+    if args.s:
+        if args.savefile != None:
+            print 'saved at {0}'.format(args.savefile)
+            pyplot.savefig(args.savefile)
+        else:
+            pyplot.savefig('{}.pdf'.format(os.path.splitext(args.outfile)[0]))
     else:
         pyplot.show()
 
+def mfinal(filename,first,last):
+    base, ext = os.path.splitext(filename)
+    return ('{0}_{2}-{3}{1}').format(base,ext,first,last)
 
-if __name__ == "__main__":
+
+if __name__ == "__main__":    
+    
     def run(*command):
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         output, unused_err = process.communicate()
@@ -263,7 +274,7 @@ if __name__ == "__main__":
         parts = []
         for scanno in range(args.firstscan, args.lastscan+1):
             part = '{0}/{1}-part-{2}.zpi'.format(args.tmpdir, prefix, scanno)
-            jobs.append(oarsub('--hkres', str(args.hkres), '--lres', str(args.lres), '_part', set['specfile'], str(scanno), '-o', part))
+            jobs.append(oarsub('--config', str(args.config),'_part','-o', part))
             parts.append(part)
         print 'submitted {0} jobs, waiting...'.format(len(jobs))
         oarwait(jobs)
@@ -284,26 +295,33 @@ if __name__ == "__main__":
                 chunks.append(chunk)
             print 'submitted {0} jobs, waiting...'.format(len(jobs))
             oarwait(jobs)
-
-            job = oarsub('_sum', '--delete', '-o', args.outfile, *chunks)
+            
+            finalfile = ''.format(cfg.outfile)
+    
+            job = oarsub('_sum', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks)
             print 'submitted final job, waiting...'
             oarwait([job])
         print 'done!'
 
     def part(args):
         global spec
-        spec = specfilewrapper.Specfile(set['specfile'])
+        spec = specfilewrapper.Specfile(cfg.specfile)
         space = process(args.scan)
-        pickle.dump(space, gzip.GzipFile(fileobj=args.outfile), pickle.HIGHEST_PROTOCOL)
+        
+        with gzip.open(args.outfile,'wb') as fp:
+            pickle.dump(globalspace, fp, pickle.HIGHEST_PROTOCOL)
 
     def sum(args):
-        globalspace = Space(set)
+        globalspace = Space(cfg)
         for fn in args.infiles:
             print fn
             result = pickle.load(gzip.open(fn))
             if result is not None:
                 globalspace += result
-        pickle.dump(globalspace, gzip.GzipFile(fileobj=args.outfile), pickle.HIGHEST_PROTOCOL)
+            
+        with gzip.open(args.outfile,'wb') as fp:
+            pickle.dump(globalspace, fp, pickle.HIGHEST_PROTOCOL)
+                    
         if args.delete:
             for fn in args.infiles:
                 try:
@@ -313,13 +331,10 @@ if __name__ == "__main__":
 
     def local(args):
         global spec
-        spec = specfilewrapper.Specfile(set['specfile'])
-
-#        set['Hres'] = set['Kres'] = args.hkres
-#        set['Lres'] = args.lres
+        spec = specfilewrapper.Specfile(cfg.specfile)
 
         scanlist = range(args.firstscan, args.lastscan+1)
-        globalspace = Space(set)
+        globalspace = Space(cfg)
      
         if args.multiprocessing:
             pool = multiprocessing.Pool()
@@ -331,9 +346,8 @@ if __name__ == "__main__":
             if result is not None:
                 globalspace += result
 
-#        pickle.dump(globalspace, gzip.GzipFile(fileobj=set['outputfilename'],mode = 'w'), pickle.HIGHEST_PROTOCOL)
-        pickle.dump(globalspace, gzip.open(set['outputfilename'],'w+'), pickle.HIGHEST_PROTOCOL)
-                    
+        with gzip.open(mfinal(cfg.outfile,args.firstscan,args.lastscan),'wb') as fp:
+            pickle.dump(globalspace, fp, pickle.HIGHEST_PROTOCOL)
 
         if args.plot:
             if args.plot is True:
@@ -342,60 +356,52 @@ if __name__ == "__main__":
                 makeplot(globalspace, args.plot)
 
     def plot(args):
-        space = pickle.load(gzip.GzipFile(set['outputfilename']))
-        print space
-        makeplot(space, args.outfile)
-
-    def test(args):
-        print set
-        print 'So far so good...'
+        with gzip.open(args.outfile,'rb') as fp:
+            space = pickle.load(fp)
+        makeplot(space, args)
     
     parser = argparse.ArgumentParser(prog='iVoxOar')
     parser.add_argument('--config',default='./config')
-    parser.add_argument('--hkres', type=float, default=0.001)
-    parser.add_argument('--lres', type=float, default=1.)
     subparsers = parser.add_subparsers()
 
     parser_cluster = subparsers.add_parser('cluster')
-    parser_cluster.add_argument('specfile')
     parser_cluster.add_argument('firstscan', type=int)
     parser_cluster.add_argument('lastscan', type=int)
-    parser_cluster.add_argument('-o', '--outfile', required=True)
+    parser_cluster.add_argument('-o', '--outfile')
     parser_cluster.add_argument('--tmpdir', default='.')
     parser_cluster.add_argument('--chunksize', default=20, type=int)
     parser_cluster.set_defaults(func=cluster)
 
     parser_part = subparsers.add_parser('_part')
-    parser_part.add_argument('specfile')
     parser_part.add_argument('scan', type=int)
-    parser_part.add_argument('-o', '--outfile', type=argparse.FileType('wb'), required=True)
+    parser_part.add_argument('-o', '--outfile',required=True)
     parser_part.set_defaults(func=part)
     
     parser_sum = subparsers.add_parser('_sum')
-    parser_sum.add_argument('-o', '--outfile', type=argparse.FileType('wb'), required=True)
+    parser_sum.add_argument('-o', '--outfile',required=True)
     parser_sum.add_argument('--delete', action='store_true')
     parser_sum.add_argument('infiles', nargs='+')
     parser_sum.set_defaults(func=sum)
 
     parser_local = subparsers.add_parser('local')
-#    parser_local.add_argument('specfile')
     parser_local.add_argument('firstscan', type=int)
     parser_local.add_argument('lastscan', type=int)
-#    parser_local.add_argument('-o', '--outfile', type=argparse.FileType('wb'), required=True)
+    parser_local.add_argument('-o', '--outfile')
     parser_local.add_argument('-p', '--plot', nargs='?', const=True)
     parser_local.add_argument('-m', '--multiprocessing', action='store_true')
     parser_local.set_defaults(func=local)
 
     parser_plot = subparsers.add_parser('plot')
-#    parser_plot.add_argument('infile', type=argparse.FileType('rb'))
-    parser_plot.add_argument('outfile', nargs='?')
+    parser_plot.add_argument('outfile')
+    parser_plot.add_argument('-s',action='store_true')
+    parser_plot.add_argument('--savefile')
     parser_plot.set_defaults(func=plot)
-
-    parser_plot = subparsers.add_parser('test')
-    parser_plot.set_defaults(func=test)
 
     args = parser.parse_args()
     
-    set = getconfig.configdict(args.config)
+    cfg = getconfig.cfg(args.config)
+        
+    if args.outfile != None:
+        cfg.outfile = args.outfile
     
     args.func(args)
