@@ -27,7 +27,7 @@ def parsemultirange(s):
 
 def cfg(configfile):
     configdict = {}
-    config = ConfigParser.RawConfigParser(allow_no_value=True)
+    config = ConfigParser.RawConfigParser()
     config.optionxform = lambda option: option
     config.read(configfile)
     for n in config.sections():

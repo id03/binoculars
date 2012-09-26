@@ -117,6 +117,7 @@ class Arc(object):
             self.UB = numpy.array([2.624469378,0.2632191474,-0.001028869827,1.211297551,2.878506363,-0.001084906521,0.002600359765,0.002198324744,1.54377945])
         self.wavelength = float(scan.header('G')[1].split(' ')[-1])
         self.theta = scan.data()[0,:]
+        self.mon = scan.data()[1,:] #order might change in zapline scan still
         self.length = numpy.alen(self.theta)
             
     def buildfilelist(self):
@@ -155,7 +156,7 @@ class Arc(object):
         L = R[2,:]
         roi = self.data[ymask, :]
         roi = roi[:,xmask]
-        intensity = roi.flatten()
+        intensity = roi.flatten()/self.mon[n]
         return H,K,L, intensity
 
 def process(scanno):
@@ -282,7 +283,7 @@ if __name__ == "__main__":
         count = args.lastscan - args.firstscan + 1
         chunkcount = int(numpy.ceil(float(count) / args.chunksize))
         if chunkcount == 1:
-            job = oarsub('_sum', '--delete', '-o', args.outfile, *parts)
+            job = oarsub('--config', str(args.config),'_sum', '--delete', '-o', args.outfile, *parts)
             print 'submitted final job, waiting...'
             oarwait([job])
         else:
@@ -291,14 +292,12 @@ if __name__ == "__main__":
             chunks = []
             for i in range(chunkcount):
                 chunk = '{0}/{1}-chunk-{2}.zpi'.format(args.tmpdir, prefix, i+1)
-                jobs.append(oarsub('_sum', '--delete', '-o', chunk, *parts[i*chunksize:(i+1)*chunksize]))
+                jobs.append(oarsub('--config', str(args.config),'_sum', '--delete', '-o', chunk, *parts[i*chunksize:(i+1)*chunksize]))
                 chunks.append(chunk)
             print 'submitted {0} jobs, waiting...'.format(len(jobs))
             oarwait(jobs)
-            
-            finalfile = ''.format(cfg.outfile)
-    
-            job = oarsub('_sum', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks)
+               
+            job = oarsub('--config', str(args.config),'_sum', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks)
             print 'submitted final job, waiting...'
             oarwait([job])
         print 'done!'

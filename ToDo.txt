@@ -1,6 +1,6 @@
 The next 4 items are priorities
 finished 1. open compressed images as well as regular edf's
-2. open in arbitrary folder
+finished 2. open in arbitrary folder
 3. correct for mon
 4. Get rid of the stripes
 5. Correct for theta
