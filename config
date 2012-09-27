@@ -1,7 +1,7 @@
 [folders]
 specfile = /Volumes/Onderwaater/DataExperiments/Si2515/sixcvertical_si2515.spec
 imagefolder = /Volumes/Onderwaater/DataExperiments/Si2515/images
-outputfolder = /Users/onderwaater/Documents/PhD/python/Vox
+outputfolder = /Users/onderwaater/Documents/PhD/python/Vox #not yet used
 outfile = test.zpi
 
 [settings]

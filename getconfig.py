@@ -51,9 +51,6 @@ def test(configdict):
     for n in must:
         if n not in configdict.keys(): raise ConfigError(n)
 
-    for n in configdict.keys():
-        if configdict[n] == None: print 'Warning: empty input for {0}'.format(n)
-
 if __name__ == "__main__":
     cfg = cfg('config')
 

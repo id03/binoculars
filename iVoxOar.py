@@ -47,7 +47,8 @@ class Space(object):
         minK, maxK = cfg.minK, cfg.maxK
         minL, maxL = cfg.minL, cfg.maxL
         Hres, Kres, Lres = cfg.Hres , cfg.Kres, cfg.Lres
-
+        self.set = [minH,maxH,minK,maxK,minL,maxL, Hres, Kres, Lres]
+        
         self.Hcount = int(round((maxH-minH)/Hres))+1
         self.Kcount = int(round((maxK-minK)/Kres))+1
         self.Lcount = int(round((maxL-minL)/Lres))+1
@@ -65,7 +66,7 @@ class Space(object):
     def __iadd__(self, other):
         if not isinstance(other, Space):
             return NotImplemented
-        if self.cfg != other.cfg:
+        if self.set != other.set:
             raise ValueError('cannot add spaces with different H/K/L range or resolution')
         self.photons += other.photons
         self.contributions += other.contributions
@@ -216,17 +217,24 @@ def makeplot(space, args):
     pyplot.ylim(*klims)
     if args.s:
         if args.savefile != None:
-            print 'saved at {0}'.format(args.savefile)
             pyplot.savefig(args.savefile)
+            print 'saved at {0}'.format(args.savefile)
         else:
-            pyplot.savefig('{}.pdf'.format(os.path.splitext(args.outfile)[0]))
+            pyplot.savefig('{0}.pdf'.format(os.path.splitext(args.outfile)[0]))
+            print 'saved at {0}.pdf'.format(os.path.splitext(args.outfile)[0])
     else:
         pyplot.show()
+
+def dump(space,filename):
+    fp = gzip.open(filename, 'wb')
+    try:
+        pickle.dump(space, fp, pickle.HIGHEST_PROTOCOL)
+    finally:
+        fp.close()
 
 def mfinal(filename,first,last):
     base, ext = os.path.splitext(filename)
     return ('{0}_{2}-{3}{1}').format(base,ext,first,last)
-
 
 if __name__ == "__main__":    
     
@@ -264,6 +272,7 @@ if __name__ == "__main__":
         while jobs:
             status = oarstat(jobs[0])
             if status == 'Running' or status == 'Waiting' or status == 'Unknown':
+                print '{0} {1} jobs to go'.format(time.ctime(),str(len(jobs)))
                 time.sleep(5)
             else: # assume status == 'Finishing' or 'Terminated' but don't wait on something unknown
                 jobs.pop(0)
@@ -275,7 +284,7 @@ if __name__ == "__main__":
         parts = []
         for scanno in range(args.firstscan, args.lastscan+1):
             part = '{0}/{1}-part-{2}.zpi'.format(args.tmpdir, prefix, scanno)
-            jobs.append(oarsub('--config', str(args.config),'_part','-o', part))
+            jobs.append(oarsub('--config', str(args.config),'_part','-o', part, str(scanno)))
             parts.append(part)
         print 'submitted {0} jobs, waiting...'.format(len(jobs))
         oarwait(jobs)
@@ -283,7 +292,7 @@ if __name__ == "__main__":
         count = args.lastscan - args.firstscan + 1
         chunkcount = int(numpy.ceil(float(count) / args.chunksize))
         if chunkcount == 1:
-            job = oarsub('--config', str(args.config),'_sum', '--delete', '-o', args.outfile, *parts)
+            job = oarsub('--config', str(args.config),'_sum', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *parts)
             print 'submitted final job, waiting...'
             oarwait([job])
         else:
@@ -296,7 +305,7 @@ if __name__ == "__main__":
                 chunks.append(chunk)
             print 'submitted {0} jobs, waiting...'.format(len(jobs))
             oarwait(jobs)
-               
+                       
             job = oarsub('--config', str(args.config),'_sum', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks)
             print 'submitted final job, waiting...'
             oarwait([job])
@@ -307,8 +316,7 @@ if __name__ == "__main__":
         spec = specfilewrapper.Specfile(cfg.specfile)
         space = process(args.scan)
         
-        with gzip.open(args.outfile,'wb') as fp:
-            pickle.dump(globalspace, fp, pickle.HIGHEST_PROTOCOL)
+        dump(space,args.outfile)
 
     def sum(args):
         globalspace = Space(cfg)
@@ -317,9 +325,8 @@ if __name__ == "__main__":
             result = pickle.load(gzip.open(fn))
             if result is not None:
                 globalspace += result
-            
-        with gzip.open(args.outfile,'wb') as fp:
-            pickle.dump(globalspace, fp, pickle.HIGHEST_PROTOCOL)
+        
+        dump(globalspace,args.outfile)
                     
         if args.delete:
             for fn in args.infiles:
@@ -331,7 +338,7 @@ if __name__ == "__main__":
     def local(args):
         global spec
         spec = specfilewrapper.Specfile(cfg.specfile)
-
+        
         scanlist = range(args.firstscan, args.lastscan+1)
         globalspace = Space(cfg)
      
@@ -345,8 +352,7 @@ if __name__ == "__main__":
             if result is not None:
                 globalspace += result
 
-        with gzip.open(mfinal(cfg.outfile,args.firstscan,args.lastscan),'wb') as fp:
-            pickle.dump(globalspace, fp, pickle.HIGHEST_PROTOCOL)
+        dump(globalspace ,mfinal(cfg.outfile,args.firstscan,args.lastscan) )
 
         if args.plot:
             if args.plot is True:
@@ -355,8 +361,9 @@ if __name__ == "__main__":
                 makeplot(globalspace, args.plot)
 
     def plot(args):
-        with gzip.open(args.outfile,'rb') as fp:
-            space = pickle.load(fp)
+        fp = gzip.open(args.outfile,'rb')
+        space = pickle.load(fp)
+        fp.close()
         makeplot(space, args)
     
     parser = argparse.ArgumentParser(prog='iVoxOar')
