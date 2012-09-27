@@ -97,8 +97,6 @@ class Arc(object):
         self.scannumber = int(scanheaderC[2].split(' ')[-1])
         self.imagenumber = int(scanheaderC[3].split(' ')[-1])
         self.scanname = scanheaderC[1].split(' ')[-1]
-        self.buildfilelist()
-        self.edf = EdfFile.EdfFile(self.filelist[0])
         self.delt,self.theta,self.chi,self.phi,self.mu,self.gam = numpy.array(scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
         #UB matrix will be installed in new versions of the zapline, until then i keep this here.
         if scanno < 405:
@@ -106,10 +104,14 @@ class Arc(object):
         else:
             self.UB = numpy.array([2.624469378,0.2632191474,-0.001028869827,1.211297551,2.878506363,-0.001084906521,0.002600359765,0.002198324744,1.54377945])
         self.wavelength = float(scan.header('G')[1].split(' ')[-1])
-        self.theta = scan.data()[0,:]
-        self.mon = scan.data()[1,:] #order might change in zapline scan still
+        self.theta = scan.datacol('th')
+        self.mon = scan.datacol('zap_mon')
         self.length = numpy.alen(self.theta)
-            
+
+    def initImdata(self):
+        self.buildfilelist()
+        self.edf = EdfFile.EdfFile(self.filelist[0])
+         
     def buildfilelist(self):
         allfiles =  glob.glob(os.path.join(self.imagefolder,'*{0}_mpx*'.format(self.scanname)))
         filelist = list()
@@ -149,6 +151,17 @@ class Arc(object):
         intensity = roi.flatten()/self.mon[n]
         return H,K,L, intensity
 
+    def getHKLbounds(self, full=False):
+        if full:
+            thetas = self.theta
+        else:
+            thetas = self.theta[0], self.theta[-1]
+        
+        hkls = []
+        for th in thetas:
+            hkl = SixCircle.getHKL(self.wavelength, self.UB, delta=self.delta, theta=th,chi=self.chi,phi=self.phi,mu=self.mu,gamma=self.gamma)
+            hkls.append(hkl.reshape(3))
+        return hkls
 
 def process(scanno):
     mesh = Space(cfg)
@@ -157,6 +170,7 @@ def process(scanno):
     except NotAZaplineError:
         return None
     print scanno
+    a.initImdata()
     for m in range(a.length):
         H,K,L, intensity = a.getImdata(m)
         b = Box(cfg, H,K,L, intensity)
@@ -228,6 +242,25 @@ def dump(space,filename):
 def mfinal(filename,first,last):
     base, ext = os.path.splitext(filename)
     return ('{0}_{2}-{3}{1}').format(base,ext,first,last)
+
+
+def detect_hkllimits(cfg, firstscan, lastscan):
+    spec = specfilewrapper.Specfile(cfg.specfile)
+
+    arcs = []
+    for scanno in range(firstscan, lastscan+1):
+        try:
+            a = Arc(spec, scanno,cfg)
+        except NotAZaplineError:
+            continue
+        arcs.append(a)
+
+    hkls = []
+    for i, a in enumerate(arcs):
+        hkls.extend(a.getHKLbounds(i == 0 or (i + 1) == len(arcs)))
+
+    hkls = numpy.array(hkls)
+    return hkls.min(axis=0), hkls.max(axis=0)
 
 
 if __name__ == "__main__":    
