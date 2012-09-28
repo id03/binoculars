@@ -21,18 +21,6 @@ import gzip
 import argparse
 
 
-# wishlist:
-# - UB matrix in zapline (spec)
-# - correct for mon from spec
-# - correct for mismatch in theta for backward/forward scans
-# - HKL limits determination
-# - fully autonomous distributed calculations on Oar cluster (we need working opid03 account on Nice)
-# - detector distance / pixel angular size
-# - better control interface
-# - patch arbitrary scans
-# - possibly: patch onto 2theta
-
-
 # example usage on Oar:
 # ssh to onderwaa@nice
 # cd to iVoxOar
@@ -47,7 +35,7 @@ class Space(object):
         minK, maxK = cfg.minK, cfg.maxK
         minL, maxL = cfg.minL, cfg.maxL
         Hres, Kres, Lres = cfg.Hres , cfg.Kres, cfg.Lres
-        self.set = [minH,maxH,minK,maxK,minL,maxL, Hres, Kres, Lres]
+        self.set = (minH,maxH,minK,maxK,minL,maxL, Hres, Kres, Lres)
         
         self.Hcount = int(round((maxH-minH)/Hres))+1
         self.Kcount = int(round((maxK-minK)/Kres))+1
@@ -71,6 +59,22 @@ class Space(object):
         self.photons += other.photons
         self.contributions += other.contributions
         return self
+
+	def tofile(self, filename):
+		fp = gzip.open(filename, 'wb')
+		try:
+			pickle.dump(self, fp, pickle.HIGHEST_PROTOCOL)
+		finally:
+			fp.close()
+
+	@classmethod
+	def fromfile(cls, filename):
+        fp = gzip.open(filename,'rb')
+        try:
+            return pickle.load(fp)
+        finally:
+            fp.close()
+
 
 class Box(object):
     def __init__(self,cfg,H,K,L,Intensity):
@@ -108,8 +112,6 @@ class Arc(object):
         self.scannumber = int(scanheaderC[2].split(' ')[-1])
         self.imagenumber = int(scanheaderC[3].split(' ')[-1])
         self.scanname = scanheaderC[1].split(' ')[-1]
-        self.buildfilelist()
-        self.edf = EdfFile.EdfFile(self.filelist[0])
         self.delt,self.theta,self.chi,self.phi,self.mu,self.gam = numpy.array(scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
         #UB matrix will be installed in new versions of the zapline, until then i keep this here.
         if scanno < 405:
@@ -117,10 +119,14 @@ class Arc(object):
         else:
             self.UB = numpy.array([2.624469378,0.2632191474,-0.001028869827,1.211297551,2.878506363,-0.001084906521,0.002600359765,0.002198324744,1.54377945])
         self.wavelength = float(scan.header('G')[1].split(' ')[-1])
-        self.theta = scan.data()[0,:]
-        self.mon = scan.data()[1,:] #order might change in zapline scan still
+        self.theta = scan.datacol('th')
+        self.mon = scan.datacol('zap_mon')
         self.length = numpy.alen(self.theta)
-            
+
+    def initImdata(self):
+        self.buildfilelist()
+        self.edf = EdfFile.EdfFile(self.filelist[0])
+         
     def buildfilelist(self):
         allfiles =  glob.glob(os.path.join(self.imagefolder,'*{0}_mpx*'.format(self.scanname)))
         filelist = list()
@@ -167,8 +173,18 @@ class Arc(object):
         roi = self.data[ymask, :]
         roi = roi[:,xmask]
         return (roi-roi.mean()) / roi.mean()
-
-
+            
+    def getHKLbounds(self, full=False):
+        if full:
+            thetas = self.theta
+        else:
+            thetas = self.theta[0], self.theta[-1]
+        
+        hkls = []
+        for th in thetas:
+            hkl = SixCircle.getHKL(self.wavelength, self.UB, delta=self.delta, theta=th,chi=self.chi,phi=self.phi,mu=self.mu,gamma=self.gamma)
+            hkls.append(hkl.reshape(3))
+        return hkls
 
 def process(scanno):
     mesh = Space(cfg)
@@ -177,26 +193,12 @@ def process(scanno):
     except NotAZaplineError:
         return None
     print scanno
+    a.initImdata()
     for m in range(a.length):
         H,K,L, intensity = a.getImdata(m)
         b = Box(cfg, H,K,L, intensity)
         mesh.fill(b)
     return mesh
-
-def makemesh(firstscan, lastscan):
-    scanlist = range(firstscan, lastscan+1)
-    globalmesh = Space(cfg)
-
-    if USE_MULTIPROCESSING:
-        iter = pool.imap_unordered(process, scanlist, 1)
-    else:
-        iter = itertools.imap(process, scanlist)
-
-    for result in iter:
-        if result is not None:
-            globalmesh += result
-    m = globalmesh()
-    pickle.dump(m, open('mesh-{0}-{1}.pickle'.format(firstscan, lastscan), 'w'), pickle.HIGHEST_PROTOCOL)
 
 
 def makeplot(space, args):
@@ -235,16 +237,31 @@ def makeplot(space, args):
     else:
         pyplot.show()
 
-def dump(space,filename):
-    fp = gzip.open(filename, 'wb')
-    try:
-        pickle.dump(space, fp, pickle.HIGHEST_PROTOCOL)
-    finally:
-        fp.close()
+
 
 def mfinal(filename,first,last):
     base, ext = os.path.splitext(filename)
     return ('{0}_{2}-{3}{1}').format(base,ext,first,last)
+
+
+def detect_hkllimits(cfg, firstscan, lastscan):
+    spec = specfilewrapper.Specfile(cfg.specfile)
+
+    arcs = []
+    for scanno in range(firstscan, lastscan+1):
+        try:
+            a = Arc(spec, scanno,cfg)
+        except NotAZaplineError:
+            continue
+        arcs.append(a)
+
+    hkls = []
+    for i, a in enumerate(arcs):
+        hkls.extend(a.getHKLbounds(i == 0 or (i + 1) == len(arcs)))
+
+    hkls = numpy.array(hkls)
+    return hkls.min(axis=0), hkls.max(axis=0)
+
 
 if __name__ == "__main__":    
     
@@ -253,6 +270,7 @@ if __name__ == "__main__":
         output, unused_err = process.communicate()
         retcode = process.poll()
         return retcode, output
+
 
     def oarsub(*args):
         scriptname = './blisspython /data/id03/inhouse/2012/Sep12/si2515/iVoxOar/iVoxOar.py '
@@ -266,6 +284,7 @@ if __name__ == "__main__":
                     return jobid
         return False
 
+
     def oarstat(jobid):
 # % oarstat -s -j 5651374
 # 5651374: Running
@@ -278,14 +297,20 @@ if __name__ == "__main__":
         else:
             return 'Unknown'
 
+
     def oarwait(jobs):
+        i = 0
         while jobs:
-            status = oarstat(jobs[0])
+            status = oarstat(jobs[i])
             if status == 'Running' or status == 'Waiting' or status == 'Unknown':
-                print '{0} {1} jobs to go'.format(time.ctime(),str(len(jobs)))
+                i += 1
                 time.sleep(5)
             else: # assume status == 'Finishing' or 'Terminated' but don't wait on something unknown
-                jobs.pop(0)
+                del jobs[i]
+                print '{0} {1} jobs to go'.format(time.ctime(), len(jobs))
+            if i == len(jobs):
+                i = 0
+
 
     def cluster(args):
         prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1)) 
@@ -294,7 +319,7 @@ if __name__ == "__main__":
         parts = []
         for scanno in range(args.firstscan, args.lastscan+1):
             part = '{0}/{1}-part-{2}.zpi'.format(args.tmpdir, prefix, scanno)
-            jobs.append(oarsub('--config', str(args.config),'_part','-o', part, str(scanno)))
+            jobs.append(oarsub('--config', args.config,'_part','-o', part, str(scanno)))
             parts.append(part)
         print 'submitted {0} jobs, waiting...'.format(len(jobs))
         oarwait(jobs)
@@ -302,7 +327,7 @@ if __name__ == "__main__":
         count = args.lastscan - args.firstscan + 1
         chunkcount = int(numpy.ceil(float(count) / args.chunksize))
         if chunkcount == 1:
-            job = oarsub('--config', str(args.config),'_sum', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *parts)
+            job = oarsub('--config', args.config,'_sum', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *parts)
             print 'submitted final job, waiting...'
             oarwait([job])
         else:
@@ -311,32 +336,34 @@ if __name__ == "__main__":
             chunks = []
             for i in range(chunkcount):
                 chunk = '{0}/{1}-chunk-{2}.zpi'.format(args.tmpdir, prefix, i+1)
-                jobs.append(oarsub('--config', str(args.config),'_sum', '--delete', '-o', chunk, *parts[i*chunksize:(i+1)*chunksize]))
+                jobs.append(oarsub('--config', args.config,'_sum', '--delete', '-o', chunk, *parts[i*chunksize:(i+1)*chunksize]))
                 chunks.append(chunk)
             print 'submitted {0} jobs, waiting...'.format(len(jobs))
             oarwait(jobs)
                        
-            job = oarsub('--config', str(args.config),'_sum', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks)
+            job = oarsub('--config', args.config,'_sum', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks)
             print 'submitted final job, waiting...'
             oarwait([job])
         print 'done!'
+
 
     def part(args):
         global spec
         spec = specfilewrapper.Specfile(cfg.specfile)
         space = process(args.scan)
         
-        dump(space,args.outfile)
+        space.tofile(args.outfile)
+
 
     def sum(args):
         globalspace = Space(cfg)
         for fn in args.infiles:
             print fn
-            result = pickle.load(gzip.open(fn))
+            result = Space.fromfile(fn)
             if result is not None:
                 globalspace += result
         
-        dump(globalspace,args.outfile)
+        globalspace.tofile(args.outfile)
                     
         if args.delete:
             for fn in args.infiles:
@@ -344,6 +371,7 @@ if __name__ == "__main__":
                     os.remove(fn)
                 except:
                     pass
+
 
     def local(args):
         global spec
@@ -362,7 +390,7 @@ if __name__ == "__main__":
             if result is not None:
                 globalspace += result
 
-        dump(globalspace ,mfinal(cfg.outfile,args.firstscan,args.lastscan) )
+        globalspace.tofile(mfinal(cfg.outfile, args.firstscan, args.lastscan))
 
         if args.plot:
             if args.plot is True:
@@ -370,10 +398,9 @@ if __name__ == "__main__":
             else:
                 makeplot(globalspace, args.plot)
 
+
     def plot(args):
-        fp = gzip.open(args.outfile,'rb')
-        space = pickle.load(fp)
-        fp.close()
+        space = Space.fromfile(args.outfile)
         makeplot(space, args)
     
     def test(args):
@@ -390,7 +417,7 @@ if __name__ == "__main__":
             pyplot.colorbar()
             pyplot.savefig('{0}.pdf'.format(str(n)))
             pyplot.close()
-    
+
     parser = argparse.ArgumentParser(prog='iVoxOar')
     parser.add_argument('--config',default='./config')
     subparsers = parser.add_subparsers()
@@ -438,7 +465,7 @@ if __name__ == "__main__":
     
     cfg = getconfig.cfg(args.config)
 
-    if args.outfile != None:
+    if args.outfile:
         cfg.outfile = args.outfile
     
     args.func(args)
