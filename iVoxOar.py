@@ -160,6 +160,16 @@ class Arc(object):
         intensity = roi.flatten()/self.mon[n]
         return H,K,L, intensity
 
+    def test(self,n):
+        ymask = numpy.asarray(self.cfg.ymask)
+        xmask = numpy.asarray(self.cfg.xmask)        
+        self.data = self.edf.GetData(n)
+        roi = self.data[ymask, :]
+        roi = roi[:,xmask]
+        return (roi-roi.mean()) / roi.mean()
+
+
+
 def process(scanno):
     mesh = Space(cfg)
     try:
@@ -366,6 +376,21 @@ if __name__ == "__main__":
         fp.close()
         makeplot(space, args)
     
+    def test(args):
+        scanlist = range(args.firstscan, args.lastscan+1)
+        spec = specfilewrapper.Specfile(cfg.specfile)
+        for n in scanlist:
+            print n
+            a = Arc(spec, n,cfg)
+            im = numpy.zeros(a.test(0).shape)
+            for m in range(a.length):
+                im += a.test(m)
+            im = im / a.length
+            pyplot.imshow(im)
+            pyplot.colorbar()
+            pyplot.savefig('{0}.pdf'.format(str(n)))
+            pyplot.close()
+    
     parser = argparse.ArgumentParser(prog='iVoxOar')
     parser.add_argument('--config',default='./config')
     subparsers = parser.add_subparsers()
@@ -403,10 +428,16 @@ if __name__ == "__main__":
     parser_plot.add_argument('--savefile')
     parser_plot.set_defaults(func=plot)
 
+    parser_test = subparsers.add_parser('test')
+    parser_test.add_argument('firstscan', type=int)
+    parser_test.add_argument('lastscan', type=int)
+    parser_test.add_argument('--outfile', default = 'test.pdf')
+    parser_test.set_defaults(func=test)
+
     args = parser.parse_args()
     
     cfg = getconfig.cfg(args.config)
-        
+
     if args.outfile != None:
         cfg.outfile = args.outfile
     
