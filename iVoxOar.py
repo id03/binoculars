@@ -60,6 +60,21 @@ class Space(object):
         self.contributions += other.contributions
         return self
 
+	def tofile(self, filename):
+		fp = gzip.open(filename, 'wb')
+		try:
+			pickle.dump(self, fp, pickle.HIGHEST_PROTOCOL)
+		finally:
+			fp.close()
+
+	@classmethod
+	def fromfile(cls, filename):
+        fp = gzip.open(filename,'rb')
+        try:
+            return pickle.load(fp)
+        finally:
+            fp.close()
+
 
 class Box(object):
     def __init__(self,cfg,H,K,L,Intensity):
@@ -178,22 +193,6 @@ def process(scanno):
     return mesh
 
 
-def makemesh(firstscan, lastscan):
-    scanlist = range(firstscan, lastscan+1)
-    globalmesh = Space(cfg)
-
-    if USE_MULTIPROCESSING:
-        iter = pool.imap_unordered(process, scanlist, 1)
-    else:
-        iter = itertools.imap(process, scanlist)
-
-    for result in iter:
-        if result is not None:
-            globalmesh += result
-    m = globalmesh()
-    pickle.dump(m, open('mesh-{0}-{1}.pickle'.format(firstscan, lastscan), 'w'), pickle.HIGHEST_PROTOCOL)
-
-
 def makeplot(space, args):
     clipping = 0.02
    
@@ -230,13 +229,6 @@ def makeplot(space, args):
     else:
         pyplot.show()
 
-
-def dump(space,filename):
-    fp = gzip.open(filename, 'wb')
-    try:
-        pickle.dump(space, fp, pickle.HIGHEST_PROTOCOL)
-    finally:
-        fp.close()
 
 
 def mfinal(filename,first,last):
@@ -352,18 +344,18 @@ if __name__ == "__main__":
         spec = specfilewrapper.Specfile(cfg.specfile)
         space = process(args.scan)
         
-        dump(space,args.outfile)
+        space.tofile(args.outfile)
 
 
     def sum(args):
         globalspace = Space(cfg)
         for fn in args.infiles:
             print fn
-            result = pickle.load(gzip.open(fn))
+            result = Space.fromfile(fn)
             if result is not None:
                 globalspace += result
         
-        dump(globalspace,args.outfile)
+        globalspace.tofile(args.outfile)
                     
         if args.delete:
             for fn in args.infiles:
@@ -390,7 +382,7 @@ if __name__ == "__main__":
             if result is not None:
                 globalspace += result
 
-        dump(globalspace ,mfinal(cfg.outfile,args.firstscan,args.lastscan) )
+        globalspace.tofile(mfinal(cfg.outfile, args.firstscan, args.lastscan))
 
         if args.plot:
             if args.plot is True:
@@ -400,11 +392,7 @@ if __name__ == "__main__":
 
 
     def plot(args):
-        fp = gzip.open(args.outfile,'rb')
-        try:
-            space = pickle.load(fp)
-        finally:
-            fp.close()
+        space = Space.fromfile(args.outfile)
         makeplot(space, args)
     
 
