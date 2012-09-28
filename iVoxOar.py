@@ -67,8 +67,8 @@ class Space(object):
 		finally:
 			fp.close()
 
-	@classmethod
-	def fromfile(cls, filename):
+    @classmethod
+    def fromfile(cls, filename):
         fp = gzip.open(filename,'rb')
         try:
             return pickle.load(fp)
@@ -407,16 +407,16 @@ if __name__ == "__main__":
         scanlist = range(args.firstscan, args.lastscan+1)
         spec = specfilewrapper.Specfile(cfg.specfile)
         for n in scanlist:
-            print n
             a = Arc(spec, n,cfg)
+            a.initImdata()
             im = numpy.zeros(a.test(0).shape)
             for m in range(a.length):
                 im += a.test(m)
             im = im / a.length
-            pyplot.imshow(im)
-            pyplot.colorbar()
-            pyplot.savefig('{0}.pdf'.format(str(n)))
-            pyplot.close()
+            im = im.mean(axis = 0) + (n - args.firstscan + 1)
+            pyplot.plot(im)
+        pyplot.savefig('{0}.pdf'.format('gamm_avg'))
+        pyplot.close()
 
     parser = argparse.ArgumentParser(prog='iVoxOar')
     parser.add_argument('--config',default='./config')
