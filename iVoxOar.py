@@ -9,7 +9,7 @@ from PyMca import specfilewrapper
 import EdfFile
 import getconfig
 
-
+import Fitscurve
 import matplotlib.pyplot as pyplot
 import matplotlib.colors
 
@@ -60,7 +60,7 @@ class Space(object):
         self.contributions += other.contributions
         return self
 
-	def tofile(self, filename):
+    def tofile(self, filename):
 		fp = gzip.open(filename, 'wb')
 		try:
 			pickle.dump(self, fp, pickle.HIGHEST_PROTOCOL)
@@ -148,7 +148,7 @@ class Arc(object):
         ymask = numpy.asarray(self.cfg.ymask)
         xmask = numpy.asarray(self.cfg.xmask)
 
-        self.data = self.edf.GetData(n)
+        self.data = self.edf.GetData(n)/self.mon[n]
         app = self.cfg.app #angle per pixel (delta,gamma)
         centralpixel = self.cfg.centralpixel #(row,column)=(delta,gamma)
         self.gamma = app[1]*(numpy.arange(self.data.shape[1])-centralpixel[1])+self.gam
@@ -163,13 +163,15 @@ class Arc(object):
         L = R[2,:]
         roi = self.data[ymask, :]
         roi = roi[:,xmask]
-        intensity = roi.flatten()/self.mon[n]
+        if self.cfg.bkg:
+            roi = roi - self.bkg * roi.mean()
+        intensity = roi.flatten()
         return H,K,L, intensity
 
-    def test(self,n):
+    def getmean(self,n):
         ymask = numpy.asarray(self.cfg.ymask)
         xmask = numpy.asarray(self.cfg.xmask)        
-        self.data = self.edf.GetData(n)
+        self.data = self.edf.GetData(n)/self.mon[n]
         roi = self.data[ymask, :]
         roi = roi[:,xmask]
         return (roi-roi.mean()) / roi.mean()
@@ -186,6 +188,15 @@ class Arc(object):
             hkls.append(hkl.reshape(3))
         return hkls
 
+    def setbkg(self):
+        im = numpy.zeros(self.getmean(0).shape)
+        for m in range(self.length):
+            im += self.getmean(m)
+        im = im / self.length
+        avg = im.mean(axis = 0)
+        fit = Fitscurve.fitscurve(numpy.arange(avg.shape[0]), avg )
+        self.bkg = fit.reshape(1,avg.shape[0]).repeat(im.shape[0],axis = 0)
+
 def process(scanno):
     mesh = Space(cfg)
     try:
@@ -194,6 +205,8 @@ def process(scanno):
         return None
     print scanno
     a.initImdata()
+    if cfg.bkg:
+        a.setbkg()
     for m in range(a.length):
         H,K,L, intensity = a.getImdata(m)
         b = Box(cfg, H,K,L, intensity)
@@ -409,14 +422,27 @@ if __name__ == "__main__":
         for n in scanlist:
             a = Arc(spec, n,cfg)
             a.initImdata()
-            im = numpy.zeros(a.test(0).shape)
+            im = numpy.zeros(a.getmean(0).shape)
             for m in range(a.length):
-                im += a.test(m)
+                im += a.getmean(m)
             im = im / a.length
-            im = im.mean(axis = 0) + (n - args.firstscan + 1)
-            pyplot.plot(im)
-        pyplot.savefig('{0}.pdf'.format('gamm_avg'))
-        pyplot.close()
+            avg = im.mean(axis = 0)
+            fit = Fitscurve.fitscurve(numpy.arange(avg.shape[0]), avg )
+            bkg = fit.reshape(1,avg.shape[0]).repeat(im.shape[0],axis = 0)
+            pyplot.figure(figsize = (8,10))
+            pyplot.subplot(221)
+            pyplot.imshow(im-bkg)
+            pyplot.axis('off')
+            pyplot.colorbar()
+            pyplot.subplot(222)
+            pyplot.imshow(im)
+            pyplot.axis('off')
+            pyplot.colorbar()
+            pyplot.subplot(212)
+            pyplot.plot(avg,'wo')
+            pyplot.plot(fit,'r')
+            pyplot.savefig('{0}-bkg.pdf'.format(str(n)))
+            pyplot.close()
 
     parser = argparse.ArgumentParser(prog='iVoxOar')
     parser.add_argument('--config',default='./config')
@@ -459,6 +485,7 @@ if __name__ == "__main__":
     parser_test.add_argument('firstscan', type=int)
     parser_test.add_argument('lastscan', type=int)
     parser_test.add_argument('--outfile', default = 'test.pdf')
+    
     parser_test.set_defaults(func=test)
 
     args = parser.parse_args()
@@ -467,5 +494,6 @@ if __name__ == "__main__":
 
     if args.outfile:
         cfg.outfile = args.outfile
+    
     
     args.func(args)
