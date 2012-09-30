@@ -194,7 +194,7 @@ class Arc(object):
             im += self.getmean(m)
         im = im / self.length
         avg = im.mean(axis = 0)
-        fit = Fitscurve.fitscurve(numpy.arange(avg.shape[0]), avg )
+        fit = Fitscurve.fitbkg(numpy.arange(avg.shape[0]), avg )
         self.bkg = fit.reshape(1,avg.shape[0]).repeat(im.shape[0],axis = 0)
 
 def process(scanno):
@@ -234,19 +234,28 @@ def makeplot(space, args):
     #pyplot.imshow(space.contributions.reshape((space.Hcount, space.Kcount, space.Lcount), order='C')[:,:,0].transpose(), origin='lower', extent=(space.set['minH'], space.set['maxH'], space.set['minK'], space.set['maxK']), aspect='auto')#, norm=matplotlib.colors.Normalize(vmin, vmax))
 
     pyplot.imshow(data.transpose(), origin='lower', extent=(space.cfg.minH, space.cfg.maxH, space.cfg.minK, space.cfg.maxK), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
+    
+    
+    #pyplot.imshow(data.transpose())
+    
+    #xgrid, ygrid = numpy.meshgrid(numpy.arange(data.shape[0]+1), numpy.arange(data.shape[1]+1))
+    #ax=pyplot.subplot(111)
+    #ax.pcolorfast(numpy.sin(60. /180 * numpy.pi) * xgrid+numpy.cos(60. /180 * numpy.pi) * ygrid, ygrid , data.transpose(),norm=matplotlib.colors.Normalize(vmin, vmax))
+    
     pyplot.xlabel('H')
     pyplot.ylabel('K')
     #pyplot.suptitle() TODO
     pyplot.colorbar()
     pyplot.xlim(*hlims)
     pyplot.ylim(*klims)
+    #ax.set_xlim(200,1500)
     if args.s:
         if args.savefile != None:
             pyplot.savefig(args.savefile)
             print 'saved at {0}'.format(args.savefile)
         else:
-            pyplot.savefig('{0}.pdf'.format(os.path.splitext(args.outfile)[0]))
-            print 'saved at {0}.pdf'.format(os.path.splitext(args.outfile)[0])
+            pyplot.savefig('{0}.png'.format(os.path.splitext(args.outfile)[0]))
+            print 'saved at {0}.png'.format(os.path.splitext(args.outfile)[0])
     else:
         pyplot.show()
 

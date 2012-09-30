@@ -5,6 +5,7 @@ import re
 import matplotlib.pyplot as plt
 import random
 
+
 def simplefit(func, x, y, guess):
 	"""Non-linear least squares fit of y=func(x).
         
@@ -39,7 +40,7 @@ def simplefit(func, x, y, guess):
 
 
 def nonlinfit(func, guess, paramnames=None):
-	"""Non-linear least squares optimization. Finds parameters that minimize the sum of squares.
+    """Non-linear least squares optimization. Finds parameters that minimize the sum of squares.
         
         parameters:
         func:       callable
@@ -57,24 +58,24 @@ def nonlinfit(func, guess, paramnames=None):
         summary:  human-readable summary of fit parameters
         """
     
-	result = scipy.optimize.leastsq(func, guess, full_output=True, maxfev=3000)
+    result = scipy.optimize.leastsq(func, guess, full_output=True, maxfev=3000)
     
-	msg = re.sub('\s{2,}', ' ', result[3].strip())
-	if result[4] not in (1,2,3,4):
-		return None, None, None, None
+    msg = re.sub('\s{2,}', ' ', result[3].strip())
+    if result[4] not in (1,2,3,4):
+        raise ValueError("no solution found (%d): %s" % (result[4], msg))
     
-	params = result[0]
-	errdata = result[2]['fvec']
-	if result[1] is None:
-		variance = numpy.zeros(len(params))
-	else:
-		variance = numpy.diagonal(result[1] * (errdata**2).sum() / (len(errdata) - len(params)))
+    params = result[0]
+    errdata = result[2]['fvec']
+    if result[1] is None:
+        variance = numpy.zeros(len(params))
+    else:
+        variance = numpy.diagonal(result[1] * (errdata**2).sum() / (len(errdata) - len(params)))
     
-	if not paramnames:
-		paramnames = [str(i+1) for i in range(len(guess))]
-	summary = '\n'.join('%s: %.4e +/- %.4e' % (n, p,v) for (n, p,v) in zip(paramnames, params, variance))
-    
-	return params, variance, msg, summary
+    if not paramnames:
+        paramnames = [str(i+1) for i in range(len(guess))]
+    summary = '\n'.join('%s: %.4e +/- %.4e' % (n, p,v) for (n, p,v) in zip(paramnames, params, variance))
+    return params, variance, msg, summary
+
 
 def gaussian(x, (x0, A, sigma, offset, slope)):
 	return A * numpy.exp(-((x-x0)/2/sigma)**2) + offset + x * slope
@@ -100,20 +101,23 @@ def fitscurve(xdata,ydata):
         slope = 0.001
     print x0, slope , height , offset
     params, variance, msg, summary = simplefit(scurve, xdata, ydata, (x0, slope , height , offset))
-    print params
-    if params != None:
-        return scurve(xdata,params)
-    else:
-        return fitlin(xdata,ydata)
+    return params, summary
 
 
 def fitlin(xdata,ydata):
     slope = (ydata[-1] - ydata[0]) / (xdata[-1] - xdata[0])
     offset = ydata[0] - slope * xdata[0]
     params, variance, msg, summary = simplefit(lin, xdata, ydata, (slope,offset))
-    return lin(xdata,params)
+    return params, summary
 
-
+def fitbkg(xdata,ydata):
+    try:
+        params, summary = fitscurve(xdata,ydata)
+        return scurve(xdata,params)
+    except:
+        params, summary = fitlin(xdata,ydata)
+        return lin(xdata,params)
+        
 def fitgaussian(xdata, ydata):
 	x0 = xdata[numpy.argmax(ydata)]
 	A = numpy.max(ydata)
@@ -130,11 +134,9 @@ if __name__ == '__main__':
     height = random.randint(0,100)
     slope = random.random()
     print x0, slope , height , offset
-    ydata = scurve(xdata,(x0,slope,height,offset)) + numpy.random.randn(100)
-    params, summary = fitscurve(xdata, ydata)
+    ydata = numpy.abs(numpy.arange(-50,50))#scurve(xdata,(x0,slope,height,offset)) + numpy.random.randn(100)
+    yfit = fitbkg(xdata, ydata)
     plt.plot(xdata,ydata,'wo')
-    plt.plot(xdata,scurve(xdata,params),'r')
-    
-    print params
-    print summary
+    plt.plot(xdata,yfit,'r')
+
     plt.show()
