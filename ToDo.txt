@@ -13,8 +13,6 @@ The next 4 items are priorities
 # - possibly: patch onto 2theta
 # - filtercorrectie
 
-- wegschrijven van een gepekelde Space moet een atomic operatie worden (zodat je nooit een half bestand tegen kan komen); de truc is om eerst naar een tijdelijk bestand te schrijven in dezelfde map en dan te hernoemen
 - iVoxOar arc wacht tot de scan verschijnt in de specfile (we moeten wel even bedenken hoe we kunnen checken of de hele scan klaar is; ik had de indruk dat zapline tijdens de scan geen data wegschrijft, en aan het eind alles in één keer wegschrijft, dus dan zou het makkelijk moeten zijn)
 - Spaces met ongelijke hmin/hmax/etc moet je kunnen optellen, zolang de resolutie maar hetzelfde is. Op deze manier kan elke arc z'n eigen bins kiezen en hoeft de volledige range niet vantevoren bekend te zijn.
-- iVoxOar sum mag je al starten zonder dat alle componenten klaar zijn, hij blijft checken of de input files al zijn verschenen
 - iVoxOar cluster gaat verder vooruit werken / jobs submitten; niet te ver zodat een job te lang moet wachten (en het risico loopt gekilled te worden als de max-job-time verloopt, en ik weet ook niet of het netjes veel wachttijd te claimen, ik weet niet precies of je daarmee capaciteit blokkeert zonder het nuttig te gebruiken) maar wel ver genoeg dat we compenseren voor de tijd die oarsub nodig heeft om daadwerkelijk een job te starten.

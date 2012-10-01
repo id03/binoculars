@@ -61,11 +61,13 @@ class Space(object):
         return self
 
     def tofile(self, filename):
-		fp = gzip.open(filename, 'wb')
-		try:
-			pickle.dump(self, fp, pickle.HIGHEST_PROTOCOL)
-		finally:
-			fp.close()
+        tmpfile = '{0}-{1:x}.tmp'.format(os.path.splitext(filename)[0], random.randint(0, 2**32-1))
+        fp = gzip.open(tmpfile, 'wb')
+        try:
+            pickle.dump(self, fp, pickle.HIGHEST_PROTOCOL)
+        finally:
+            fp.close()
+        os.rename(tmpfile, filename)
 
     @classmethod
     def fromfile(cls, filename):
@@ -285,6 +287,21 @@ def detect_hkllimits(cfg, firstscan, lastscan):
     return hkls.min(axis=0), hkls.max(axis=0)
 
 
+def wait_for_files(filelist):
+    i = 0
+    while filelist:
+        if os.path.exists(filelist[i]):
+            yield filelist.pop(i)
+            i = i % len(arcs)
+        else:
+            time.sleep(5)
+            i = (i + 1) % len(arcs)
+
+
+def wait_for_file(filename):
+    return bool(list(wait_for_files([filename])))
+
+
 if __name__ == "__main__":    
     
     def run(*command):
@@ -379,7 +396,13 @@ if __name__ == "__main__":
 
     def sum(args):
         globalspace = Space(cfg)
-        for fn in args.infiles:
+
+        if args.wait:
+            fileiter = wait_for_files(args.infiles)
+        else:
+            fileiter = args.infiles
+
+        for fn in fileiter:
             print fn
             result = Space.fromfile(fn)
             if result is not None:
@@ -422,6 +445,8 @@ if __name__ == "__main__":
 
 
     def plot(args):
+        if args.wait:
+            wait_for_file(args.outfile)
         space = Space.fromfile(args.outfile)
         makeplot(space, args)
     
@@ -455,6 +480,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog='iVoxOar')
     parser.add_argument('--config',default='./config')
+    parser.add_argument('--wait', help='wait for input files to appear')
     subparsers = parser.add_subparsers()
 
     parser_cluster = subparsers.add_parser('cluster')
