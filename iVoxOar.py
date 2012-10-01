@@ -164,7 +164,7 @@ class Arc(object):
         roi = self.data[ymask, :]
         roi = roi[:,xmask]
         if self.cfg.bkg:
-            roi = roi - self.bkg * roi.mean()
+            roi = roi - self.bkg
         intensity = roi.flatten()
         return H,K,L, intensity
 
