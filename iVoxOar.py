@@ -116,6 +116,7 @@ class Arc(object):
         self.scanname = scanheaderC[1].split(' ')[-1]
         self.delt,self.theta,self.chi,self.phi,self.mu,self.gam = numpy.array(scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
         #UB matrix will be installed in new versions of the zapline, until then i keep this here.
+    
         if scanno < 405:
             self.UB = numpy.array([2.628602629,0.2730763688,-0.001032444885,1.202301748,2.877587966,-0.001081570571,0.002600281749,0.002198663001,1.54377945])
         else:
@@ -123,14 +124,22 @@ class Arc(object):
         self.wavelength = float(scan.header('G')[1].split(' ')[-1])
         self.theta = scan.datacol('th')
         self.mon = scan.datacol('zap_mon')
+        self.transm = scan.datacol('zap_transm')
         self.length = numpy.alen(self.theta)
+            
+        self.gam = self.gam.repeat(self.length)
+        self.delt = self.delt.repeat(self.length)
+            
+        self.imagecode = os.path.join(self.imagefolder,'*{0}_mpx*'.format(self.scanname))
+            
+        self.transm[-1]=self.transm[-2] #bug in specfile
 
     def initImdata(self):
         self.buildfilelist()
         self.edf = EdfFile.EdfFile(self.filelist[0])
          
     def buildfilelist(self):
-        allfiles =  glob.glob(os.path.join(self.imagefolder,'*{0}_mpx*'.format(self.scanname)))
+        allfiles =  glob.glob(self.imagecode)
         filelist = list()
         imagedict = {}
         for file in allfiles:        
@@ -150,11 +159,11 @@ class Arc(object):
         ymask = numpy.asarray(self.cfg.ymask)
         xmask = numpy.asarray(self.cfg.xmask)
 
-        self.data = self.edf.GetData(n)/self.mon[n]
+        self.data = self.GetData(n)/(self.mon[n]*self.transm[n])
         app = self.cfg.app #angle per pixel (delta,gamma)
         centralpixel = self.cfg.centralpixel #(row,column)=(delta,gamma)
-        self.gamma = app[1]*(numpy.arange(self.data.shape[1])-centralpixel[1])+self.gam
-        self.delta = app[0]*(numpy.arange(self.data.shape[0])-centralpixel[0])+self.delt
+        self.gamma = app[1]*(numpy.arange(self.data.shape[1])-centralpixel[1])+self.gam[n]
+        self.delta = app[0]*(numpy.arange(self.data.shape[0])-centralpixel[0])+self.delt[n]
         self.gamma = self.gamma[ymask]
         self.delta = self.delta[xmask]
 
@@ -165,18 +174,16 @@ class Arc(object):
         L = R[2,:]
         roi = self.data[ymask, :]
         roi = roi[:,xmask]
-        if self.cfg.bkg:
-            roi = roi - self.bkg
         intensity = roi.flatten()
         return H,K,L, intensity
 
     def getmean(self,n):
         ymask = numpy.asarray(self.cfg.ymask)
         xmask = numpy.asarray(self.cfg.xmask)        
-        self.data = self.edf.GetData(n)/self.mon[n]
+        self.data = self.GetData(n)#/self.mon[n]
         roi = self.data[ymask, :]
         roi = roi[:,xmask]
-        return (roi-roi.mean()) / roi.mean()
+        return roi.mean(axis = 0)
             
     def getHKLbounds(self, full=False):
         if full:
@@ -190,25 +197,65 @@ class Arc(object):
             hkls.append(hkl.reshape(3))
         return hkls
 
-    def setbkg(self):
-        im = numpy.zeros(self.getmean(0).shape)
-        for m in range(self.length):
-            im += self.getmean(m)
-        im = im / self.length
-        avg = im.mean(axis = 0)
-        fit = Fitscurve.fitbkg(numpy.arange(avg.shape[0]), avg )
-        self.bkg = fit.reshape(1,avg.shape[0]).repeat(im.shape[0],axis = 0)
+    def getbkg(self):
+        abkg = numpy.vstack(self.getmean(m) for m in range(self.length)).mean(axis = 0)
+        fit = Fitscurve.fitbkg(numpy.arange(abkg.shape[0]), abkg )
+        #self.bkg = fit.reshape(1,avg.shape[0]).repeat(im.shape[0],axis = 0)
+        return abkg , fit
+
+    def GetData(self,n):
+        return self.edf.GetData(n)
+        
+
+class hklmesh(Arc):
+    def __init__(self,spec,scanno,cfg):
+        scan = spec.select('{0}.1'.format(scanno))
+        self.cfg = cfg
+        if not scan.header('S')[0].split()[2] == 'hklmesh':
+            raise NotAZaplineError
+        
+        UCCD = os.path.split(scan.header('UCCD')[0].split(' ')[-1])
+        folder = os.path.split(UCCD[0])[-1]
+        self.scanname = UCCD[-1].split('_')[0]
+        self.imagefolder = os.path.join(cfg.imagefolder,folder)
+        self.scannumber = scanno
+
+        self.chi = 0
+        self.phi = 0
+                
+        self.theta = scan.datacol('thcnt')
+        self.gam = scan.datacol('gamcnt')
+        self.delt = scan.datacol('delcnt')
+        self.mu = float(scan.header('P')[0].split(' ')[5])
+                
+        self.UB = numpy.array(scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
+        self.wavelength = float(scan.header('G')[1].split(' ')[-1])
+        
+        self.mon = scan.datacol('mon')
+        self.transm = scan.datacol('transm')
+        self.length = numpy.alen(self.theta)
+
+        self.imagecode = os.path.join(self.imagefolder,'*{0}*'.format(self.scanname))
+
+    def initImdata(self):
+        self.buildfilelist()
+
+    def GetData(self,n):        
+        edf = EdfFile.EdfFile(self.filelist[n])
+        return edf.GetData(0)
+
 
 def process(scanno):
     mesh = Space(cfg)
     try:
-        a = Arc(spec, scanno,cfg)
+        if cfg.hklmesh:
+            a = hklmesh(spec, scanno,cfg)
+        else:
+            a = Arc(spec, scanno,cfg)
     except NotAZaplineError:
         return None
     print scanno
     a.initImdata()
-    if cfg.bkg:
-        a.setbkg()
     for m in range(a.length):
         H,K,L, intensity = a.getImdata(m)
         b = Box(cfg, H,K,L, intensity)
@@ -454,26 +501,25 @@ if __name__ == "__main__":
         scanlist = range(args.firstscan, args.lastscan+1)
         spec = specfilewrapper.Specfile(cfg.specfile)
         for n in scanlist:
+            print n
             a = Arc(spec, n,cfg)
             a.initImdata()
-            im = numpy.zeros(a.getmean(0).shape)
-            for m in range(a.length):
-                im += a.getmean(m)
-            im = im / a.length
-            avg = im.mean(axis = 0)
-            fit = Fitscurve.fitscurve(numpy.arange(avg.shape[0]), avg )
-            bkg = fit.reshape(1,avg.shape[0]).repeat(im.shape[0],axis = 0)
-            pyplot.figure(figsize = (8,10))
-            pyplot.subplot(221)
-            pyplot.imshow(im-bkg)
-            pyplot.axis('off')
-            pyplot.colorbar()
-            pyplot.subplot(222)
-            pyplot.imshow(im)
-            pyplot.axis('off')
-            pyplot.colorbar()
-            pyplot.subplot(212)
-            pyplot.plot(avg,'wo')
+            abkg,fit = a.getbkg()
+            numpy.savetxt('{0}-bkg.txt'.format(str(n)) ,abkg)
+            fit = Fitscurve.fitbkg(numpy.arange(abkg.shape[0]), abkg )
+            #bkg = fit.reshape(1,avg.shape[0]).repeat(im.shape[0],axis = 0)
+            pyplot.figure()
+            #pyplot.figure(figsize = (8,10))
+            #pyplot.subplot(221)
+            #pyplot.imshow(im-bkg)
+            #pyplot.axis('off')
+            #pyplot.colorbar()
+            #pyplot.subplot(222)
+            #pyplot.imshow(im)
+            #pyplot.axis('off')
+            #pyplot.colorbar()
+            pyplot.subplot(111)
+            pyplot.plot(abkg,'wo')
             pyplot.plot(fit,'r')
             pyplot.savefig('{0}-bkg.pdf'.format(str(n)))
             pyplot.close()
@@ -481,6 +527,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='iVoxOar')
     parser.add_argument('--config',default='./config')
     parser.add_argument('--wait', help='wait for input files to appear')
+    parser.add_argument('--hklmesh', action='store_true')
     subparsers = parser.add_subparsers()
 
     parser_cluster = subparsers.add_parser('cluster')
@@ -530,5 +577,6 @@ if __name__ == "__main__":
     if args.outfile:
         cfg.outfile = args.outfile
     
-    
+    cfg.__dict__['hklmesh'] = args.hklmesh
+
     args.func(args)
