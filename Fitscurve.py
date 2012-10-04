@@ -84,6 +84,7 @@ def scurve(x,(x0, slope , height , offset)):
     return height * scipy.special.erf(slope * (x - x0)) + offset
 
 def lin(x,(a,b)):
+    print x
     return a * x + b
 
 def fitscurve(xdata,ydata):
@@ -117,7 +118,15 @@ def fitbkg(xdata,ydata):
     except:
         params, summary = fitlin(xdata,ydata)
         return lin(xdata,params)
-        
+
+#def fitTwoD(xdata,ydata,zdata):
+
+
+
+#def TwoDfunction(x,y,()):
+    
+    
+
 def fitgaussian(xdata, ydata):
 	x0 = xdata[numpy.argmax(ydata)]
 	A = numpy.max(ydata)
