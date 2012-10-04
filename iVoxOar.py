@@ -19,6 +19,7 @@ import itertools
 import sys
 import gzip
 import argparse
+import copy
 
 
 # example usage on Oar:
@@ -31,34 +32,85 @@ import argparse
 class Space(object):
     def __init__(self, cfg):
         self.cfg = cfg
-        minH, maxH = cfg.minH, cfg.maxH
-        minK, maxK = cfg.minK, cfg.maxK
-        minL, maxL = cfg.minL, cfg.maxL
-        Hres, Kres, Lres = cfg.Hres , cfg.Kres, cfg.Lres
-        self.set = (minH,maxH,minK,maxK,minL,maxL, Hres, Kres, Lres)
+        self.Hmin, self.Hmax, self.Hres = cfg.Hmin, cfg.Hmax, cfg.Hres
+        self.Kmin, self.Kmax, self.Kres = cfg.Kmin, cfg.Kmax, cfg.Kres
+        self.Lmin, self.Lmax, self.Lres = cfg.Lmin, cfg.Lmax, cfg.Lres
         
-        self.Hcount = int(round((maxH-minH)/Hres))+1
-        self.Kcount = int(round((maxK-minK)/Kres))+1
-        self.Lcount = int(round((maxL-minL)/Lres))+1
+        self.Hcount = int(round((self.Hmax-self.Hmin)/Hres))+1
+        self.Kcount = int(round((self.Kmax-self.Kmin)/Kres))+1
+        self.Lcount = int(round((self.Lmax-self.Lmin)/Lres))+1
 
-        self.photons = numpy.zeros(self.Hcount*self.Kcount*self.Lcount)
-        self.contributions = numpy.zeros(self.photons.shape, dtype=numpy.uint32)
+        self.photons = numpy.zeros((self.Hcount, self.Kcount, self.Lcount), order='C')
+        self.contributions = numpy.zeros(self.photons.shape, dtype=numpy.uint32, order='C')
 
-    def __call__(self):
-        return numpy.ma.array(data=self.photons/self.contributions, mask=(self.contributions == 0)).reshape((self.Hcount, self.Kcount, self.Lcount), order='C')
-
-    def fill(self, im):
-        self.photons[:im.photons.size] += im.photons
-        self.contributions[:im.contributions.size] += im.contributions
+    def get_masked(self):
+        return numpy.ma.array(data=self.photons/self.contributions, mask=(self.contributions == 0))
         
+    def __add__(self, other):
+        if not isinstance(other, Space):
+            return NotImplemented
+        if self.Hres != other.Hres or self.Kres != other.Kres or self.Lres != other.Lres:
+            raise ValueError('cannot add spaces with different H/K/L resolution')
+
+        newcfg = copy.copy(cfg)
+        newcfg.Hmin = min(self.Hmin, other.Hmin)
+        newcfg.Hmax = max(self.Hmax, other.Hmax)
+        newcfg.Kmin = min(self.Kmin, other.Kmin)
+        newcfg.Kmax = max(self.Kmax, other.Kmax)
+        newcfg.Lmin = min(self.Lmin, other.Lmin)
+        newcfg.Lmax = max(self.Lmax, other.Lmax)
+
+        new = Space(newcfg)
+        new += self
+        new += other
+        return new
+
     def __iadd__(self, other):
         if not isinstance(other, Space):
             return NotImplemented
-        if self.set != other.set:
-            raise ValueError('cannot add spaces with different H/K/L range or resolution')
-        self.photons += other.photons
-        self.contributions += other.contributions
+        if self.Hres != other.Hres or self.Kres != other.Kres or self.Lres != other.Lres:
+            raise ValueError('cannot add spaces with different H/K/L resolution')
+
+        if self.Hmin > other.Hmin or self.Hmax < other.Hmax or self.Kmin > other.Kmin or self.Kmax < other.Kmax or self.Lmin > other.Lmin or self.Lmax < other.Lmax:
+            return self.__add__(self, other)
+
+        Hi = int(round((other.Hmin - self.Hmin) / self.Hres))
+        Ki = int(round((other.Kmin - self.Kmin) / self.Kres))
+        Li = int(round((other.Lmin - self.Lmin) / self.Lres))
+        self.photons[Hi:Hi+other.shape[0], Ki:Ki+other.shape[1], Li:Li+other.shape[2]] += other.photons
+        self.contributions[Hi:Hi+other.shape[0], Ki:Ki+other.shape[1], Li:Li+other.shape[2]] += other.contributions
         return self
+
+    def trim(self):
+        mask = self.contributions > 0
+		sum2 = mask.sum(axis=2)
+
+        Hlims = numpy.flatnonzero(sum2.sum(axis=1))
+        Hmini, Hmaxi = Hlims.min(), Hlims.max()
+        self.Hmin = self.Hmin + self.Hres * Hmini
+        self.Hmax = self.Hmin + self.Hres * Hmaxi
+
+        Klims = numpy.flatnonzero(sum2.sum(axis=0))
+        Kmini, Kmaxi = Klims.min(), Klims.max()
+        self.Kmin = self.Kmin + self.Kres * Kmini
+        self.Kmax = self.Kmin + self.Kres * Kmaxi
+
+        Llims = numpy.flatnonzero(mask.sum(axis=1).sum(axis=0))
+        Lmini, Lmaxi = Llims.min(), Llims.max()
+        self.Lmin = self.Lmin + self.Lres * Lmini
+        self.Lmax = self.Lmin + self.Lres * Lmaxi
+
+        self.photons = self.photons[Hmini:Hmaxi+1, Kmini:Kmaxi+1, Lmini:Lmaxi+1].copy()
+        self.contributions = self.contributions[Hmini:Hmaxi+1, Kmini:Kmaxi+1, Lmini:Lmaxi+1].copy()
+
+    def process_image(self, H, K, L, intensity):
+        hkl = (numpy.round((H-self.Hmin)/self.Hres)*self.Kcount*self.Lcount + numpy.round((K-self.Kmin)/self.Kres)*self.Lcount + numpy.round((L-self.Lmin)/self.Lres)).astype(int)
+
+        photons = numpy.bincount(hkl.flatten(), weights=Intensity.flatten())
+        contributions = numpy.bincount(hkl.flatten())
+
+        self.photons.ravel()[:photons.size] += photons
+        self.contributions.ravel()[:contributions.size] += contributions
 
     def tofile(self, filename):
         tmpfile = '{0}-{1:x}.tmp'.format(os.path.splitext(filename)[0], random.randint(0, 2**32-1))
@@ -76,25 +128,6 @@ class Space(object):
             return pickle.load(fp)
         finally:
             fp.close()
-
-
-class Box(object):
-    def __init__(self,cfg,H,K,L,Intensity):
-        minH, maxH = cfg.minH, cfg.maxH
-        minK, maxK = cfg.minK, cfg.maxK
-        minL, maxL = cfg.minL, cfg.maxL
-        Hres, Kres, Lres = cfg.Hres , cfg.Kres, cfg.Lres
-
-        Kcount = int(round((maxK-minK)/Kres))+1
-        Lcount = int(round((maxL-minL)/Lres))+1
-        
-        hkl = (numpy.round((H-minH)/Hres)*Kcount*Lcount + numpy.round((K-minK)/Kres)*Lcount + numpy.round((L-minL)/Lres)).astype(int)
-
-        self.photons = numpy.bincount(hkl.flatten(), weights=Intensity.flatten())
-        self.contributions = numpy.bincount(hkl.flatten())
-
-    def __call__(self):
-        return numpy.ma.array(data=self.photons/self.contributions, mask=(self.contributions == 0))
 
 
 class NotAZaplineError(Exception):
@@ -199,6 +232,7 @@ class Arc(object):
         fit = Fitscurve.fitbkg(numpy.arange(avg.shape[0]), avg )
         self.bkg = fit.reshape(1,avg.shape[0]).repeat(im.shape[0],axis = 0)
 
+
 def process(scanno):
     mesh = Space(cfg)
     try:
@@ -210,32 +244,25 @@ def process(scanno):
     if cfg.bkg:
         a.setbkg()
     for m in range(a.length):
-        H,K,L, intensity = a.getImdata(m)
-        b = Box(cfg, H,K,L, intensity)
-        mesh.fill(b)
+        H, K, L, intensity = a.getImdata(m)
+        mesh.process_image(H, K, L, Intensity)
     return mesh
 
 
 def makeplot(space, args):
     clipping = 0.02
    
-    mesh = space() 
+    mesh = space.get_masked()
     data = numpy.log(mesh[...,0])
     compresseddata = data.compressed()
     chop = int(round(compresseddata.size * clipping))
     clip = sorted(compresseddata)[chop:-chop]
     vmin, vmax = clip[0], clip[-1]
     
-    invmask = ~data.mask
-    hlims = numpy.flatnonzero(invmask.sum(axis=1))
-    hlims = hlims.min()*space.cfg.Hres + space.cfg.minH - 0.1, hlims.max()*space.cfg.Hres + space.cfg.minH + 0.1
-    klims = numpy.flatnonzero(invmask.sum(axis=0))
-    klims = klims.min()*space.cfg.Kres + space.cfg.minK - 0.1, klims.max()*space.cfg.Kres + space.cfg.minK + 0.1
-    
     pyplot.figure(figsize=(12,9))
     #pyplot.imshow(space.contributions.reshape((space.Hcount, space.Kcount, space.Lcount), order='C')[:,:,0].transpose(), origin='lower', extent=(space.set['minH'], space.set['maxH'], space.set['minK'], space.set['maxK']), aspect='auto')#, norm=matplotlib.colors.Normalize(vmin, vmax))
 
-    pyplot.imshow(data.transpose(), origin='lower', extent=(space.cfg.minH, space.cfg.maxH, space.cfg.minK, space.cfg.maxK), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
+    pyplot.imshow(data.transpose(), origin='lower', extent=(space.cfg.Hmin, space.cfg.Hmax, space.cfg.Kmin, space.cfg.Kmax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
     
     
     #pyplot.imshow(data.transpose())
@@ -248,8 +275,6 @@ def makeplot(space, args):
     pyplot.ylabel('K')
     #pyplot.suptitle() TODO
     pyplot.colorbar()
-    pyplot.xlim(*hlims)
-    pyplot.ylim(*klims)
     #ax.set_xlim(200,1500)
     if args.s:
         if args.savefile != None:
@@ -366,7 +391,7 @@ if __name__ == "__main__":
         count = args.lastscan - args.firstscan + 1
         chunkcount = int(numpy.ceil(float(count) / args.chunksize))
         if chunkcount == 1:
-            job = oarsub('--config', args.config,'_sum', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *parts)
+            job = oarsub('--config', args.config,'_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *parts)
             print 'submitted final job, waiting...'
             oarwait([job])
         else:
@@ -380,7 +405,7 @@ if __name__ == "__main__":
             print 'submitted {0} jobs, waiting...'.format(len(jobs))
             oarwait(jobs)
                        
-            job = oarsub('--config', args.config,'_sum', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks)
+            job = oarsub('--config', args.config,'_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks)
             print 'submitted final job, waiting...'
             oarwait([job])
         print 'done!'
@@ -407,6 +432,9 @@ if __name__ == "__main__":
             result = Space.fromfile(fn)
             if result is not None:
                 globalspace += result
+
+        if args.trim:
+            globalspace.trim()
         
         globalspace.tofile(args.outfile)
                     
@@ -435,6 +463,7 @@ if __name__ == "__main__":
             if result is not None:
                 globalspace += result
 
+        globalspace.trim()
         globalspace.tofile(mfinal(cfg.outfile, args.firstscan, args.lastscan))
 
         if args.plot:
@@ -480,7 +509,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog='iVoxOar')
     parser.add_argument('--config',default='./config')
-    parser.add_argument('--wait', help='wait for input files to appear')
+    parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
     subparsers = parser.add_subparsers()
 
     parser_cluster = subparsers.add_parser('cluster')
@@ -499,6 +528,7 @@ if __name__ == "__main__":
     parser_sum = subparsers.add_parser('_sum')
     parser_sum.add_argument('-o', '--outfile',required=True)
     parser_sum.add_argument('--delete', action='store_true')
+    parser_sum.add_argument('--trim', action='store_true')
     parser_sum.add_argument('infiles', nargs='+')
     parser_sum.set_defaults(func=sum)
 
