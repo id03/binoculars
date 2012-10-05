@@ -1,3 +1,7 @@
+# Written by Willem Onderwaater and Sander Roobol as part of a collaboration
+# between the ID03 beamline at the European Synchrotron Radiation Facility and
+# the Interface Physics group at Leiden University.
+
 import numpy
 import os
 import time
