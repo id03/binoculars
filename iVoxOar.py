@@ -13,6 +13,7 @@ import glob
 import cPickle as pickle
 import gzip
 import argparse
+import numbers
 
 import numpy
 
@@ -24,19 +25,82 @@ import getconfig
 import Fitscurve
 
 
-class Space(object):
-    def __init__(self, cfg):
-        self.cfg = cfg
-        self.Hmin, self.Hmax, self.Hres = cfg.Hmin, cfg.Hmax, cfg.Hres
-        self.Kmin, self.Kmax, self.Kres = cfg.Kmin, cfg.Kmax, cfg.Kres
-        self.Lmin, self.Lmax, self.Lres = cfg.Lmin, cfg.Lmax, cfg.Lres
-        
-        self.Hcount = int(round((self.Hmax-self.Hmin)/Hres))+1
-        self.Kcount = int(round((self.Kmax-self.Kmin)/Kres))+1
-        self.Lcount = int(round((self.Lmax-self.Lmin)/Lres))+1
+def sum_onto(a, axis):
+    for i in reversed(range(len(a.shape))):
+        if axis != i:
+            a = a.sum(axis=i)
+    return a
 
-        self.photons = numpy.zeros((self.Hcount, self.Kcount, self.Lcount), order='C')
+
+class Axis(object):
+    def __init__(self, min, max, res, label=None):
+        self.res = float(res)
+        if round(min / self.res) != min / self.res or round(max / self.res) != max / self.res:
+            raise ValueError('min/max must be multiple of res (got min={0}, max={1}, res={2}'.format(min, max, res))
+        self.min = min
+        self.max = max
+        self.label = label
+
+    def __len__(self):
+        return int(round((self.max - self.min) / res)) + 1
+
+    def __getitem__(self, index):
+        return self.min + index * self.res
+
+    def get_index(self, value):
+        if isinstance(x, numbers.Numbers) and not self.min <= value <= self.max:
+            raise ValueError('cannot get index: value {0} not in range [{1}, {2}]'.format(value, self.min, self.max))
+        elif not (self.min <= value <= self.max).all():
+            raise ValueError('cannot get indices, values from [{0}, {1}], axes range [{2}, {3}]'.format(value.min(), value.max(), self.min, self.max))
+        return int(round((value - self.min) / self.res))
+
+    def __or__(self, other): # union operation
+        if not isinstance(other, Axis):
+            return NotImplemented
+        if not self.is_compatible(other):
+            raise ValueError('cannot unite axes with different resolution/label')
+        return self.__class__(min(self.min, other.min), max(self.max, other.max), res)
+
+    def __equal__(self, other):
+        if not isinstance(other, Axis):
+            return NotImplemented
+        return self.res == other.res and self.min == other.min and self.max == other.max and self.label == other.label
+
+    def __hash__(self):
+        return hash(self.min) ^ hash(self.max) ^ hash(self.res) ^ hash(self.label)
+
+    def is_compatible(self, other):
+        if not isinstance(other, Axis):
+            return False
+        return self.res == other.res and self.label == other.label
+
+    def __contains__(self, other):
+        if isinstance(other, numbers.Number):
+            return self.min <= other <= self.max
+        elif isinstance(other, Axes):
+            return self.is_compatible(other) and self.min <= other.min and self.max >= other.max
+
+    def rebound(self, min, max):
+        return self.__class__(min, max, self.res, self.label)
+
+	def __repr__(self):
+		return '{0.__class__.__name__} {0.label} (min={0.min}, max={0.max}, res={0.res})'.format(self)
+
+
+class Space(object):
+    def __init__(self, axes):
+        self.axes = tuple(axes)
+
+        self.photons = numpy.zeros([len(ax) for ax in self.axes], order='C')
         self.contributions = numpy.zeros(self.photons.shape, dtype=numpy.uint32, order='C')
+
+	@classmethod
+	def fromcfg(cls, cfg): # FIXME: to be removed once automatic HKL limits detection is working
+		return cls((
+			Axis(cfg.Hmin, cfg.Hmax, cfg.Hres, 'H'),
+			Axis(cfg.Kmin, cfg.Kmax, cfg.Kres, 'K'),
+			Axis(cfg.Lmin, cfg.Lmax, cfg.Lres, 'L'),
+		))
 
     def get_masked(self):
         return numpy.ma.array(data=self.photons/self.contributions, mask=(self.contributions == 0))
@@ -44,18 +108,10 @@ class Space(object):
     def __add__(self, other):
         if not isinstance(other, Space):
             return NotImplemented
-        if self.Hres != other.Hres or self.Kres != other.Kres or self.Lres != other.Lres:
-            raise ValueError('cannot add spaces with different H/K/L resolution')
+        if not len(self.axes) != len(other.axes) or not all(a.is_compatible(b) for (a, b) in zip(self.axes, other.axes)):
+            raise ValueError('cannot add spaces with different dimensionality or resolution')
 
-        newcfg = copy.copy(cfg)
-        newcfg.Hmin = min(self.Hmin, other.Hmin)
-        newcfg.Hmax = max(self.Hmax, other.Hmax)
-        newcfg.Kmin = min(self.Kmin, other.Kmin)
-        newcfg.Kmax = max(self.Kmax, other.Kmax)
-        newcfg.Lmin = min(self.Lmin, other.Lmin)
-        newcfg.Lmax = max(self.Lmax, other.Lmax)
-
-        new = Space(newcfg)
+        new = Space([a | b for (a, b) in zip(self.axes, other.axes)])
         new += self
         new += other
         return new
@@ -63,46 +119,39 @@ class Space(object):
     def __iadd__(self, other):
         if not isinstance(other, Space):
             return NotImplemented
-        if self.Hres != other.Hres or self.Kres != other.Kres or self.Lres != other.Lres:
-            raise ValueError('cannot add spaces with different H/K/L resolution')
+        if not len(self.axes) != len(other.axes) or not all(a.is_compatible(b) for (a, b) in zip(self.axes, other.axes)):
+            raise ValueError('cannot add spaces with different dimensionality or resolution')
 
-        if self.Hmin > other.Hmin or self.Hmax < other.Hmax or self.Kmin > other.Kmin or self.Kmax < other.Kmax or self.Lmin > other.Lmin or self.Lmax < other.Lmax:
+        if not all(other_ax in self_ax for (self_ax, other_ax) in zip(self.axes, other.axes)):
             return self.__add__(self, other)
 
-        Hi = int(round((other.Hmin - self.Hmin) / self.Hres))
-        Ki = int(round((other.Kmin - self.Kmin) / self.Kres))
-        Li = int(round((other.Lmin - self.Lmin) / self.Lres))
-        self.photons[Hi:Hi+other.shape[0], Ki:Ki+other.shape[1], Li:Li+other.shape[2]] += other.photons
-        self.contributions[Hi:Hi+other.shape[0], Ki:Ki+other.shape[1], Li:Li+other.shape[2]] += other.contributions
+        index = tuple(slice(self_ax.get_index(other_ax.min), len(other_ax)+1) for (self_ax, other_ax) in zip(self.axes, other.axes))
+        self.photons[index] += other.photons
+        self.contributions[index] += other.contributions
         return self
 
     def trim(self):
         mask = self.contributions > 0
-        sum2 = mask.sum(axis=2)
+        lims = (numpy.flatnonzero(sum_onto(mask, i)) for (i, ax) in enumerate(self.axes))
+        lims = tuple((i.min(), i.max()) for i in lims)
+        self.axes = tuple(ax.rebound(ax[min], ax[max]) for ax in self.axes)
+        slices = tuple(slice(min, max+1) for (min, max) in lims)
+        self.photons = self.photons[slices].copy()
+        self.contributions = self.contributions[slices].copy()
 
-        Hlims = numpy.flatnonzero(sum2.sum(axis=1))
-        Hmini, Hmaxi = Hlims.min(), Hlims.max()
-        self.Hmin = self.Hmin + self.Hres * Hmini
-        self.Hmax = self.Hmin + self.Hres * Hmaxi
+    def process_image(self, coordinates, intensity):
+        # note: coordinates must be tuple of arrays, not a 2D array
+        if len(coordinates) != len(self.axes):
+            raise ValueError('dimension mismatch between coordinates and axes')
 
-        Klims = numpy.flatnonzero(sum2.sum(axis=0))
-        Kmini, Kmaxi = Klims.min(), Klims.max()
-        self.Kmin = self.Kmin + self.Kres * Kmini
-        self.Kmax = self.Kmin + self.Kres * Kmaxi
+        indices = numpy.array(tuple(ax.get_index(coord.flatten()) for (ax, coord) in zip(self.axes, coordinates)))
+        for i in range(1, len(self.axes)):
+            for j in range(0, i):
+                indices[j,:] *= len(self.axes[i])
+        indices = indices.sum(axis=0).astype(int)
 
-        Llims = numpy.flatnonzero(mask.sum(axis=1).sum(axis=0))
-        Lmini, Lmaxi = Llims.min(), Llims.max()
-        self.Lmin = self.Lmin + self.Lres * Lmini
-        self.Lmax = self.Lmin + self.Lres * Lmaxi
-
-        self.photons = self.photons[Hmini:Hmaxi+1, Kmini:Kmaxi+1, Lmini:Lmaxi+1].copy()
-        self.contributions = self.contributions[Hmini:Hmaxi+1, Kmini:Kmaxi+1, Lmini:Lmaxi+1].copy()
-
-    def process_image(self, H, K, L, intensity):
-        hkl = (numpy.round((H-self.Hmin)/self.Hres)*self.Kcount*self.Lcount + numpy.round((K-self.Kmin)/self.Kres)*self.Lcount + numpy.round((L-self.Lmin)/self.Lres)).astype(int)
-
-        photons = numpy.bincount(hkl.flatten(), weights=Intensity.flatten())
-        contributions = numpy.bincount(hkl.flatten())
+        photons = numpy.bincount(indices, weights=Intensity.flatten())
+        contributions = numpy.bincount(indices)
 
         self.photons.ravel()[:photons.size] += photons
         self.contributions.ravel()[:contributions.size] += contributions
@@ -275,7 +324,7 @@ class hklmesh(Arc):
 
 
 def process(scanno):
-    mesh = Space(cfg)
+    mesh = Space.fromcfg(cfg)
     try:
         if cfg.hklmesh:
             a = hklmesh(spec, scanno,cfg)
@@ -287,7 +336,7 @@ def process(scanno):
     a.initImdata()
     for m in range(a.length):
         H, K, L, intensity = a.getImdata(m)
-        mesh.process_image(H, K, L, Intensity)
+        mesh.process_image((H, K, L), Intensity)
     return mesh
 
 
@@ -471,7 +520,7 @@ if __name__ == "__main__":
 
 
     def sum(args):
-        globalspace = Space(cfg)
+        globalspace = Space.fromcfg(cfg)
 
         if args.wait:
             fileiter = wait_for_files(args.infiles)
@@ -502,7 +551,7 @@ if __name__ == "__main__":
         spec = specfilewrapper.Specfile(cfg.specfile)
         
         scanlist = range(args.firstscan, args.lastscan+1)
-        globalspace = Space(cfg)
+        globalspace = Space.fromcfg(cfg)
      
         if args.multiprocessing:
             import multiprocessing
