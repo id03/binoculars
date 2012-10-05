@@ -1,9 +1,8 @@
-import numpy
-import scipy.optimize, scipy.fftpack, scipy.special
 import inspect
 import re
-import matplotlib.pyplot as plt
 import random
+import numpy
+import scipy.optimize, scipy.special
 
 
 def simplefit(func, x, y, guess):
@@ -137,6 +136,7 @@ def fitgaussian(xdata, ydata):
 	return params, summary
 
 if __name__ == '__main__':
+    import matplotlib.pyplot as plt
     xdata = numpy.arange(100)
     x0 = random.randint(0,100)
     offset = random.randint(-50,50)

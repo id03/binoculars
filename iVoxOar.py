@@ -2,35 +2,26 @@
 # between the ID03 beamline at the European Synchrotron Radiation Facility and
 # the Interface Physics group at Leiden University.
 
-import numpy
+import sys
 import os
 import time
+import copy
+import itertools
 import subprocess
 import random
 import glob
+import cPickle as pickle
+import gzip
+import argparse
+
+import numpy
+
 from PyMca import SixCircle
 from PyMca import specfilewrapper
 import EdfFile
+
 import getconfig
-
 import Fitscurve
-import matplotlib.pyplot as pyplot
-import matplotlib.colors
-
-import multiprocessing
-import cPickle as pickle
-import itertools
-import sys
-import gzip
-import argparse
-import copy
-
-
-# example usage on Oar:
-# ssh to onderwaa@nice
-# cd to iVoxOar
-# ./blisspython /data/id03/inhouse/2012/Sep12/si2515/iVox/iVoxOar.py cluster -o OUTPUT.zpi /data/id03/inhouse/2012/Sep12/si2515/iVox/test.spec 217 287
-# to plot, run (not on nice): python iVoxOar.py plot file.zpi
 
 
 class Space(object):
@@ -87,7 +78,7 @@ class Space(object):
 
     def trim(self):
         mask = self.contributions > 0
-		sum2 = mask.sum(axis=2)
+        sum2 = mask.sum(axis=2)
 
         Hlims = numpy.flatnonzero(sum2.sum(axis=1))
         Hmini, Hmaxi = Hlims.min(), Hlims.max()
@@ -301,6 +292,9 @@ def process(scanno):
 
 
 def makeplot(space, args):
+    import matplotlib.pyplot as pyplot
+    import matplotlib.colors
+
     clipping = 0.02
    
     mesh = space.get_masked()
@@ -339,9 +333,12 @@ def makeplot(space, args):
 
 
 
-def mfinal(filename,first,last):
+def mfinal(filename, first, last=None):
     base, ext = os.path.splitext(filename)
-    return ('{0}_{2}-{3}{1}').format(base,ext,first,last)
+    if last is None:
+        return ('{0}_{2}{1}').format(base,ext,first)
+    else:
+        return ('{0}_{2}-{3}{1}').format(base,ext,first,last)
 
 
 def detect_hkllimits(cfg, firstscan, lastscan):
@@ -429,36 +426,37 @@ if __name__ == "__main__":
 
     def cluster(args):
         prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1)) 
-        
         jobs = []
+        
+        if firstscan == lastscan:
+            jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, args.firstscan), str(scanno)))
+            print 'submitted 1 job, waiting...'
+            oar.wait(jobs)
+            print 'done'
+            return
+
         parts = []
         for scanno in range(args.firstscan, args.lastscan+1):
             part = '{0}/{1}-part-{2}.zpi'.format(args.tmpdir, prefix, scanno)
             jobs.append(oarsub('--config', args.config,'_part','-o', part, str(scanno)))
             parts.append(part)
-        print 'submitted {0} jobs, waiting...'.format(len(jobs))
-        oarwait(jobs)
 
         count = args.lastscan - args.firstscan + 1
         chunkcount = int(numpy.ceil(float(count) / args.chunksize))
         if chunkcount == 1:
-            job = oarsub('--config', args.config,'_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *parts)
-            print 'submitted final job, waiting...'
-            oarwait([job])
+            jobs.append(oarsub('--config', args.config,'_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *parts))
         else:
             chunksize = int(numpy.ceil(float(count) / chunkcount))
-            jobs = []
             chunks = []
             for i in range(chunkcount):
                 chunk = '{0}/{1}-chunk-{2}.zpi'.format(args.tmpdir, prefix, i+1)
                 jobs.append(oarsub('--config', args.config,'_sum', '--delete', '-o', chunk, *parts[i*chunksize:(i+1)*chunksize]))
                 chunks.append(chunk)
-            print 'submitted {0} jobs, waiting...'.format(len(jobs))
-            oarwait(jobs)
-                       
-            job = oarsub('--config', args.config,'_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks)
+             
+            jobs.append(oarsub('--config', args.config,'_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks))
             print 'submitted final job, waiting...'
-            oarwait([job])
+        print 'submitted {0} jobs, waiting...'.format(len(jobs))
+        oarwait(jobs)
         print 'done!'
 
 
@@ -467,6 +465,8 @@ if __name__ == "__main__":
         spec = specfilewrapper.Specfile(cfg.specfile)
         space = process(args.scan)
         
+        if args.trim:
+            space.trim()
         space.tofile(args.outfile)
 
 
@@ -505,6 +505,7 @@ if __name__ == "__main__":
         globalspace = Space(cfg)
      
         if args.multiprocessing:
+            import multiprocessing
             pool = multiprocessing.Pool()
             iter = pool.imap_unordered(process, scanlist, 1)
         else:
@@ -565,7 +566,7 @@ if __name__ == "__main__":
 
     parser_cluster = subparsers.add_parser('cluster')
     parser_cluster.add_argument('firstscan', type=int)
-    parser_cluster.add_argument('lastscan', type=int)
+    parser_cluster.add_argument('lastscan', type=int, default=None, nargs='?')
     parser_cluster.add_argument('-o', '--outfile')
     parser_cluster.add_argument('--tmpdir', default='.')
     parser_cluster.add_argument('--chunksize', default=20, type=int)
@@ -574,6 +575,7 @@ if __name__ == "__main__":
     parser_part = subparsers.add_parser('_part')
     parser_part.add_argument('scan', type=int)
     parser_part.add_argument('-o', '--outfile',required=True)
+    parser_part.add_argument('--trim', action='store_true')
     parser_part.set_defaults(func=part)
     
     parser_sum = subparsers.add_parser('_sum')
@@ -605,6 +607,9 @@ if __name__ == "__main__":
     parser_test.set_defaults(func=test)
 
     args = parser.parse_args()
+
+    if args.lastscan is None:
+        args.lastscan = args.firstscan
     
     cfg = getconfig.cfg(args.config)
 
