@@ -3,15 +3,14 @@ The next 4 items are priorities
 2. Correct for theta
 3. Put correct extent for colorfast 
 4. zpi to text
+5. arbitraire projectie
 
 # - UB matrix in zapline (spec)
-# - correct for mon from spec
 # - HKL limits determination
 # - fully autonomous distributed calculations on Oar cluster (we need working opid03 account on Nice)
 # - better control interface
 # - patch arbitrary scans
 # - possibly: patch onto 2theta
-# - filtercorrectie
 
 - iVoxOar arc wacht tot de scan verschijnt in de specfile (we moeten wel even bedenken hoe we kunnen checken of de hele scan klaar is; ik had de indruk dat zapline tijdens de scan geen data wegschrijft, en aan het eind alles in één keer wegschrijft, dus dan zou het makkelijk moeten zijn)
 - Elke arc moet z'n eigen bins kiezen zodat de volledige range niet vantevoren bekend hoeft te zijn.

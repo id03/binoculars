@@ -42,17 +42,20 @@ class Axis(object):
         self.label = label
 
     def __len__(self):
-        return int(round((self.max - self.min) / res)) + 1
+        return int(round((self.max - self.min) / self.res)) + 1
 
     def __getitem__(self, index):
         return self.min + index * self.res
 
     def get_index(self, value):
-        if isinstance(x, numbers.Numbers) and not self.min <= value <= self.max:
+        if isinstance(value, numbers.Number) and not self.min <= value <= self.max:
             raise ValueError('cannot get index: value {0} not in range [{1}, {2}]'.format(value, self.min, self.max))
-        elif not (self.min <= value <= self.max).all():
+        elif not isinstance(value, numbers.Number) and not self.min <= value.all() <= self.max:
             raise ValueError('cannot get indices, values from [{0}, {1}], axes range [{2}, {3}]'.format(value.min(), value.max(), self.min, self.max))
-        return int(round((value - self.min) / self.res))
+        if isinstance(value, numbers.Number):
+            return int(round((value - self.min) / self.res))
+        else:
+            return numpy.around((value - self.min) / self.res, decimals=1)
 
     def __or__(self, other): # union operation
         if not isinstance(other, Axis):
@@ -77,7 +80,7 @@ class Axis(object):
     def __contains__(self, other):
         if isinstance(other, numbers.Number):
             return self.min <= other <= self.max
-        elif isinstance(other, Axes):
+        elif isinstance(other, Axis):
             return self.is_compatible(other) and self.min <= other.min and self.max >= other.max
 
     def rebound(self, min, max):
@@ -90,17 +93,18 @@ class Axis(object):
 class Space(object):
     def __init__(self, axes):
         self.axes = tuple(axes)
-
+        
         self.photons = numpy.zeros([len(ax) for ax in self.axes], order='C')
         self.contributions = numpy.zeros(self.photons.shape, dtype=numpy.uint32, order='C')
 
-	@classmethod
-	def fromcfg(cls, cfg): # FIXME: to be removed once automatic HKL limits detection is working
-		return cls((
-			Axis(cfg.Hmin, cfg.Hmax, cfg.Hres, 'H'),
-			Axis(cfg.Kmin, cfg.Kmax, cfg.Kres, 'K'),
-			Axis(cfg.Lmin, cfg.Lmax, cfg.Lres, 'L'),
-		))
+
+    @classmethod
+    def fromcfg(cls, cfg): # FIXME: to be removed once automatic HKL limits detection is working
+        return cls((
+            Axis(cfg.Hmin, cfg.Hmax, cfg.Hres, 'H'),
+            Axis(cfg.Kmin, cfg.Kmax, cfg.Kres, 'K'),
+            Axis(cfg.Lmin, cfg.Lmax, cfg.Lres, 'L'),
+        ))
 
     def get_masked(self):
         return numpy.ma.array(data=self.photons/self.contributions, mask=(self.contributions == 0))
@@ -119,7 +123,7 @@ class Space(object):
     def __iadd__(self, other):
         if not isinstance(other, Space):
             return NotImplemented
-        if not len(self.axes) != len(other.axes) or not all(a.is_compatible(b) for (a, b) in zip(self.axes, other.axes)):
+        if not len(self.axes) == len(other.axes) or not all(a.is_compatible(b) for (a, b) in zip(self.axes, other.axes)):
             raise ValueError('cannot add spaces with different dimensionality or resolution')
 
         if not all(other_ax in self_ax for (self_ax, other_ax) in zip(self.axes, other.axes)):
@@ -134,7 +138,7 @@ class Space(object):
         mask = self.contributions > 0
         lims = (numpy.flatnonzero(sum_onto(mask, i)) for (i, ax) in enumerate(self.axes))
         lims = tuple((i.min(), i.max()) for i in lims)
-        self.axes = tuple(ax.rebound(ax[min], ax[max]) for ax in self.axes)
+        self.axes = tuple(ax.rebound(ax.min, ax.max) for ax in self.axes)
         slices = tuple(slice(min, max+1) for (min, max) in lims)
         self.photons = self.photons[slices].copy()
         self.contributions = self.contributions[slices].copy()
@@ -150,7 +154,7 @@ class Space(object):
                 indices[j,:] *= len(self.axes[i])
         indices = indices.sum(axis=0).astype(int)
 
-        photons = numpy.bincount(indices, weights=Intensity.flatten())
+        photons = numpy.bincount(indices, weights=intensity.flatten())
         contributions = numpy.bincount(indices)
 
         self.photons.ravel()[:photons.size] += photons
@@ -174,52 +178,90 @@ class Space(object):
             fp.close()
 
 
-class NotAZaplineError(Exception):
-        pass
-
-
-class Arc(object):
-    def __init__(self,spec,scanno,cfg):
-        scan = spec.select('{0}.1'.format(scanno))
+class Scanbase(object):
+    def __init__(self,cfg):
         self.cfg = cfg
-        if not scan.header('S')[0].split()[2] == 'zapline':
-            raise NotAZaplineError
+        
+        if cfg.projection == 'hkl':
+            self.projection = self.hkl
 
+    @classmethod
+    def ArcInit(cls,spec,scanno,cfg):
+        obj = cls(cfg)
+            
+        scan = spec.select('{0}.1'.format(scanno))
         scanheaderC = scan.header('C')
         folder = os.path.split(scanheaderC[0].split(' ')[-1])[-1]
-        self.imagefolder = os.path.join(cfg.imagefolder,folder)
-        self.scannumber = int(scanheaderC[2].split(' ')[-1])
-        self.imagenumber = int(scanheaderC[3].split(' ')[-1])
-        self.scanname = scanheaderC[1].split(' ')[-1]
-        self.delt,self.theta,self.chi,self.phi,self.mu,self.gam = numpy.array(scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
-        #UB matrix will be installed in new versions of the zapline, until then i keep this here.
-    
+        obj.imagefolder = os.path.join(cfg.imagefolder,folder)
+        obj.scannumber = int(scanheaderC[2].split(' ')[-1])
+        obj.imagenumber = int(scanheaderC[3].split(' ')[-1])
+        obj.scanname = scanheaderC[1].split(' ')[-1]
+            
+            #UB matrix will be installed in new versions of the zapline, until then i keep this here.            
         if scanno < 405:
-            self.UB = numpy.array([2.628602629,0.2730763688,-0.001032444885,1.202301748,2.877587966,-0.001081570571,0.002600281749,0.002198663001,1.54377945])
+            obj.UB = numpy.array([2.628602629,0.2730763688,-0.001032444885,1.202301748,2.877587966,-0.001081570571,0.002600281749,0.002198663001,1.54377945])
         else:
-            self.UB = numpy.array([2.624469378,0.2632191474,-0.001028869827,1.211297551,2.878506363,-0.001084906521,0.002600359765,0.002198324744,1.54377945])
-        self.wavelength = float(scan.header('G')[1].split(' ')[-1])
-        self.theta = scan.datacol('th')
-        self.mon = scan.datacol('zap_mon')
-        self.transm = scan.datacol('zap_transm')
-        self.length = numpy.alen(self.theta)
+            obj.UB = numpy.array([2.624469378,0.2632191474,-0.001028869827,1.211297551,2.878506363,-0.001084906521,0.002600359765,0.002198324744,1.54377945])
+
+        obj.wavelength = float(scan.header('G')[1].split(' ')[-1])
+        obj.theta = scan.datacol('th')
+        obj.mon = scan.datacol('zap_mon')
+        obj.transm = scan.datacol('zap_transm')
+        obj.length = numpy.alen(obj.theta)
+
+        delt,theta,chi,phi,mu,gam = numpy.array(scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
+        obj.gam = gam.repeat(obj.length)
+        obj.delt = delt.repeat(obj.length)                
+        obj.chi = chi
+        obj.phi = phi
+        obj.mu = mu
+
+        obj.imagecode = os.path.join(obj.imagefolder,'*{0}_mpx*'.format(obj.scanname))
             
-        self.gam = self.gam.repeat(self.length)
-        self.delt = self.delt.repeat(self.length)
+        obj.transm[-1]=obj.transm[-2] #bug in specfile
+        return obj
+
+    @classmethod
+    def ScanInit(cls,spec,scanno,cfg):
+        obj = cls(cfg)
+
+        scan = spec.select('{0}.1'.format(scanno))
+        UCCD = os.path.split(scan.header('UCCD')[0].split(' ')[-1])
+        folder = os.path.split(UCCD[0])[-1]
+
+        delt,theta,chi,phi,mu,gam = numpy.array(scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
+
+        obj.scanname = UCCD[-1].split('_')[0]
+        obj.imagefolder = os.path.join(cfg.imagefolder,folder)
+        obj.scannumber = scanno
             
-        self.imagecode = os.path.join(self.imagefolder,'*{0}_mpx*'.format(self.scanname))
+        obj.chi = chi
+        obj.phi = phi
             
-        self.transm[-1]=self.transm[-2] #bug in specfile
+        obj.theta = scan.datacol('thcnt')
+        obj.gam = scan.datacol('gamcnt')
+        obj.delt = scan.datacol('delcnt')
+        obj.mu = float(scan.header('P')[0].split(' ')[5])
+            
+        obj.UB = numpy.array(scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
+        obj.wavelength = float(scan.header('G')[1].split(' ')[-1])
+            
+        obj.mon = scan.datacol('mon')
+        obj.transm = scan.datacol('transm')
+        obj.length = numpy.alen(obj.theta)
+            
+        obj.imagecode = os.path.join(obj.imagefolder,'*{0}*'.format(obj.scanname))
+        return obj
 
     def initImdata(self):
         self.buildfilelist()
         self.edf = EdfFile.EdfFile(self.filelist[0])
-         
+    
     def buildfilelist(self):
         allfiles =  glob.glob(self.imagecode)
         filelist = list()
         imagedict = {}
-        for file in allfiles:        
+        for file in allfiles:
             filename = os.path.basename(file).split('.')[0]
             scanno, pointno, imageno = filename.split('_')[-3:]
             scanno, pointno, imageno = int(scanno), int(pointno), int(imageno)
@@ -231,11 +273,11 @@ class Arc(object):
         self.filelist = [filedict[i] for i in points]
         if len(self.filelist) == 0:
             raise NameError('Empty filelist, check if the specified imagefolder corresponds to the location of the images')
-        
+
     def getImdata(self,n):
         ymask = numpy.asarray(self.cfg.ymask)
         xmask = numpy.asarray(self.cfg.xmask)
-
+        
         self.data = self.GetData(n)/(self.mon[n]*self.transm[n])
         app = self.cfg.app #angle per pixel (delta,gamma)
         centralpixel = self.cfg.centralpixel #(row,column)=(delta,gamma)
@@ -243,25 +285,31 @@ class Arc(object):
         self.delta = app[0]*(numpy.arange(self.data.shape[0])-centralpixel[0])+self.delt[n]
         self.gamma = self.gamma[ymask]
         self.delta = self.delta[xmask]
-
-        R = SixCircle.getHKL(self.wavelength, self.UB, delta=self.delta, theta=self.theta[n],chi=self.chi,phi=self.phi,mu=self.mu,gamma=self.gamma)
-#        R.shape = 3,numpy.alen(self.gamma),mp.alen(self.delta)
-        H = R[0,:]
-        K = R[1,:]
-        L = R[2,:]
+        
+        self.projection(n)
+        
         roi = self.data[ymask, :]
         roi = roi[:,xmask]
         intensity = roi.flatten()
-        return H,K,L, intensity
+        
+        return self.coordinates, intensity
+
+    def hkl(self,n):
+        R = SixCircle.getHKL(self.wavelength, self.UB, delta=self.delta, theta=self.theta[n],chi=self.chi,phi=self.phi,mu=self.mu,gamma=self.gamma)
+        #        R.shape = 3,numpy.alen(self.gamma),mp.alen(self.delta)
+        H = R[0,:]
+        K = R[1,:]
+        L = R[2,:]
+        self.coordinates = (H,K,L)
 
     def getmean(self,n):
         ymask = numpy.asarray(self.cfg.ymask)
-        xmask = numpy.asarray(self.cfg.xmask)        
+        xmask = numpy.asarray(self.cfg.xmask)
         self.data = self.GetData(n)#/self.mon[n]
         roi = self.data[ymask, :]
         roi = roi[:,xmask]
         return roi.mean(axis = 0)
-            
+
     def getHKLbounds(self, full=False):
         if full:
             thetas = self.theta
@@ -270,8 +318,8 @@ class Arc(object):
         
         hkls = []
         for th in thetas:
-            hkl = SixCircle.getHKL(self.wavelength, self.UB, delta=self.delta, theta=th,chi=self.chi,phi=self.phi,mu=self.mu,gamma=self.gamma)
-            hkls.append(hkl.reshape(3))
+            hkel = SixCircle.getHKL(self.wavelength, self.UB, delta=self.delta, theta=th,chi=self.chi,phi=self.phi,mu=self.mu,gamma=self.gamma)
+            hkls.append(hkel.reshape(3))
         return hkls
 
     def getbkg(self):
@@ -280,40 +328,15 @@ class Arc(object):
         #self.bkg = fit.reshape(1,avg.shape[0]).repeat(im.shape[0],axis = 0)
         return abkg , fit
 
+class Arc(Scanbase):
+    def initImdata(self):
+        self.buildfilelist()
+        self.edf = EdfFile.EdfFile(self.filelist[0])
+
     def GetData(self,n):
         return self.edf.GetData(n)
         
-
-class hklmesh(Arc):
-    def __init__(self,spec,scanno,cfg):
-        scan = spec.select('{0}.1'.format(scanno))
-        self.cfg = cfg
-        if not scan.header('S')[0].split()[2] == 'hklmesh':
-            raise NotAZaplineError
-        
-        UCCD = os.path.split(scan.header('UCCD')[0].split(' ')[-1])
-        folder = os.path.split(UCCD[0])[-1]
-        self.scanname = UCCD[-1].split('_')[0]
-        self.imagefolder = os.path.join(cfg.imagefolder,folder)
-        self.scannumber = scanno
-
-        self.chi = 0
-        self.phi = 0
-                
-        self.theta = scan.datacol('thcnt')
-        self.gam = scan.datacol('gamcnt')
-        self.delt = scan.datacol('delcnt')
-        self.mu = float(scan.header('P')[0].split(' ')[5])
-                
-        self.UB = numpy.array(scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
-        self.wavelength = float(scan.header('G')[1].split(' ')[-1])
-        
-        self.mon = scan.datacol('mon')
-        self.transm = scan.datacol('transm')
-        self.length = numpy.alen(self.theta)
-
-        self.imagecode = os.path.join(self.imagefolder,'*{0}*'.format(self.scanname))
-
+class hklmesh(Scanbase):
     def initImdata(self):
         self.buildfilelist()
 
@@ -322,21 +345,21 @@ class hklmesh(Arc):
         return edf.GetData(0)
 
 
-
 def process(scanno):
-    mesh = Space.fromcfg(cfg)
-    try:
-        if cfg.hklmesh:
-            a = hklmesh(spec, scanno,cfg)
-        else:
-            a = Arc(spec, scanno,cfg)
-    except NotAZaplineError:
-        return None
     print scanno
+    mesh = Space.fromcfg(cfg)
+    
+    scan = spec.select('{0}.1'.format(scanno))
+    scantype = scan.header('S')[0].split()[2]
+    if scantype == 'zapline':
+        a = Arc.ArcInit(spec, scanno,cfg)
+    else:
+        a = hklmesh.ScanInit(spec, scanno,cfg)
+
     a.initImdata()
     for m in range(a.length):
-        H, K, L, intensity = a.getImdata(m)
-        mesh.process_image((H, K, L), Intensity)
+        coordinates , intensity = a.getImdata(m)
+        mesh.process_image(coordinates, intensity)
     return mesh
 
 
@@ -353,10 +376,15 @@ def makeplot(space, args):
     clip = sorted(compresseddata)[chop:-chop]
     vmin, vmax = clip[0], clip[-1]
     
+    Hmin = space.axes[0].min
+    Hmax = space.axes[0].max
+    Kmin = space.axes[1].min
+    Kmax = space.axes[1].max
+    
     pyplot.figure(figsize=(12,9))
     #pyplot.imshow(space.contributions.reshape((space.Hcount, space.Kcount, space.Lcount), order='C')[:,:,0].transpose(), origin='lower', extent=(space.set['minH'], space.set['maxH'], space.set['minK'], space.set['maxK']), aspect='auto')#, norm=matplotlib.colors.Normalize(vmin, vmax))
 
-    pyplot.imshow(data.transpose(), origin='lower', extent=(space.cfg.Hmin, space.cfg.Hmax, space.cfg.Kmin, space.cfg.Kmax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
+    pyplot.imshow(data.transpose(), origin='lower', extent=(Hmin, Hmax, Kmin, Kmax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
     
     
     #pyplot.imshow(data.transpose())
@@ -609,8 +637,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog='iVoxOar')
     parser.add_argument('--config',default='./config')
+    parser.add_argument('--projection')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
-    parser.add_argument('--hklmesh', action='store_true')
     subparsers = parser.add_subparsers()
 
     parser_cluster = subparsers.add_parser('cluster')
@@ -636,7 +664,7 @@ if __name__ == "__main__":
 
     parser_local = subparsers.add_parser('local')
     parser_local.add_argument('firstscan', type=int)
-    parser_local.add_argument('lastscan', type=int)
+    parser_local.add_argument('lastscan', type=int, default=None, nargs='?')
     parser_local.add_argument('-o', '--outfile')
     parser_local.add_argument('-p', '--plot', nargs='?', const=True)
     parser_local.add_argument('-m', '--multiprocessing', action='store_true')
@@ -650,21 +678,23 @@ if __name__ == "__main__":
 
     parser_test = subparsers.add_parser('test')
     parser_test.add_argument('firstscan', type=int)
-    parser_test.add_argument('lastscan', type=int)
+    parser_test.add_argument('lastscan', type=int, default=None, nargs='?')
     parser_test.add_argument('--outfile', default = 'test.pdf')
     
     parser_test.set_defaults(func=test)
 
     args = parser.parse_args()
 
-    if args.lastscan is None:
-        args.lastscan = args.firstscan
+    if 'lastscan' in args.__dict__.keys() and 'firstscan' in args.__dict__.keys():
+        if agrs.lastscan is None:
+            args.lastscan = args.firstscan
     
     cfg = getconfig.cfg(args.config)
 
     if args.outfile:
         cfg.outfile = args.outfile
+    if args.projection:
+        cfg.projection = args.projection
     
-    cfg.__dict__['hklmesh'] = args.hklmesh
 
     args.func(args)

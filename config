@@ -10,12 +10,12 @@ Hres = 0.01
 Kres = 0.01
 Lres = 1
 #range of the bining
-minH = -0.2
-maxH = 2.5
-minK = -.7
-maxK = 2
-minL = 0
-maxL = 1
+Hmin = -0.2
+Hmax = 2.5
+Kmin = -.7
+Kmax = 2
+Lmin = 0
+Lmax = 1
 #values for interpreting the images
 centralpixel = 40 , 255
 app = 0.003125, 0.003125
@@ -23,3 +23,4 @@ ymask = 160-256,262-400
 xmask = 40-255
 
 bkg = True
+projection = hkl
