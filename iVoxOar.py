@@ -35,7 +35,7 @@ def sum_onto(a, axis):
 class Axis(object):
     def __init__(self, min, max, res, label=None):
         self.res = float(res)
-        if round(min / self.res) != min / self.res or round(max / self.res) != max / self.res:
+        if round(min / self.res) != round(min / self.res,1) or round(max / self.res) != round(max / self.res,1):
             raise ValueError('min/max must be multiple of res (got min={0}, max={1}, res={2}'.format(min, max, res))
         self.min = min
         self.max = max
@@ -55,7 +55,7 @@ class Axis(object):
         if isinstance(value, numbers.Number):
             return int(round((value - self.min) / self.res))
         else:
-            return numpy.around((value - self.min) / self.res, decimals=1)
+            return numpy.around((value - self.min) / self.res)
 
     def __or__(self, other): # union operation
         if not isinstance(other, Axis):
@@ -138,7 +138,7 @@ class Space(object):
         mask = self.contributions > 0
         lims = (numpy.flatnonzero(sum_onto(mask, i)) for (i, ax) in enumerate(self.axes))
         lims = tuple((i.min(), i.max()) for i in lims)
-        self.axes = tuple(ax.rebound(ax.min, ax.max) for ax in self.axes)
+        self.axes = tuple(ax.rebound(ax[min(lims[i])], ax[max(lims[i])]) for (i, ax) in enumerate(self.axes))
         slices = tuple(slice(min, max+1) for (min, max) in lims)
         self.photons = self.photons[slices].copy()
         self.contributions = self.contributions[slices].copy()
@@ -151,7 +151,7 @@ class Space(object):
         indices = numpy.array(tuple(ax.get_index(coord.flatten()) for (ax, coord) in zip(self.axes, coordinates)))
         for i in range(1, len(self.axes)):
             for j in range(0, i):
-                indices[j,:] *= len(self.axes[i])
+                indices[i,:] *= len(self.axes[j])
         indices = indices.sum(axis=0).astype(int)
 
         photons = numpy.bincount(indices, weights=intensity.flatten())
@@ -384,8 +384,9 @@ def makeplot(space, args):
     pyplot.figure(figsize=(12,9))
     #pyplot.imshow(space.contributions.reshape((space.Hcount, space.Kcount, space.Lcount), order='C')[:,:,0].transpose(), origin='lower', extent=(space.set['minH'], space.set['maxH'], space.set['minK'], space.set['maxK']), aspect='auto')#, norm=matplotlib.colors.Normalize(vmin, vmax))
 
-    pyplot.imshow(data.transpose(), origin='lower', extent=(Hmin, Hmax, Kmin, Kmax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
-    
+    #pyplot.imshow(data.transpose(), origin='lower', extent=(Hmin, Hmax, Kmin, Kmax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
+    print mesh.shape
+    pyplot.imshow(mesh[:,:,1])
     
     #pyplot.imshow(data.transpose())
     
@@ -609,31 +610,35 @@ if __name__ == "__main__":
         makeplot(space, args)
     
     def test(args):
+        import matplotlib.pyplot as pyplot
         scanlist = range(args.firstscan, args.lastscan+1)
         spec = specfilewrapper.Specfile(cfg.specfile)
-        for n in scanlist:
-            print n
-            a = Arc(spec, n,cfg)
-            a.initImdata()
-            abkg,fit = a.getbkg()
-            numpy.savetxt('{0}-bkg.txt'.format(str(n)) ,abkg)
-            fit = Fitscurve.fitbkg(numpy.arange(abkg.shape[0]), abkg )
-            #bkg = fit.reshape(1,avg.shape[0]).repeat(im.shape[0],axis = 0)
-            pyplot.figure()
-            #pyplot.figure(figsize = (8,10))
-            #pyplot.subplot(221)
-            #pyplot.imshow(im-bkg)
-            #pyplot.axis('off')
-            #pyplot.colorbar()
-            #pyplot.subplot(222)
-            #pyplot.imshow(im)
-            #pyplot.axis('off')
-            #pyplot.colorbar()
-            pyplot.subplot(111)
-            pyplot.plot(abkg,'wo')
-            pyplot.plot(fit,'r')
-            pyplot.savefig('{0}-bkg.pdf'.format(str(n)))
-            pyplot.close()
+
+        scanno = scanlist[0]
+        
+        mesh = Space.fromcfg(cfg)
+        for ax in mesh.axes:
+            print ax.min,ax.max,len(ax)
+        scan = spec.select('{0}.1'.format(scanno))
+        scantype = scan.header('S')[0].split()[2]
+        
+        if scantype == 'zapline':
+            a = Arc.ArcInit(spec, scanno,cfg)
+        else:
+            a = hklmesh.ScanInit(spec, scanno,cfg)
+        
+        a.initImdata()
+        for m in range(a.length):
+            coordinates , intensity = a.getImdata(m)
+            mesh.process_image(coordinates, intensity)
+        #mesh.trim()
+        for ax in mesh.axes:
+            print ax.min,ax.max,len(ax)
+        im = mesh.photons
+        print im.shape
+        pyplot.imshow(im[:,:,1])
+        pyplot.show()
+
 
     parser = argparse.ArgumentParser(prog='iVoxOar')
     parser.add_argument('--config',default='./config')
@@ -686,7 +691,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if 'lastscan' in args.__dict__.keys() and 'firstscan' in args.__dict__.keys():
-        if agrs.lastscan is None:
+        if args.lastscan is None:
             args.lastscan = args.firstscan
     
     cfg = getconfig.cfg(args.config)

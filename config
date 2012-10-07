@@ -6,8 +6,8 @@ outfile = test.zpi
 
 [settings]
 #resolution of the binning
-Hres = 0.01
-Kres = 0.01
+Hres = 0.002
+Kres = 0.002
 Lres = 1
 #range of the bining
 Hmin = -0.2
