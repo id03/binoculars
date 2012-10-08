@@ -48,14 +48,14 @@ class Axis(object):
         return self.min + index * self.res
 
     def get_index(self, value):
-        if isinstance(value, numbers.Number) and not self.min <= value <= self.max:
-            raise ValueError('cannot get index: value {0} not in range [{1}, {2}]'.format(value, self.min, self.max))
-        elif not isinstance(value, numbers.Number) and not self.min <= value.all() <= self.max:
-            raise ValueError('cannot get indices, values from [{0}, {1}], axes range [{2}, {3}]'.format(value.min(), value.max(), self.min, self.max))
         if isinstance(value, numbers.Number):
-            return int(round((value - self.min) / self.res))
+            if self.min <= value <= self.max:
+                return int(round((value - self.min) / self.res))
+            raise ValueError('cannot get index: value {0} not in range [{1}, {2}]'.format(value, self.min, self.max))
         else:
-            return numpy.around((value - self.min) / self.res)
+            if ((self.min <= value) & (value <= self.max)).all():
+                return numpy.around((value - self.min) / self.res).astype(int)
+            raise ValueError('cannot get indices, values from [{0}, {1}], axes range [{2}, {3}]'.format(value.min(), value.max(), self.min, self.max))
 
     def __or__(self, other): # union operation
         if not isinstance(other, Axis):
@@ -86,8 +86,8 @@ class Axis(object):
     def rebound(self, min, max):
         return self.__class__(min, max, self.res, self.label)
 
-	def __repr__(self):
-		return '{0.__class__.__name__} {0.label} (min={0.min}, max={0.max}, res={0.res})'.format(self)
+    def __repr__(self):
+        return '{0.__class__.__name__} {0.label} (min={0.min}, max={0.max}, res={0.res})'.format(self)
 
 
 class Space(object):
@@ -138,7 +138,7 @@ class Space(object):
         mask = self.contributions > 0
         lims = (numpy.flatnonzero(sum_onto(mask, i)) for (i, ax) in enumerate(self.axes))
         lims = tuple((i.min(), i.max()) for i in lims)
-        self.axes = tuple(ax.rebound(ax[min(lims[i])], ax[max(lims[i])]) for (i, ax) in enumerate(self.axes))
+        self.axes = tuple(ax.rebound(ax[min], ax[max]) for (ax, (min, max)) in zip(self.axes, lims))
         slices = tuple(slice(min, max+1) for (min, max) in lims)
         self.photons = self.photons[slices].copy()
         self.contributions = self.contributions[slices].copy()
@@ -149,8 +149,8 @@ class Space(object):
             raise ValueError('dimension mismatch between coordinates and axes')
 
         indices = numpy.array(tuple(ax.get_index(coord.flatten()) for (ax, coord) in zip(self.axes, coordinates)))
-        for i in range(1, len(self.axes)):
-            for j in range(0, i):
+        for i in range(0, len(self.axes)):
+            for j in range(i+1, len(self.axes)):
                 indices[i,:] *= len(self.axes[j])
         indices = indices.sum(axis=0).astype(int)
 
@@ -618,7 +618,7 @@ if __name__ == "__main__":
         
         mesh = Space.fromcfg(cfg)
         for ax in mesh.axes:
-            print ax.min,ax.max,len(ax)
+            print ax
         scan = spec.select('{0}.1'.format(scanno))
         scantype = scan.header('S')[0].split()[2]
         
@@ -633,7 +633,7 @@ if __name__ == "__main__":
             mesh.process_image(coordinates, intensity)
         #mesh.trim()
         for ax in mesh.axes:
-            print ax.min,ax.max,len(ax)
+            print ax
         im = mesh.photons
         print im.shape
         pyplot.imshow(im[:,:,1])
