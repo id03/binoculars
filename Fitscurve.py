@@ -3,7 +3,7 @@ import re
 import random
 import numpy
 import scipy.optimize, scipy.special
-
+from scipy.stats import linregress
 
 def simplefit(func, x, y, guess):
 	"""Non-linear least squares fit of y=func(x).
@@ -57,7 +57,7 @@ def nonlinfit(func, guess, paramnames=None):
         summary:  human-readable summary of fit parameters
         """
     
-    result = scipy.optimize.leastsq(func, guess, full_output=True, maxfev=3000)
+    result = scipy.optimize.leastsq(func, guess, full_output=True, maxfev=3000,epsfcn=0.1)
     
     msg = re.sub('\s{2,}', ' ', result[3].strip())
     if result[4] not in (1,2,3,4):
@@ -115,16 +115,44 @@ def fitbkg(xdata,ydata):
         params, summary = fitscurve(xdata,ydata)
         return scurve(xdata,params)
     except:
-        params, summary = fitlin(xdata,ydata)
-        return lin(xdata,params)
+        slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(xdata,ydata)
+        return slope * xdata + intercept
 
-#def fitTwoD(xdata,ydata,zdata):
+def fitTwoDscurve((x,y),zdata):
+    parameters = numpy.ma.zeros((x.shape[0],4))
+    parameters.mask = numpy.zeros_like(parameters.data.shape)
+    for n in range(x.shape[0]):
+        try:
+            params, summary = fitscurve(y,zdata[n,:])
+            parameters[n,:] = params
+        except:
+            parameters.mask[n,:] = True
 
+    slope,height,offset =  numpy.median(parameters[:,1:],axis = 0)
+    slope = 0.1 * slope
+    x0 = numpy.ma.masked_outside(parameters[:,0],-5 * numpy.median(parameters[:,0]),5 * numpy.median(parameters[:,0]))
+    a,b,c,d = cubefit(x,x0)
 
+    params, variance, msg, summary = simplefit(TwoDscurve, (x,y), zdata.flatten(), (a ,b ,c,d,slope,height,offset))
+    return params, summary
 
-#def TwoDfunction(x,y,()):
-    
-    
+def cubefit(xdata,ydata):
+    guess= (1,1,1,1)
+    params, variance, msg, summary = simplefit(cube, xdata, ydata, guess)
+    return params
+
+def cube(x,(a,b,c,d)):
+    return a * x**3 + b * x**2 + c * x + d
+
+def TwoDscurve((x,y),(a ,b ,c,d,slope,height,offset)):
+    parameters = numpy.zeros((x.shape[0],4))
+    x0 = a * x**3 + b * x**2 + c * x + d
+    parameters[:,0] = x0
+    parameters[:,1] = slope
+    parameters[:,2] = height
+    parameters[:,3] = offset
+    fit = numpy.vstack(scurve(y,parameters[n,:])for n in range(x.shape[0]))
+    return fit.flatten()    
 
 def fitgaussian(xdata, ydata):
 	x0 = xdata[numpy.argmax(ydata)]
@@ -135,17 +163,52 @@ def fitgaussian(xdata, ydata):
 	params, variance, msg, summary = simplefit(gaussian, xdata, ydata, (x0, A, gamma, offset, slope))
 	return params, summary
 
+def bgs_plane(data):
+	"""Perform linear fit planar background subtraction.
+        
+        parameters:
+        data: array
+        
+        returns:
+        params: tuple of three floats
+        the parameters of the plane a + bx + cy
+        data:   array
+        data with background subtracted
+        """
+    
+	nx, ny = data.shape
+	
+	sumxi = (nx-1)/2.;
+	sumxixi = (2*nx-1)*(nx-1)/6.;
+	sumyi = (ny-1)/2.;
+	sumyiyi = (2*ny-1)*(ny-1)/6.;
+    
+	xgrid, ygrid = numpy.meshgrid(numpy.arange(ny), numpy.arange(nx))
+	sumsi = data.mean()
+	sumsixi = (data*xgrid).mean()
+	sumsiyi = (data*ygrid).mean()
+    
+	bx = (sumsixi - sumsi*sumxi) / (sumxixi - sumxi*sumxi)
+	by = (sumsiyi - sumsi*sumyi) / (sumyiyi - sumyi*sumyi)
+	a = sumsi - bx*sumxi - by*sumyi
+	return (a, bx, by), data - a - bx*xgrid - by*ygrid
+
+
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-    xdata = numpy.arange(100)
-    x0 = random.randint(0,100)
-    offset = random.randint(-50,50)
-    height = random.randint(0,100)
-    slope = random.random()
-    print x0, slope , height , offset
-    ydata = numpy.abs(numpy.arange(-50,50))#scurve(xdata,(x0,slope,height,offset)) + numpy.random.randn(100)
-    yfit = fitbkg(xdata, ydata)
-    plt.plot(xdata,ydata,'wo')
-    plt.plot(xdata,yfit,'r')
+    zdata = numpy.log(numpy.loadtxt('background.txt'))
+    x = numpy.arange(zdata.shape[0])
+    y = numpy.arange(zdata.shape[1])
+    #slope,fit = bgs_plane(zdata)
+    params, summary =  fitTwoDscurve((x,y),zdata)
+    print params,summary
+    fit = TwoDscurve((x,y),params).reshape(x.shape[0],y.shape[0])
+    for n in range(x.shape[0]):
+        plt.plot(zdata[n,:],'wo')
+        plt.plot(fit[n,:],'r')
+        plt.savefig('{0}.png'.format(str(n)))
+        plt.close()
+    numpy.savetxt('fit.txt',numpy.exp(fit))
 
-    plt.show()
+
+

@@ -153,7 +153,6 @@ class Space(object):
             for j in range(i+1, len(self.axes)):
                 indices[i,:] *= len(self.axes[j])
         indices = indices.sum(axis=0).astype(int)
-
         photons = numpy.bincount(indices, weights=intensity.flatten())
         contributions = numpy.bincount(indices)
 
@@ -290,6 +289,9 @@ class Scanbase(object):
         
         roi = self.data[ymask, :]
         roi = roi[:,xmask]
+                
+        if cfg.bkg:
+            roi -= self.bkg
         intensity = roi.flatten()
         
         return self.coordinates, intensity
@@ -305,11 +307,22 @@ class Scanbase(object):
     def getmean(self,n):
         ymask = numpy.asarray(self.cfg.ymask)
         xmask = numpy.asarray(self.cfg.xmask)
-        self.data = self.GetData(n)#/self.mon[n]
+        self.data = self.GetData(n)
         roi = self.data[ymask, :]
         roi = roi[:,xmask]
         return roi.mean(axis = 0)
+    
+    def getbkg(self):
+        bkg = numpy.vstack(self.getmean(m) for m in range(self.length))
+        sort = numpy.sort(bkg, axis = 0)
+        clip = 0.1
+        clipped = sort[int(clip * bkg.shape[0]):int((1-clip) * bkg.shape[0]),:]
+        abkg = clipped.mean(axis = 0)
+        return abkg
 
+    def setbkg(self,bkg):
+        self.bkg = bkg.reshape(1,bkg.shape[0]).repeat(numpy.asarray(self.cfg.ymask).shape[0],axis = 0)
+    
     def getHKLbounds(self, full=False):
         if full:
             thetas = self.theta
@@ -321,12 +334,6 @@ class Scanbase(object):
             hkel = SixCircle.getHKL(self.wavelength, self.UB, delta=self.delta, theta=th,chi=self.chi,phi=self.phi,mu=self.mu,gamma=self.gamma)
             hkls.append(hkel.reshape(3))
         return hkls
-
-    def getbkg(self):
-        abkg = numpy.vstack(self.getmean(m) for m in range(self.length)).mean(axis = 0)
-        fit = Fitscurve.fitbkg(numpy.arange(abkg.shape[0]), abkg )
-        #self.bkg = fit.reshape(1,avg.shape[0]).repeat(im.shape[0],axis = 0)
-        return abkg , fit
 
 class Arc(Scanbase):
     def initImdata(self):
@@ -384,9 +391,7 @@ def makeplot(space, args):
     pyplot.figure(figsize=(12,9))
     #pyplot.imshow(space.contributions.reshape((space.Hcount, space.Kcount, space.Lcount), order='C')[:,:,0].transpose(), origin='lower', extent=(space.set['minH'], space.set['maxH'], space.set['minK'], space.set['maxK']), aspect='auto')#, norm=matplotlib.colors.Normalize(vmin, vmax))
 
-    #pyplot.imshow(data.transpose(), origin='lower', extent=(Hmin, Hmax, Kmin, Kmax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
-    print mesh.shape
-    pyplot.imshow(mesh[:,:,1])
+    pyplot.imshow(data.transpose(), origin='lower', extent=(Hmin, Hmax, Kmin, Kmax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
     
     #pyplot.imshow(data.transpose())
     
@@ -452,6 +457,18 @@ def wait_for_files(filelist):
 def wait_for_file(filename):
     return bool(list(wait_for_files([filename])))
 
+def gbkg(spec, scanno,cfg):
+    print scanno
+    spec = specfilewrapper.Specfile(cfg.specfile)
+    scan = spec.select('{0}.1'.format(scanno))
+    scantype = scan.header('S')[0].split()[2]
+    if scantype == 'zapline':
+        a = Arc.ArcInit(spec, scanno,cfg)
+    else:
+        a = hklmesh.ScanInit(spec, scanno,cfg)
+    a.initImdata()
+    bkg = a.getbkg()
+    return bkg
 
 if __name__ == "__main__":    
     
@@ -610,36 +627,37 @@ if __name__ == "__main__":
         makeplot(space, args)
     
     def test(args):
-        import matplotlib.pyplot as pyplot
-        scanlist = range(args.firstscan, args.lastscan+1)
         spec = specfilewrapper.Specfile(cfg.specfile)
-
-        scanno = scanlist[0]
-        
-        mesh = Space.fromcfg(cfg)
-        for ax in mesh.axes:
-            print ax
-        scan = spec.select('{0}.1'.format(scanno))
-        scantype = scan.header('S')[0].split()[2]
-        
-        if scantype == 'zapline':
-            a = Arc.ArcInit(spec, scanno,cfg)
-        else:
-            a = hklmesh.ScanInit(spec, scanno,cfg)
-        
-        a.initImdata()
-        for m in range(a.length):
-            coordinates , intensity = a.getImdata(m)
-            mesh.process_image(coordinates, intensity)
-        #mesh.trim()
-        for ax in mesh.axes:
-            print ax
-        im = mesh.photons
-        print im.shape
-        pyplot.imshow(im[:,:,1])
-        pyplot.show()
-
-
+        scanlist = range(args.firstscan, args.lastscan+1)
+        globalspace = Space.fromcfg(cfg)
+        fit = numpy.loadtxt('fit.txt')
+        for scanno in scanlist:
+            print scanno
+            mesh = Space.fromcfg(cfg)
+            
+            scan = spec.select('{0}.1'.format(scanno))
+            scantype = scan.header('S')[0].split()[2]
+            if scantype == 'zapline':
+                a = Arc.ArcInit(spec, scanno,cfg)
+            else:
+                a = hklmesh.ScanInit(spec, scanno,cfg)
+             
+            a.initImdata()
+            a.setbkg(fit[scanno-args.firstscan,:])
+            for m in range(a.length):
+                coordinates , intensity = a.getImdata(m)
+                mesh.process_image(coordinates, intensity)
+            globalspace += mesh
+        globalspace.trim()
+        globalspace.tofile(mfinal(cfg.outfile, args.firstscan, args.lastscan))
+    
+    def test1(args):
+        spec = specfilewrapper.Specfile(cfg.specfile)
+        scanlist = range(args.firstscan, args.lastscan+1)
+        bkg = numpy.vstack(gbkg(spec, scanno,cfg) for scanno in scanlist)
+        numpy.savetxt('background.txt', bkg)
+    
+    
     parser = argparse.ArgumentParser(prog='iVoxOar')
     parser.add_argument('--config',default='./config')
     parser.add_argument('--projection')
