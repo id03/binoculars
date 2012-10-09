@@ -23,7 +23,7 @@ def parsemultirange(s):
 	ranges = s.split(',')
 	for r in ranges:
 		out.extend(parserange(r))
-	return out
+	return numpy.asarray(out)
 
 def cfg(configfile):
     configdict = {}

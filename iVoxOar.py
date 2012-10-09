@@ -97,7 +97,6 @@ class Space(object):
         self.photons = numpy.zeros([len(ax) for ax in self.axes], order='C')
         self.contributions = numpy.zeros(self.photons.shape, dtype=numpy.uint32, order='C')
 
-
     @classmethod
     def fromcfg(cls, cfg): # FIXME: to be removed once automatic HKL limits detection is working
         return cls((
@@ -177,87 +176,26 @@ class Space(object):
             fp.close()
 
 
-class Scanbase(object):
-    def __init__(self,cfg):
+class ScanBase(object):
+    def __init__(self, cfg, spec, scannumber, scan=None):
         self.cfg = cfg
         
         if cfg.projection == 'hkl':
             self.projection = self.hkl
-
-    @classmethod
-    def ArcInit(cls,spec,scanno,cfg):
-        obj = cls(cfg)
-            
-        scan = spec.select('{0}.1'.format(scanno))
-        scanheaderC = scan.header('C')
-        folder = os.path.split(scanheaderC[0].split(' ')[-1])[-1]
-        obj.imagefolder = os.path.join(cfg.imagefolder,folder)
-        obj.scannumber = int(scanheaderC[2].split(' ')[-1])
-        obj.imagenumber = int(scanheaderC[3].split(' ')[-1])
-        obj.scanname = scanheaderC[1].split(' ')[-1]
-            
-            #UB matrix will be installed in new versions of the zapline, until then i keep this here.            
-        if scanno < 405:
-            obj.UB = numpy.array([2.628602629,0.2730763688,-0.001032444885,1.202301748,2.877587966,-0.001081570571,0.002600281749,0.002198663001,1.54377945])
         else:
-            obj.UB = numpy.array([2.624469378,0.2632191474,-0.001028869827,1.211297551,2.878506363,-0.001084906521,0.002600359765,0.002198324744,1.54377945])
+            raise ValueError('unknown projection {0}'.format(cfg.projection))
 
-        obj.wavelength = float(scan.header('G')[1].split(' ')[-1])
-        obj.theta = scan.datacol('th')
-        obj.mon = scan.datacol('zap_mon')
-        obj.transm = scan.datacol('zap_transm')
-        obj.length = numpy.alen(obj.theta)
-
-        delt,theta,chi,phi,mu,gam = numpy.array(scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
-        obj.gam = gam.repeat(obj.length)
-        obj.delt = delt.repeat(obj.length)                
-        obj.chi = chi
-        obj.phi = phi
-        obj.mu = mu
-
-        obj.imagecode = os.path.join(obj.imagefolder,'*{0}_mpx*'.format(obj.scanname))
-            
-        obj.transm[-1]=obj.transm[-2] #bug in specfile
-        return obj
-
-    @classmethod
-    def ScanInit(cls,spec,scanno,cfg):
-        obj = cls(cfg)
-
-        scan = spec.select('{0}.1'.format(scanno))
-        UCCD = os.path.split(scan.header('UCCD')[0].split(' ')[-1])
-        folder = os.path.split(UCCD[0])[-1]
-
-        delt,theta,chi,phi,mu,gam = numpy.array(scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
-
-        obj.scanname = UCCD[-1].split('_')[0]
-        obj.imagefolder = os.path.join(cfg.imagefolder,folder)
-        obj.scannumber = scanno
-            
-        obj.chi = chi
-        obj.phi = phi
-            
-        obj.theta = scan.datacol('thcnt')
-        obj.gam = scan.datacol('gamcnt')
-        obj.delt = scan.datacol('delcnt')
-        obj.mu = float(scan.header('P')[0].split(' ')[5])
-            
-        obj.UB = numpy.array(scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
-        obj.wavelength = float(scan.header('G')[1].split(' ')[-1])
-            
-        obj.mon = scan.datacol('mon')
-        obj.transm = scan.datacol('transm')
-        obj.length = numpy.alen(obj.theta)
-            
-        obj.imagecode = os.path.join(obj.imagefolder,'*{0}*'.format(obj.scanname))
-        return obj
+        self.scannumber = scannumber
+        if scan:
+            self.scan = scan
+        else:
+            self.scan = self.get_scan(scannumber)
 
     def initImdata(self):
         self.buildfilelist()
-        self.edf = EdfFile.EdfFile(self.filelist[0])
     
     def buildfilelist(self):
-        allfiles =  glob.glob(self.imagecode)
+        allfiles =  glob.glob(self.imagepattern)
         filelist = list()
         imagedict = {}
         for file in allfiles:
@@ -271,45 +209,40 @@ class Scanbase(object):
         points = sorted(filedict.iterkeys())
         self.filelist = [filedict[i] for i in points]
         if len(self.filelist) == 0:
-            raise NameError('Empty filelist, check if the specified imagefolder corresponds to the location of the images')
+            raise ValueError('Empty filelist, check if the specified imagefolder corresponds to the location of the images')
+    
+    def apply_roi(self, data):
+        roi = data[self.cfg.ymask, :]
+        return roi[:, self.cfg.xmask]
 
     def getImdata(self,n):
-        ymask = numpy.asarray(self.cfg.ymask)
-        xmask = numpy.asarray(self.cfg.xmask)
-        
-        self.data = self.GetData(n)/(self.mon[n]*self.transm[n])
+        data = self.GetData(n)/(self.mon[n]*self.transm[n])
         app = self.cfg.app #angle per pixel (delta,gamma)
         centralpixel = self.cfg.centralpixel #(row,column)=(delta,gamma)
-        self.gamma = app[1]*(numpy.arange(self.data.shape[1])-centralpixel[1])+self.gam[n]
-        self.delta = app[0]*(numpy.arange(self.data.shape[0])-centralpixel[0])+self.delt[n]
-        self.gamma = self.gamma[ymask]
-        self.delta = self.delta[xmask]
+        gamma = app[1]*(numpy.arange(data.shape[1])-centralpixel[1])+self.gamma[n]
+        delta = app[0]*(numpy.arange(data.shape[0])-centralpixel[0])+self.delta[n]
+        gamma = gamma[self.cfg.ymask]
+        delta = delta[self.cfg.xmask]
         
-        self.projection(n)
+        coordinates = self.projection(delta=delta, theta=self.theta[n], chi=self.chi, phi=self.phi, mu=self.mu, gamma=gamma)
         
-        roi = self.data[ymask, :]
-        roi = roi[:,xmask]
-                
+        roi = self.apply_roi(data)
         if cfg.bkg:
             roi -= self.bkg
         intensity = roi.flatten()
         
-        return self.coordinates, intensity
+        return coordinates, intensity
 
-    def hkl(self,n):
-        R = SixCircle.getHKL(self.wavelength, self.UB, delta=self.delta, theta=self.theta[n],chi=self.chi,phi=self.phi,mu=self.mu,gamma=self.gamma)
-        #        R.shape = 3,numpy.alen(self.gamma),mp.alen(self.delta)
+    def hkl(self, **kwargs):
+        R = SixCircle.getHKL(self.wavelength, self.UB, **kwargs)
         H = R[0,:]
         K = R[1,:]
         L = R[2,:]
-        self.coordinates = (H,K,L)
+        return (H,K,L)
 
     def getmean(self,n):
-        ymask = numpy.asarray(self.cfg.ymask)
-        xmask = numpy.asarray(self.cfg.xmask)
-        self.data = self.GetData(n)
-        roi = self.data[ymask, :]
-        roi = roi[:,xmask]
+        data = self.GetData(n)
+        roi = self.apply_roi(data)
         return roi.mean(axis = 0)
     
     def getbkg(self):
@@ -321,7 +254,7 @@ class Scanbase(object):
         return abkg
 
     def setbkg(self,bkg):
-        self.bkg = bkg.reshape(1,bkg.shape[0]).repeat(numpy.asarray(self.cfg.ymask).shape[0],axis = 0)
+        self.bkg = bkg.reshape(1, bkg.shape[0]).repeat(self.cfg.ymask.shape[0], axis=0)
     
     def getHKLbounds(self, full=False):
         if full:
@@ -335,19 +268,76 @@ class Scanbase(object):
             hkls.append(hkel.reshape(3))
         return hkls
 
-class Arc(Scanbase):
+    @staticmethod
+    def get_scan(self, spec, scannumber):
+        return spec.select('{0}.1'.format(scannumber))
+
+    @classmethod
+    def detect_scan(cls, cfg, spec, scanno):
+        scan = cls.get_scan(spec, scanno)
+        scantype = scan.header('S')[0].split()[2]
+        if scantype.startswith('zap'):
+            return ZapScan(cfg, spec, scanno, scan)
+        else:
+            return ClassicScan(cfg, spec, scanno, scan)
+
+
+class ZapScan(ScanBase):
+    def __init__(self, cfg, spec, scanno, scan=None):
+        super(ZapScan, self).__init__(cfg, spec, scanno, scan)
+
+        scanheaderC = self.scan.header('C')
+        folder = os.path.split(scanheaderC[0].split(' ')[-1])[-1]
+        scanname = scanheaderC[1].split(' ')[-1]
+        self.imagepattern = os.path.join(cfg.imagefolder, folder,'*{0}_mpx*'.format(scanname))
+        
+        #UB matrix will be installed in new versions of the zapline, until then i keep this here.
+        if scanno < 405:
+            self.UB = numpy.array([2.628602629,0.2730763688,-0.001032444885,1.202301748,2.877587966,-0.001081570571,0.002600281749,0.002198663001,1.54377945])
+        else:
+            self.UB = numpy.array([2.624469378,0.2632191474,-0.001028869827,1.211297551,2.878506363,-0.001084906521,0.002600359765,0.002198324744,1.54377945])
+        self.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
+
+        delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
+        self.gamma = gamma.repeat(self.length)
+        self.delta = delta.repeat(self.length)
+        self.theta = self.scan.datacol('th')
+
+        self.mon = self.scan.datacol('zap_mon')
+        self.transm = self.scan.datacol('zap_transm')
+        self.transm[-1]=self.transm[-2] #bug in specfile
+        self.length = numpy.alen(self.theta)
+
     def initImdata(self):
-        self.buildfilelist()
+        super(ZapScan, self).initImdata()
         self.edf = EdfFile.EdfFile(self.filelist[0])
 
     def GetData(self,n):
         return self.edf.GetData(n)
         
-class hklmesh(Scanbase):
-    def initImdata(self):
-        self.buildfilelist()
 
-    def GetData(self,n):        
+class ClassicScan(ScanBase):
+    def __init__(self, cfg, spec, scanno, scan=None):
+        super(ClassicScan, self).__init_(cfg, spec, scanno, scan)
+
+        UCCD = os.path.split(self.scan.header('UCCD')[0].split(' ')[-1])
+        folder = os.path.split(UCCD[0])[-1]
+        scanname = UCCD[-1].split('_')[0]
+        self.imagepattern = os.path.join(cfg.imagefolder, folder, '*{0}*'.format(scanname))
+
+        self.UB = numpy.array(self.scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
+        self.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
+
+        delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
+        self.theta = self.scan.datacol('thcnt')
+        self.gamma = self.scan.datacol('gamcnt')
+        self.delta = self.scan.datacol('delcnt')
+
+        self.mon = self.scan.datacol('mon')
+        self.transm = self.scan.datacol('transm')
+        self.length = numpy.alen(self.theta)
+
+    def GetData(self,n):
         edf = EdfFile.EdfFile(self.filelist[n])
         return edf.GetData(0)
 
@@ -356,13 +346,7 @@ def process(scanno):
     print scanno
     mesh = Space.fromcfg(cfg)
     
-    scan = spec.select('{0}.1'.format(scanno))
-    scantype = scan.header('S')[0].split()[2]
-    if scantype == 'zapline':
-        a = Arc.ArcInit(spec, scanno,cfg)
-    else:
-        a = hklmesh.ScanInit(spec, scanno,cfg)
-
+    a = ScanBase.detect_scan(cfg, spec, scanno)
     a.initImdata()
     for m in range(a.length):
         coordinates , intensity = a.getImdata(m)
@@ -457,18 +441,15 @@ def wait_for_files(filelist):
 def wait_for_file(filename):
     return bool(list(wait_for_files([filename])))
 
+
 def gbkg(spec, scanno,cfg):
     print scanno
     spec = specfilewrapper.Specfile(cfg.specfile)
-    scan = spec.select('{0}.1'.format(scanno))
-    scantype = scan.header('S')[0].split()[2]
-    if scantype == 'zapline':
-        a = Arc.ArcInit(spec, scanno,cfg)
-    else:
-        a = hklmesh.ScanInit(spec, scanno,cfg)
+    a = ScanBase.detect_scan(cfg, spec, scanno)
     a.initImdata()
     bkg = a.getbkg()
     return bkg
+
 
 if __name__ == "__main__":    
     
@@ -634,14 +615,7 @@ if __name__ == "__main__":
         for scanno in scanlist:
             print scanno
             mesh = Space.fromcfg(cfg)
-            
-            scan = spec.select('{0}.1'.format(scanno))
-            scantype = scan.header('S')[0].split()[2]
-            if scantype == 'zapline':
-                a = Arc.ArcInit(spec, scanno,cfg)
-            else:
-                a = hklmesh.ScanInit(spec, scanno,cfg)
-             
+            a = ScanBase.detect_scan(cfg, spec, scanno)
             a.initImdata()
             a.setbkg(fit[scanno-args.firstscan,:])
             for m in range(a.length):
