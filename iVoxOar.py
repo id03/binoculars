@@ -269,7 +269,7 @@ class ScanBase(object):
         return hkls
 
     @staticmethod
-    def get_scan(self, spec, scannumber):
+    def get_scan(spec, scannumber):
         return spec.select('{0}.1'.format(scannumber))
 
     @classmethod
@@ -290,6 +290,7 @@ class ZapScan(ScanBase):
         folder = os.path.split(scanheaderC[0].split(' ')[-1])[-1]
         scanname = scanheaderC[1].split(' ')[-1]
         self.imagepattern = os.path.join(cfg.imagefolder, folder,'*{0}_mpx*'.format(scanname))
+        self.scannumber = int(scanheaderC[2].split(' ')[-1])#is different from scanno should be changed in spec!
         
         #UB matrix will be installed in new versions of the zapline, until then i keep this here.
         if scanno < 405:
@@ -299,14 +300,15 @@ class ZapScan(ScanBase):
         self.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
 
         delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
+                
+        self.theta = self.scan.datacol('th')        
+        self.length = numpy.alen(self.theta)
         self.gamma = gamma.repeat(self.length)
         self.delta = delta.repeat(self.length)
-        self.theta = self.scan.datacol('th')
 
         self.mon = self.scan.datacol('zap_mon')
         self.transm = self.scan.datacol('zap_transm')
         self.transm[-1]=self.transm[-2] #bug in specfile
-        self.length = numpy.alen(self.theta)
 
     def initImdata(self):
         super(ZapScan, self).initImdata()
@@ -324,6 +326,7 @@ class ClassicScan(ScanBase):
         folder = os.path.split(UCCD[0])[-1]
         scanname = UCCD[-1].split('_')[0]
         self.imagepattern = os.path.join(cfg.imagefolder, folder, '*{0}*'.format(scanname))
+        
 
         self.UB = numpy.array(self.scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
         self.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
@@ -359,13 +362,13 @@ def makeplot(space, args):
     import matplotlib.colors
 
     clipping = 0.02
-   
     mesh = space.get_masked()
-    data = numpy.log(mesh[...,0])
+    data = mesh[...,0]
     compresseddata = data.compressed()
     chop = int(round(compresseddata.size * clipping))
     clip = sorted(compresseddata)[chop:-chop]
     vmin, vmax = clip[0], clip[-1]
+    
     
     Hmin = space.axes[0].min
     Hmax = space.axes[0].max
@@ -676,7 +679,7 @@ if __name__ == "__main__":
     parser_test = subparsers.add_parser('test')
     parser_test.add_argument('firstscan', type=int)
     parser_test.add_argument('lastscan', type=int, default=None, nargs='?')
-    parser_test.add_argument('--outfile', default = 'test.pdf')
+    parser_test.add_argument('--outfile', default = 'test.zpi')
     
     parser_test.set_defaults(func=test)
 
