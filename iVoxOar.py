@@ -507,7 +507,7 @@ if __name__ == "__main__":
         if firstscan == lastscan:
             jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, args.firstscan), str(scanno)))
             print 'submitted 1 job, waiting...'
-            oar.wait(jobs)
+            oarwait(jobs)
             print 'done'
             return
 
