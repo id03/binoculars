@@ -25,6 +25,12 @@ def parsemultirange(s):
         out.extend(parserange(r))
     return numpy.asarray(out)
 
+def parsetuple(s, length=None)
+    t = tuple(float(i) for i in s.split(','))
+    if length is not None and len(t) != length:
+        raise ValueError('invalid configuration value')
+    return t
+
 def cfg(configfile):
     configdict = {}
     config = ConfigParser.RawConfigParser()
@@ -37,9 +43,13 @@ def cfg(configfile):
     
     configdict['xmask'] = parsemultirange(configdict['xmask'])
     configdict['ymask'] = parsemultirange(configdict['ymask'])
-    
-    for n in ['centralpixel','app']:
-        configdict[n] = numpy.array(configdict[n].split(','),dtype = numpy.float)
+    try:
+        configdict['resolution'] = parsetuple(configdict['resolution'])
+    except:
+        pass
+    configdict['centralpixel'] = parsetuple(configdict['centralpixel'], 2)
+    configdict['app'] = parsetuple(configdict['app'], 2)
+
     for n in configdict.keys():
         try: configdict[n] = float(configdict[n])
         except: continue
@@ -47,7 +57,7 @@ def cfg(configfile):
     return Struct(**configdict)
 
 def test(configdict):
-    must = ['specfile','imagefolder', 'outputfolder', 'Hres','Kres','Lres','centralpixel','app','ymask','xmask']
+    must = ['specfile','imagefolder', 'outputfolder', 'resolution','centralpixel','app','ymask','xmask']
     for n in must:
         if n not in configdict.keys(): raise ConfigError(n)
 
