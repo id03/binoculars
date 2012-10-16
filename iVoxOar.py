@@ -90,6 +90,13 @@ class Axis(object):
         return '{0.__class__.__name__} {0.label} (min={0.min}, max={0.max}, res={0.res})'.format(self)
 
 
+class EmptySpace(object):
+    def __iadd__(self, other):
+        if not isinstance(other, Space):
+            return NotImplemented
+        return other
+
+
 class Space(object):
     def __init__(self, axes):
         self.axes = tuple(axes)
@@ -176,14 +183,79 @@ class Space(object):
             fp.close()
 
 
+class ProjectionBase(object):
+    def __init__(self, cfg):
+        self.cfg = cfg
+
+    @classmethod
+    def fromcfg(cls, cfg):
+        if cfg.projection == 'hkl':
+            return HKLProjection(cfg)
+        elif cfg.projection == 'twotheta':
+            return TwoThetaProjection(cfg)
+        else:
+            raise ValueError('unknown projection {0}'.format(cfg.projection))
+
+    def space_from_bounds(self, *args, **kwargs):
+        limits = self.get_bounds(*args, **kwargs)
+        try:
+            iter(cfg.resolution)
+        except TypeError:
+            resolution = itertools.repeat(cfg.resolution)
+        else:
+            if len(cfg.resolution) != len(limits):
+                raise ValueError('not enough values in given for resolution')
+            resolution = cfg.resolution
+        return Space(Axis(min, max, res, label) for ((min, max), res, label) in zip(limits, resolution, self._get_labels()))
+
+
+class HKLProjection(ProjectionBase):
+    def get_bounds(self, scan):
+        scantype = scan.header('S')[0].split()[2]
+        if scantype.startswith('zap'):
+            h = scan.datacol('zap_Hcnt')
+            k = scan.datacol('zap_Kcnt')
+            l = scan.datacol('zap_Lcnt')
+        else:
+            h = scan.datacol('Hcnt')
+            k = scan.datacol('Kcnt')
+            l = scan.datacol('Lcnt')
+        offset = 0.1 # TODO: estimate from detector size via self.cfg...
+        return (h.min()-offset, h.max()+offset), (k.min()-offset, k.max()+offset), (l.min()-offset, l.max()+offset)
+
+    # arrays: gamma, delta
+    # scalars: theta, mu, chi, phi
+    def project(self, **kwargs):
+        R = SixCircle.getHKL(self.wavelength, self.UB, **kwargs)
+        H = R[0,:]
+        K = R[1,:]
+        L = R[2,:]
+        return (H,K,L)
+
+    def _get_labels(self):
+        return 'H', 'K', 'L'
+
+
+class TwoThetaProjection(HKLProjection):
+    def get_bounds(self, *args, **kwargs):
+        (hmin, hmax), (kmin, kmax), (lmin, lmax) = super(TwoThetaProjection, self).get_bounds(*args, **kwargs)
+        return ((self._hkl_to_tth(hmin, kmin, lmin), self._hkl_to_tth(hmax, kmax, lmax)),)
+
+    def project(self, **kwargs):
+        h,k,l = super(TwoThetaProjection, self).project(**kwargs)
+        return self._hkl_to_tth(h, k, l)
+
+    def _hkl_to_tth(self, h, k, l):
+        return 2 * numpy.arcsin(self.wavelength * sqrt(h**2+k**2+l**2) / 4 / numpy.pi)
+
+    def _get_labels(self):
+        return 'TwoTheta'
+
+
 class ScanBase(object):
     def __init__(self, cfg, spec, scannumber, scan=None):
         self.cfg = cfg
-        
-        if cfg.projection == 'hkl':
-            self.projection = self.hkl
-        else:
-            raise ValueError('unknown projection {0}'.format(cfg.projection))
+        self.projection = ProjectionBase.fromcfg(cfg)
 
         self.scannumber = scannumber
         if scan:
@@ -224,7 +296,7 @@ class ScanBase(object):
         gamma = gamma[self.cfg.ymask]
         delta = delta[self.cfg.xmask]
         
-        coordinates = self.projection(delta=delta, theta=self.theta[n], chi=self.chi, phi=self.phi, mu=self.mu, gamma=gamma)
+        coordinates = self.projection.project(delta=delta, theta=self.theta[n], chi=self.chi, phi=self.phi, mu=self.mu, gamma=gamma)
         
         roi = self.apply_roi(data)
         if cfg.bkg:
@@ -232,13 +304,6 @@ class ScanBase(object):
         intensity = roi.flatten()
         
         return coordinates, intensity
-
-    def hkl(self, **kwargs):
-        R = SixCircle.getHKL(self.wavelength, self.UB, **kwargs)
-        H = R[0,:]
-        K = R[1,:]
-        L = R[2,:]
-        return (H,K,L)
 
     def getmean(self,n):
         data = self.GetData(n)
@@ -255,18 +320,6 @@ class ScanBase(object):
 
     def setbkg(self,bkg):
         self.bkg = bkg.reshape(1, bkg.shape[0]).repeat(self.cfg.ymask.shape[0], axis=0)
-    
-    def getHKLbounds(self, full=False):
-        if full:
-            thetas = self.theta
-        else:
-            thetas = self.theta[0], self.theta[-1]
-        
-        hkls = []
-        for th in thetas:
-            hkel = SixCircle.getHKL(self.wavelength, self.UB, delta=self.delta, theta=th,chi=self.chi,phi=self.phi,mu=self.mu,gamma=self.gamma)
-            hkls.append(hkel.reshape(3))
-        return hkls
 
     @staticmethod
     def get_scan(self, spec, scannumber):
@@ -281,6 +334,9 @@ class ScanBase(object):
         else:
             return ClassicScan(cfg, spec, scanno, scan)
 
+    def get_space(self):
+        return self.projection.space_from_bounds(self.scan)
+
 
 class ZapScan(ScanBase):
     def __init__(self, cfg, spec, scanno, scan=None):
@@ -293,10 +349,10 @@ class ZapScan(ScanBase):
         
         #UB matrix will be installed in new versions of the zapline, until then i keep this here.
         if scanno < 405:
-            self.UB = numpy.array([2.628602629,0.2730763688,-0.001032444885,1.202301748,2.877587966,-0.001081570571,0.002600281749,0.002198663001,1.54377945])
+            self.projection.UB = numpy.array([2.628602629,0.2730763688,-0.001032444885,1.202301748,2.877587966,-0.001081570571,0.002600281749,0.002198663001,1.54377945])
         else:
-            self.UB = numpy.array([2.624469378,0.2632191474,-0.001028869827,1.211297551,2.878506363,-0.001084906521,0.002600359765,0.002198324744,1.54377945])
-        self.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
+            self.projection.UB = numpy.array([2.624469378,0.2632191474,-0.001028869827,1.211297551,2.878506363,-0.001084906521,0.002600359765,0.002198324744,1.54377945])
+        self.projection.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
 
         delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
         self.gamma = gamma.repeat(self.length)
@@ -325,8 +381,8 @@ class ClassicScan(ScanBase):
         scanname = UCCD[-1].split('_')[0]
         self.imagepattern = os.path.join(cfg.imagefolder, folder, '*{0}*'.format(scanname))
 
-        self.UB = numpy.array(self.scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
-        self.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
+        self.projection.UB = numpy.array(self.scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
+        self.projection.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
 
         delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
         self.theta = self.scan.datacol('thcnt')
@@ -344,9 +400,9 @@ class ClassicScan(ScanBase):
 
 def process(scanno):
     print scanno
-    mesh = Space.fromcfg(cfg)
     
     a = ScanBase.detect_scan(cfg, spec, scanno)
+    mesh = a.get_space()
     a.initImdata()
     for m in range(a.length):
         coordinates , intensity = a.getImdata(m)
@@ -547,7 +603,7 @@ if __name__ == "__main__":
 
 
     def sum(args):
-        globalspace = Space.fromcfg(cfg)
+        globalspace = EmptySpace()
 
         if args.wait:
             fileiter = wait_for_files(args.infiles)
@@ -578,7 +634,7 @@ if __name__ == "__main__":
         spec = specfilewrapper.Specfile(cfg.specfile)
         
         scanlist = range(args.firstscan, args.lastscan+1)
-        globalspace = Space.fromcfg(cfg)
+        globalspace = EmptySpace()
      
         if args.multiprocessing:
             import multiprocessing
