@@ -8,22 +8,22 @@ class ConfigError(Exception):
         return repr('{0} missing in configfile'.format(self.key))
 
 class Struct(object):
-	def __init__(self, **kwargs):
-		self.__dict__.update(kwargs)
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
 
 def parserange(r):
-	if '-' in r:
-		a, b = r.split('-')
-		return range(int(a), int(b)+1)
-	else:
-		return [int(r)]
+    if '-' in r:
+        a, b = r.split('-')
+        return range(int(a), int(b)+1)
+    else:
+        return [int(r)]
 
 def parsemultirange(s):
-	out = []
-	ranges = s.split(',')
-	for r in ranges:
-		out.extend(parserange(r))
-	return numpy.asarray(out)
+    out = []
+    ranges = s.split(',')
+    for r in ranges:
+        out.extend(parserange(r))
+    return numpy.asarray(out)
 
 def cfg(configfile):
     configdict = {}
