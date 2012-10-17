@@ -25,7 +25,7 @@ def parsemultirange(s):
         out.extend(parserange(r))
     return numpy.asarray(out)
 
-def parsetuple(s, length=None)
+def parsetuple(s, length=None):
     t = tuple(float(i) for i in s.split(','))
     if length is not None and len(t) != length:
         raise ValueError('invalid configuration value')

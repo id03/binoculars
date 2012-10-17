@@ -35,10 +35,8 @@ def sum_onto(a, axis):
 class Axis(object):
     def __init__(self, min, max, res, label=None):
         self.res = float(res)
-        if round(min / self.res) != round(min / self.res,1) or round(max / self.res) != round(max / self.res,1):
-            raise ValueError('min/max must be multiple of res (got min={0}, max={1}, res={2}'.format(min, max, res))
-        self.min = min
-        self.max = max
+        self.min = numpy.floor(min/res)*res
+        self.max = numpy.ceil(max/res)*res
         self.label = label
 
     def __len__(self):
@@ -220,7 +218,7 @@ class HKLProjection(ProjectionBase):
             h = scan.datacol('Hcnt')
             k = scan.datacol('Kcnt')
             l = scan.datacol('Lcnt')
-        offset = 0.1 # TODO: estimate from detector size via self.cfg...
+        offset = 1 # TODO: estimate from detector size via self.cfg...
         return (h.min()-offset, h.max()+offset), (k.min()-offset, k.max()+offset), (l.min()-offset, l.max()+offset)
 
     # arrays: gamma, delta
@@ -288,10 +286,10 @@ class ScanBase(object):
         return roi[:, self.cfg.xmask]
 
     def getImdata(self,n):
-        data = self.GetData(n)#/(self.mon[n]*self.transm[n])
+        data = self.GetData(n)/(self.mon[n]*self.transm[n])
         app = self.cfg.app #angle per pixel (delta,gamma)
         centralpixel = self.cfg.centralpixel #(row,column)=(delta,gamma)
-        gamma = app[1]*(numpy.arange(data.shape[1])-centralpixel[1])+self.gamma[n]
+        gamma = -app[1]*(numpy.arange(data.shape[1])-centralpixel[1])+self.gamma[n]
         delta = app[0]*(numpy.arange(data.shape[0])-centralpixel[0])+self.delta[n]
         gamma = gamma[self.cfg.ymask]
         delta = delta[self.cfg.xmask]
@@ -299,7 +297,7 @@ class ScanBase(object):
         coordinates = self.projection.project(delta=delta, theta=self.theta[n], chi=self.chi, phi=self.phi, mu=self.mu, gamma=gamma)
         
         roi = self.apply_roi(data)
-        if cfg.bkg:
+        if cfg.bkg == 'True':
             roi = roi - self.bkg
         intensity = roi.flatten()
                 
@@ -376,7 +374,7 @@ class ZapScan(ScanBase):
 
 class ClassicScan(ScanBase):
     def __init__(self, cfg, spec, scanno, scan=None):
-        super(ClassicScan, self).__init_(cfg, spec, scanno, scan)
+        super(ClassicScan, self).__init__(cfg, spec, scanno, scan)
 
         UCCD = os.path.split(self.scan.header('UCCD')[0].split(' ')[-1])
         folder = os.path.split(UCCD[0])[-1]
@@ -416,24 +414,28 @@ def process(scanno):
 def makeplot(space, args):
     import matplotlib.pyplot as pyplot
     import matplotlib.colors
-
-    clipping = 0.04
+    
+    clipping = 0.02
     mesh = space.get_masked()
-    data = mesh[...,0]
+    remaining = [0,1,2]
+    projected = numpy.argmin(mesh.shape)
+    remaining.pop(projected)
+    
+    data = mesh.mean(axis=projected)
     compresseddata = data.compressed()
     chop = int(round(compresseddata.size * clipping))
-    clip = sorted(compresseddata)[chop:-chop]
+    clip = sorted(compresseddata)[chop:-(1+chop)]
     vmin, vmax = clip[0], clip[-1]
         
-    Hmin = space.axes[0].min
-    Hmax = space.axes[0].max
-    Kmin = space.axes[1].min
-    Kmax = space.axes[1].max
+    xmin = space.axes[remaining[0]].min
+    xmax = space.axes[remaining[0]].max
+    ymin = space.axes[remaining[1]].min
+    ymax = space.axes[remaining[1]].max
     
     pyplot.figure(figsize=(12,9))
     #pyplot.imshow(space.contributions.reshape((space.Hcount, space.Kcount, space.Lcount), order='C')[:,:,0].transpose(), origin='lower', extent=(space.set['minH'], space.set['maxH'], space.set['minK'], space.set['maxK']), aspect='auto')#, norm=matplotlib.colors.Normalize(vmin, vmax))
 
-    pyplot.imshow(data.transpose(), origin='lower', extent=(Hmin, Hmax, Kmin, Kmax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
+    pyplot.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
     
     #pyplot.imshow(data.transpose())
     
@@ -441,8 +443,8 @@ def makeplot(space, args):
     #ax=pyplot.subplot(111)
     #ax.pcolorfast(numpy.sin(60. /180 * numpy.pi) * xgrid+numpy.cos(60. /180 * numpy.pi) * ygrid, ygrid , data.transpose(),norm=matplotlib.colors.Normalize(vmin, vmax))
     
-    pyplot.xlabel('H')
-    pyplot.ylabel('K')
+    pyplot.xlabel(space.axes[remaining[0]].label)
+    pyplot.ylabel(space.axes[remaining[1]].label)
     #pyplot.suptitle() TODO
     pyplot.colorbar()
     #ax.set_xlim(200,1500)
@@ -451,8 +453,8 @@ def makeplot(space, args):
             pyplot.savefig(args.savefile)
             print 'saved at {0}'.format(args.savefile)
         else:
-            pyplot.savefig('{0}.png'.format(os.path.splitext(args.outfile)[0]))
-            print 'saved at {0}.png'.format(os.path.splitext(args.outfile)[0])
+            pyplot.savefig('{0}.pdf'.format(os.path.splitext(args.outfile)[0]))
+            print 'saved at {0}.pdf'.format(os.path.splitext(args.outfile)[0])
     else:
         pyplot.show()
 
@@ -676,8 +678,8 @@ if __name__ == "__main__":
             for a in space.axes:
                 header[str(a.label)] = '{0} {1} {2}'.format(str(a.min),str(a.max),str(a.res))
             edf = EdfFile.EdfFile(args.savefile)
-            edf.WriteImage(header,numpy.swapaxes(space.get_masked().filled(0),0,2),DataType="Float")
-    
+            edf.WriteImage(header,space.get_masked().filled(0),DataType="Float")
+
     def test(args):
         spec = specfilewrapper.Specfile(cfg.specfile)
         scanlist = range(args.firstscan, args.lastscan+1)
