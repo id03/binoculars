@@ -154,7 +154,7 @@ class Space(object):
         indices = indices.sum(axis=0).astype(int)
         photons = numpy.bincount(indices, weights=intensity.flatten())
         contributions = numpy.bincount(indices)
-
+    
         self.photons.ravel()[:photons.size] += photons
         self.contributions.ravel()[:contributions.size] += contributions
 
@@ -216,7 +216,7 @@ class ScanBase(object):
         return roi[:, self.cfg.xmask]
 
     def getImdata(self,n):
-        data = self.GetData(n)/(self.mon[n]*self.transm[n])
+        data = self.GetData(n)#/(self.mon[n]*self.transm[n])
         app = self.cfg.app #angle per pixel (delta,gamma)
         centralpixel = self.cfg.centralpixel #(row,column)=(delta,gamma)
         gamma = app[1]*(numpy.arange(data.shape[1])-centralpixel[1])+self.gamma[n]
@@ -228,9 +228,9 @@ class ScanBase(object):
         
         roi = self.apply_roi(data)
         if cfg.bkg:
-            roi -= self.bkg
+            roi = roi - self.bkg
         intensity = roi.flatten()
-        
+                
         return coordinates, intensity
 
     def hkl(self, **kwargs):
@@ -361,15 +361,14 @@ def makeplot(space, args):
     import matplotlib.pyplot as pyplot
     import matplotlib.colors
 
-    clipping = 0.02
+    clipping = 0.04
     mesh = space.get_masked()
     data = mesh[...,0]
     compresseddata = data.compressed()
     chop = int(round(compresseddata.size * clipping))
     clip = sorted(compresseddata)[chop:-chop]
     vmin, vmax = clip[0], clip[-1]
-    
-    
+        
     Hmin = space.axes[0].min
     Hmax = space.axes[0].max
     Kmin = space.axes[1].min
@@ -610,6 +609,19 @@ if __name__ == "__main__":
         space = Space.fromfile(args.outfile)
         makeplot(space, args)
     
+    def export(args):
+        if args.wait:
+            wait_for_file(args.outfile)
+        space = Space.fromfile(args.outfile)
+        ext = os.path.splitext(args.savefile)[-1]
+        
+        if ext == '.edf':
+            header = {}
+            for a in space.axes:
+                header[str(a.label)] = '{0} {1} {2}'.format(str(a.min),str(a.max),str(a.res))
+            edf = EdfFile.EdfFile(args.savefile)
+            edf.WriteImage(header,numpy.swapaxes(space.get_masked().filled(0),0,2),DataType="Float")
+    
     def test(args):
         spec = specfilewrapper.Specfile(cfg.specfile)
         scanlist = range(args.firstscan, args.lastscan+1)
@@ -680,9 +692,13 @@ if __name__ == "__main__":
     parser_test.add_argument('firstscan', type=int)
     parser_test.add_argument('lastscan', type=int, default=None, nargs='?')
     parser_test.add_argument('--outfile', default = 'test.zpi')
-    
     parser_test.set_defaults(func=test)
-
+    
+    parser_export = subparsers.add_parser('export')
+    parser_export.add_argument('outfile')
+    parser_export.add_argument('savefile')
+    parser_export.set_defaults(func=export)
+    
     args = parser.parse_args()
 
     if 'lastscan' in args.__dict__.keys() and 'firstscan' in args.__dict__.keys():
