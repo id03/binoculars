@@ -207,6 +207,29 @@ class ProjectionBase(object):
         return Space(Axis(min, max, res, label) for ((min, max), res, label) in zip(limits, resolution, self._get_labels()))
 
 
+class BackgroundBase(object):
+    def __init__(self, cfg):
+        self.cfg = cfg
+
+    @classethod
+    def fromcfg(cls, cfg):
+        # like ProjectionBase.fromcfg
+
+
+class ArcBackground(BackgroundBase):
+    def gather(self, scan):
+        # ...        
+        return some_object_to_be_zpickled
+
+    def fit(self, data):
+        # data is dictionary like this: data[scanno] = object_as_returned_from_gather()
+        return fitdata_to_be_zpickled
+
+    def correct(self, image_data):
+        # passthrough fitdata via cfg?
+        return image_data - self.cfg.fitdata.params # ...
+
+
 class HKLProjection(ProjectionBase):
     def get_bounds(self, scan):
         scantype = scan.header('S')[0].split()[2]
@@ -254,6 +277,7 @@ class ScanBase(object):
     def __init__(self, cfg, spec, scannumber, scan=None):
         self.cfg = cfg
         self.projection = ProjectionBase.fromcfg(cfg)
+        self.background = BackgroundBase.fromcfg(cfg)
 
         self.scannumber = scannumber
         if scan:
@@ -297,9 +321,7 @@ class ScanBase(object):
         coordinates = self.projection.project(delta=delta, theta=self.theta[n], chi=self.chi, phi=self.phi, mu=self.mu, gamma=gamma)
         
         roi = self.apply_roi(data)
-        if cfg.bkg == 'True':
-            roi = roi - self.bkg
-        intensity = roi.flatten()
+        intensity = self.background.correct(roi, self.fitdata).flatten()
                 
         return coordinates, intensity
 
