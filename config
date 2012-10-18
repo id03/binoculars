@@ -1,26 +1,17 @@
 [folders]
-specfile = /Volumes/Onderwaater/DataExperiments/Si2515/sixcvertical_si2515.spec
-imagefolder = /Volumes/Onderwaater/DataExperiments/Si2515/images
-outputfolder = /Users/onderwaater/Documents/PhD/python/Vox #not yet used
-outfile = test.zpi
+specfile = /data/id03/inhouse/2012/Sep12/si2515/iVox/test.spec
+imagefolder = /data/visitor/si2515/id03/images
+outputfolder = /Users/onderwaater/Documents/PhD/python/Vox
+outfile = mesh.zpi
 
 [settings]
 #resolution of the binning
-Hres = 0.002
-Kres = 0.002
-Lres = 1
-#range of the bining
-Hmin = -0.2
-Hmax = 2.5
-Kmin = -.7
-Kmax = 2
-Lmin = 0
-Lmax = 1
+resolution = 0.002, 0.002, 1
 #values for interpreting the images
 centralpixel = 40 , 255
 app = 0.003125, 0.003125
-ymask = 160-256,262-400
-xmask = 40-255
+ymask = 185-253,262-400
+xmask = 50-235
 
 bkg = True
 projection = hkl

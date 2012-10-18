@@ -171,7 +171,7 @@ class Space(object):
         finally:
             fp.close()
         os.rename(tmpfile, filename)
-
+    
     @classmethod
     def fromfile(cls, filename):
         fp = gzip.open(filename,'rb')
@@ -206,7 +206,7 @@ class ProjectionBase(object):
             resolution = cfg.resolution
         return Space(Axis(min, max, res, label) for ((min, max), res, label) in zip(limits, resolution, self._get_labels()))
 
-
+'''
 class BackgroundBase(object):
     def __init__(self, cfg):
         self.cfg = cfg
@@ -214,7 +214,6 @@ class BackgroundBase(object):
     @classethod
     def fromcfg(cls, cfg):
         # like ProjectionBase.fromcfg
-
 
 class ArcBackground(BackgroundBase):
     def gather(self, scan):
@@ -228,7 +227,7 @@ class ArcBackground(BackgroundBase):
     def correct(self, image_data):
         # passthrough fitdata via cfg?
         return image_data - self.cfg.fitdata.params # ...
-
+'''
 
 class HKLProjection(ProjectionBase):
     def get_bounds(self, scan):
@@ -277,7 +276,7 @@ class ScanBase(object):
     def __init__(self, cfg, spec, scannumber, scan=None):
         self.cfg = cfg
         self.projection = ProjectionBase.fromcfg(cfg)
-        self.background = BackgroundBase.fromcfg(cfg)
+        #self.background = BackgroundBase.fromcfg(cfg)
 
         self.scannumber = scannumber
         if scan:
@@ -321,7 +320,7 @@ class ScanBase(object):
         coordinates = self.projection.project(delta=delta, theta=self.theta[n], chi=self.chi, phi=self.phi, mu=self.mu, gamma=gamma)
         
         roi = self.apply_roi(data)
-        intensity = self.background.correct(roi, self.fitdata).flatten()
+        #intensity = self.background.correct(roi, self.fitdata).flatten()
                 
         return coordinates, intensity
 
@@ -455,7 +454,6 @@ def makeplot(space, args):
     ymax = space.axes[remaining[1]].max
     
     pyplot.figure(figsize=(12,9))
-    #pyplot.imshow(space.contributions.reshape((space.Hcount, space.Kcount, space.Lcount), order='C')[:,:,0].transpose(), origin='lower', extent=(space.set['minH'], space.set['maxH'], space.set['minK'], space.set['maxK']), aspect='auto')#, norm=matplotlib.colors.Normalize(vmin, vmax))
 
     pyplot.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
     
@@ -467,9 +465,9 @@ def makeplot(space, args):
     
     pyplot.xlabel(space.axes[remaining[0]].label)
     pyplot.ylabel(space.axes[remaining[1]].label)
-    #pyplot.suptitle() TODO
+    pyplot.suptitle('{0}.pdf'.format(os.path.splitext(args.outfile)[0])) 
     pyplot.colorbar()
-    #ax.set_xlim(200,1500)
+    
     if args.s:
         if args.savefile != None:
             pyplot.savefig(args.savefile)
@@ -479,7 +477,6 @@ def makeplot(space, args):
             print 'saved at {0}.pdf'.format(os.path.splitext(args.outfile)[0])
     else:
         pyplot.show()
-
 
 
 def mfinal(filename, first, last=None):
@@ -698,9 +695,31 @@ if __name__ == "__main__":
         if ext == '.edf':
             header = {}
             for a in space.axes:
-                header[str(a.label)] = '{0} {1} {2}'.format(str(a.min),str(a.max),str(a.res))
+                header[str(a.label)] = '{0} {1} {2}'.format(a.min,a.max,a.res)
             edf = EdfFile.EdfFile(args.savefile)
             edf.WriteImage(header,space.get_masked().filled(0),DataType="Float")
+
+        if ext == '.txt':
+            tmpfile = '{0}-{1:x}.tmp'.format(os.path.splitext(args.savefile)[0], random.randint(0, 2**32-1))
+            fp = open(tmpfile,'w')
+            try:
+                grid = numpy.mgrid[tuple(slice(0, len(a)) for a in space.axes)]
+                columns = tuple((grid[n] * space.axes[n].res + space.axes[n].min).flatten() for n in range(grid.ndim-1))
+                data = space.get_masked().filled(0).flatten()
+                for a in space.axes:
+                    fp.write('{0}\t'.format(a.label))
+                fp.write('croif')
+                fp.write('\n')
+                for n in range(len(data)):
+                    for m in range(grid.ndim-1):
+                        fp.write(str(columns[m][n]))
+                        fp.write('\t')
+                    fp.write(str(data[n]))
+                    fp.write('\n')
+                    fp.flush()
+            finally:
+                fp.close()
+            os.rename(tmpfile, args.savefile)
 
     def test(args):
         spec = specfilewrapper.Specfile(cfg.specfile)
