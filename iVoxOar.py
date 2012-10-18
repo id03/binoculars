@@ -24,6 +24,11 @@ import EdfFile
 import getconfig
 import Fitscurve
 
+import inspect
+import re
+import scipy.optimize, scipy.special
+from scipy.stats import linregress
+
 
 def sum_onto(a, axis):
     for i in reversed(range(len(a.shape))):
@@ -206,28 +211,6 @@ class ProjectionBase(object):
             resolution = cfg.resolution
         return Space(Axis(min, max, res, label) for ((min, max), res, label) in zip(limits, resolution, self._get_labels()))
 
-'''
-class BackgroundBase(object):
-    def __init__(self, cfg):
-        self.cfg = cfg
-
-    @classethod
-    def fromcfg(cls, cfg):
-        # like ProjectionBase.fromcfg
-
-class ArcBackground(BackgroundBase):
-    def gather(self, scan):
-        # ...        
-        return some_object_to_be_zpickled
-
-    def fit(self, data):
-        # data is dictionary like this: data[scanno] = object_as_returned_from_gather()
-        return fitdata_to_be_zpickled
-
-    def correct(self, image_data):
-        # passthrough fitdata via cfg?
-        return image_data - self.cfg.fitdata.params # ...
-'''
 
 class HKLProjection(ProjectionBase):
     def get_bounds(self, scan):
@@ -271,6 +254,170 @@ class TwoThetaProjection(HKLProjection):
     def _get_labels(self):
         return 'TwoTheta'
 
+class BackgroundBase(object):
+    def __init__(self, cfg):
+        self.cfg = cfg
+        self.fitobject = FitBase.fromcfg(cfg)
+    
+    @classmethod
+    def fromcfg(cls, cfg):
+        if cfg.background == None:
+            return NoBackground(cfg)
+        elif cfg.background == 'arc':
+            return ArcBackground(cfg)
+        else:
+            raise ValueError('unknown background {0}'.format(cfg.background))
+
+class NoBackground(BackgroundBase):
+    def correct(self, image_data):
+        return image_data
+
+class ArcBackground(BackgroundBase):
+    def gather(self, scanno):
+        spec = specfilewrapper.Specfile(self.cfg.specfile)
+        self.a = ScanBase.detect_scan(self.cfg, spec, scanno)
+        
+        bkg = numpy.vstack(self.getmean(m) for m in range(a.length))
+        sort = numpy.sort(bkg, axis = 0)
+        clip = 0.2
+        clipped = sort[int(clip * bkg.shape[0]):int((1-clip) * bkg.shape[0]),:]
+        bkg = clipped.mean(axis = 0)
+        return {'params' : [a.delta], 'background': bkg}
+    
+    def fit(self, data):
+        # data is dictionary like this: data[scanno] = object_as_returned_from_gather()
+        return self.fitobject.fit(data)
+    
+    def correct(self, image_data):
+        # passthrough fitdata via cfg?
+        bkg = bkg.reshape(1, bkg.shape[0]).repeat(self.cfg.ymask.shape[0], axis=0)
+        return image_data - self.cfg.fitdata.params # ...
+    
+    def getmean(self,n):
+        data = self.a.getCorrectedData(n)
+        roi = a.apply_roi(data)
+        return roi.mean(axis = 0)
+
+class FitBase(object):
+    def __init__(self, cfg):
+        self.cfg = cfg
+    
+    @classmethod
+    def fromcfg(cls, cfg):
+        if cfg.fitfunction == None:
+            return NoFit(cfg)
+        elif cfg.fitfunction == 'scurve':
+            return SCurve(cfg)
+        elif cfg.fitfunction == '2dscurve':
+            return TwoDscurve(cfg)
+        else:
+            raise ValueError('unknown fitfunction {0}'.format(cfg.fitfunction))
+    
+    def simplefit(self, func, x, y, guess):
+        args, varargs, varkw, defaults = inspect.getargspec(func)
+        paramnames = args[1]
+        return nonlinfit(lambda p: y-func(x,p), guess, paramnames)
+
+    def nonlinfit(self, func, guess, paramnames=None):
+        result = scipy.optimize.leastsq(func, guess, full_output=True, maxfev=3000,epsfcn=0.1)
+        msg = re.sub('\s{2,}', ' ', result[3].strip())
+        if result[4] not in (1,2,3,4):
+            raise ValueError("no solution found (%d): %s" % (result[4], msg))
+        
+        params = result[0]
+        errdata = result[2]['fvec']
+        if result[1] is None:
+            variance = numpy.zeros(len(params))
+        else:
+            variance = numpy.diagonal(result[1] * (errdata**2).sum() / (len(errdata) - len(params)))
+        
+        if not paramnames:
+            paramnames = [str(i+1) for i in range(len(guess))]
+        summary = '\n'.join('%s: %.4e +/- %.4e' % (n, p,v) for (n, p,v) in zip(paramnames, params, variance))
+        return params, variance, msg, summary
+
+class NoFit(FitBase):
+    def fit(self,data):
+        return data
+
+class SCurve(FitBase)
+def fit(self,data):
+    params = {}
+    for n in data.keys()
+        params[n] = self.fitscurve(range(data[n]['background'].shape[0]),data[n]['background'])[0]
+    return params
+
+    @staticmethod
+    def scurve(x,(x0, slope , height , offset)):
+        return height * scipy.special.erf(slope * (x - x0)) + offset
+
+    def fitscurve(self, xdata,ydata):
+        height = (numpy.max(ydata) - numpy.min(ydata))/2.
+        offset = numpy.min(ydata) + height
+        sign = (ydata[-1] - ydata[0]) / (xdata[-1] - xdata[0]) > 0
+        if sign:
+            x0 = int((xdata[numpy.amin(numpy.where(ydata>offset))] + xdata[numpy.amax(numpy.where(ydata<offset))])/2)
+        else:
+            x0 = int((xdata[numpy.amax(numpy.where(ydata>offset))] + xdata[numpy.amin(numpy.where(ydata<offset))])/2)
+        try:
+            slope = (ydata[x0+5] - ydata[x0-5]) / (xdata[x0+5] - xdata[x0-5]) * numpy.sqrt(numpy.pi) / (2 * height)
+        except:
+            print 'x0 on edge'
+            slope = 0.001
+        print x0, slope , height , offset
+        params, variance, msg, summary = simplefit(self.scurve, xdata, ydata, (x0, slope , height , offset))
+    return params, summary
+
+class TwoDscurve(SCurve):
+    def fit(self,data):
+        params = {}
+        stack = numpy.vstack(data[n]['background'] for n in data.keys())
+        x = numpy.arange(stack.shape[0])
+        y = numpy.hstack(data[n]['params'][0] for n in data.keys())
+        fitparams = self.fitTwoDscurve((x,y),stack)[0]
+        params = {}
+        for (n,m) in  zip(y,data.keys())
+            params[m] = [self.cube(y,params[:4])]
+            params[m].extend(fitparams[4:])
+        return params
+            
+    def fitTwoDscurve(self, (x,y),zdata):
+        parameters = numpy.ma.zeros((x.shape[0],4))
+        parameters.mask = numpy.zeros_like(parameters.data.shape)
+        for n in range(x.shape[0]):
+            try:
+                params, summary = self.fitscurve(y,zdata[n,:])
+                parameters[n,:] = params
+            except:
+                parameters.mask[n,:] = True
+        
+        slope,height,offset =  numpy.median(parameters[:,1:],axis = 0)
+        slope = 0.1 * slope
+        x0 = numpy.ma.masked_outside(parameters[:,0],-5 * numpy.median(parameters[:,0]),5 * numpy.median(parameters[:,0]))
+        a,b,c,d = self.cubefit(x,x0)
+        
+        params, variance, msg, summary = simplefit(self.TwoDscurve, (x,y), zdata.flatten(), (a ,b ,c,d,slope,height,offset))
+        return params, summary
+
+    def cubefit(self, xdata,ydata):
+        guess= (1,1,1,1)
+        params, variance, msg, summary = simplefit(self.cube, xdata, ydata, guess)
+        return params
+
+    @staticmethod
+    def cube(x,(a,b,c,d)):
+        return a * x**3 + b * x**2 + c * x + d
+
+    def TwoDscurve(self, (x,y),(a ,b ,c,d,slope,height,offset)):
+        parameters = numpy.zeros((x.shape[0],4))
+        x0 = a * x**3 + b * x**2 + c * x + d
+        parameters[:,0] = x0
+        parameters[:,1] = slope
+        parameters[:,2] = height
+        parameters[:,3] = offset
+        fit = numpy.vstack(self.scurve(y,parameters[n,:])for n in range(x.shape[0]))
+        return fit.flatten()
+
 
 class ScanBase(object):
     def __init__(self, cfg, spec, scannumber, scan=None):
@@ -308,8 +455,11 @@ class ScanBase(object):
         roi = data[self.cfg.ymask, :]
         return roi[:, self.cfg.xmask]
 
+    def getCorrectedData(self,n):
+        return self.GetData(n)/(self.mon[n]*self.transm[n])
+    
     def getImdata(self,n):
-        data = self.GetData(n)/(self.mon[n]*self.transm[n])
+        data = self.getCorrectedData(n)
         app = self.cfg.app #angle per pixel (delta,gamma)
         centralpixel = self.cfg.centralpixel #(row,column)=(delta,gamma)
         gamma = -app[1]*(numpy.arange(data.shape[1])-centralpixel[1])+self.gamma[n]
@@ -320,25 +470,10 @@ class ScanBase(object):
         coordinates = self.projection.project(delta=delta, theta=self.theta[n], chi=self.chi, phi=self.phi, mu=self.mu, gamma=gamma)
         
         roi = self.apply_roi(data)
+        intensity = roi.flatten()
         #intensity = self.background.correct(roi, self.fitdata).flatten()
                 
         return coordinates, intensity
-
-    def getmean(self,n):
-        data = self.GetData(n)
-        roi = self.apply_roi(data)
-        return roi.mean(axis = 0)
-    
-    def getbkg(self):
-        bkg = numpy.vstack(self.getmean(m) for m in range(self.length))
-        sort = numpy.sort(bkg, axis = 0)
-        clip = 0.1
-        clipped = sort[int(clip * bkg.shape[0]):int((1-clip) * bkg.shape[0]),:]
-        abkg = clipped.mean(axis = 0)
-        return abkg
-
-    def setbkg(self,bkg):
-        self.bkg = bkg.reshape(1, bkg.shape[0]).repeat(self.cfg.ymask.shape[0], axis=0)
 
     @staticmethod
     def get_scan(spec, scannumber):
@@ -481,7 +616,7 @@ def makeplot(space, args):
 
 def mfinal(filename, first, last=None):
     base, ext = os.path.splitext(filename)
-    if last is None:
+    if last is None or if last == first:
         return ('{0}_{2}{1}').format(base,ext,first)
     else:
         return ('{0}_{2}-{3}{1}').format(base,ext,first,last)
@@ -679,7 +814,6 @@ if __name__ == "__main__":
             else:
                 makeplot(globalspace, args.plot)
 
-
     def plot(args):
         if args.wait:
             wait_for_file(args.outfile)
@@ -698,6 +832,7 @@ if __name__ == "__main__":
                 header[str(a.label)] = '{0} {1} {2}'.format(a.min,a.max,a.res)
             edf = EdfFile.EdfFile(args.savefile)
             edf.WriteImage(header,space.get_masked().filled(0),DataType="Float")
+            print 'saved at {0}'.format(args.savefile)
 
         if ext == '.txt':
             tmpfile = '{0}-{1:x}.tmp'.format(os.path.splitext(args.savefile)[0], random.randint(0, 2**32-1))
@@ -708,7 +843,7 @@ if __name__ == "__main__":
                 data = space.get_masked().filled(0).flatten()
                 for a in space.axes:
                     fp.write('{0}\t'.format(a.label))
-                fp.write('croif')
+                fp.write('intensity')
                 fp.write('\n')
                 for n in range(len(data)):
                     for m in range(grid.ndim-1):
@@ -719,7 +854,8 @@ if __name__ == "__main__":
                     fp.flush()
             finally:
                 fp.close()
-            os.rename(tmpfile, args.savefile)
+                print 'saved at {0}'.format(args.savefile)
+                os.rename(tmpfile, args.savefile)
 
     def test(args):
         spec = specfilewrapper.Specfile(cfg.specfile)
