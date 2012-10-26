@@ -40,10 +40,16 @@ def sum_onto(a, axis):
 class Axis(object):
     def __init__(self, min, max, res, label=None):
         self.res = float(res)
-        self.min = numpy.floor(min/res)*res
-        self.max = numpy.ceil(max/res)*res
+        if round(min / self.res) != round(min / self.res,6) or round(max / self.res) != round(max / self.res,6):
+            self.min = numpy.floor(float(min)/self.res)*self.res
+            self.max = numpy.ceil(float(max)/self.res)*self.res
+        else:
+            self.min = min
+            self.max = max
         self.label = label
-
+        print self.min,min
+        print self.max,max
+    
     def __len__(self):
         return int(round((self.max - self.min) / self.res)) + 1
 
@@ -151,7 +157,7 @@ class Space(object):
         slices = tuple(slice(min, max+1) for (min, max) in lims)
         self.photons = self.photons[slices].copy()
         self.contributions = self.contributions[slices].copy()
-
+    
     def process_image(self, coordinates, intensity):
         # note: coordinates must be tuple of arrays, not a 2D array
         if len(coordinates) != len(self.axes):
@@ -223,7 +229,7 @@ class HKLProjection(ProjectionBase):
             h = scan.datacol('Hcnt')
             k = scan.datacol('Kcnt')
             l = scan.datacol('Lcnt')
-        offset = 1 # TODO: estimate from detector size via self.cfg...
+        offset = 0.9 # TODO: estimate from detector size via self.cfg...
         return (h.min()-offset, h.max()+offset), (k.min()-offset, k.max()+offset), (l.min()-offset, l.max()+offset)
 
     # arrays: gamma, delta
@@ -254,10 +260,10 @@ class TwoThetaProjection(HKLProjection):
     def _get_labels(self):
         return 'TwoTheta'
 
+'''
 class BackgroundBase(object):
     def __init__(self, cfg):
         self.cfg = cfg
-        self.fitobject = FitBase.fromcfg(cfg)
     
     @classmethod
     def fromcfg(cls, cfg):
@@ -274,15 +280,7 @@ class NoBackground(BackgroundBase):
 
 class ArcBackground(BackgroundBase):
     def gather(self, scanno):
-        spec = specfilewrapper.Specfile(self.cfg.specfile)
-        self.a = ScanBase.detect_scan(self.cfg, spec, scanno)
-        
-        bkg = numpy.vstack(self.getmean(m) for m in range(a.length))
-        sort = numpy.sort(bkg, axis = 0)
-        clip = 0.2
-        clipped = sort[int(clip * bkg.shape[0]):int((1-clip) * bkg.shape[0]),:]
-        bkg = clipped.mean(axis = 0)
-        return {'params' : [a.delta], 'background': bkg}
+        return self
     
     def fit(self, data):
         # data is dictionary like this: data[scanno] = object_as_returned_from_gather()
@@ -293,11 +291,23 @@ class ArcBackground(BackgroundBase):
         bkg = bkg.reshape(1, bkg.shape[0]).repeat(self.cfg.ymask.shape[0], axis=0)
         return image_data - self.cfg.fitdata.params # ...
     
-    def getmean(self,n):
-        data = self.a.getCorrectedData(n)
+    @staticmethod
+    def getmean(a,n):
+        data = a.getCorrectedData(n)
         roi = a.apply_roi(data)
         return roi.mean(axis = 0)
 
+    def getData():
+        spec = specfilewrapper.Specfile(self.cfg.specfile)
+        a = ScanBase.detect_scan(self.cfg, spec, scanno)
+        bkg = numpy.vstack(self.getmean(a,m) for m in range(a.length))
+        sort = numpy.sort(bkg, axis = 0)
+        clip = 0.2
+        clipped = sort[int(clip * bkg.shape[0]):int((1-clip) * bkg.shape[0]),:]
+        bkg = clipped.mean(axis = 0)
+    
+    
+    
 class FitBase(object):
     def __init__(self, cfg):
         self.cfg = cfg
@@ -341,11 +351,11 @@ class NoFit(FitBase):
         return data
 
 class SCurve(FitBase)
-def fit(self,data):
-    params = {}
-    for n in data.keys()
-        params[n] = self.fitscurve(range(data[n]['background'].shape[0]),data[n]['background'])[0]
-    return params
+    def fit(self,data):
+        params = {}
+        for n in data.keys()
+            params[n] = self.fitscurve(range(data[n]['background'].shape[0]),data[n]['background'])[0]
+        return params
 
     @staticmethod
     def scurve(x,(x0, slope , height , offset)):
@@ -418,7 +428,7 @@ class TwoDscurve(SCurve):
         fit = numpy.vstack(self.scurve(y,parameters[n,:])for n in range(x.shape[0]))
         return fit.flatten()
 
-
+'''
 class ScanBase(object):
     def __init__(self, cfg, spec, scannumber, scan=None):
         self.cfg = cfg
@@ -616,7 +626,7 @@ def makeplot(space, args):
 
 def mfinal(filename, first, last=None):
     base, ext = os.path.splitext(filename)
-    if last is None or if last == first:
+    if last is None or last == first:
         return ('{0}_{2}{1}').format(base,ext,first)
     else:
         return ('{0}_{2}-{3}{1}').format(base,ext,first,last)
