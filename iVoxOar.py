@@ -47,8 +47,6 @@ class Axis(object):
             self.min = min
             self.max = max
         self.label = label
-        print self.min,min
-        print self.max,max
     
     def __len__(self):
         return int(round((self.max - self.min) / self.res)) + 1
@@ -222,14 +220,22 @@ class HKLProjection(ProjectionBase):
     def get_bounds(self, scan):
         scantype = scan.header('S')[0].split()[2]
         if scantype.startswith('zap'):
-            h = scan.datacol('zap_Hcnt')
-            k = scan.datacol('zap_Kcnt')
-            l = scan.datacol('zap_Lcnt')
+            delta, theta, chi, phi, mu, gamma = numpy.array(scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
+            thstart = float(scan.header('S')[0].split()[4])
+            thend = float(scan.header('S')[0].split()[5])
+            thsteps = float(scan.header('S')[0].split()[6])
+            thetarange = numpy.linspace(thstart,thend,thsteps)
+            
+            R = numpy.hstack(SixCircle.getHKL(self.wavelength, self.UB, delta = delta, theta = n, chi = chi , phi = phi, mu = mu, gamma = gamma)for n in thetarange)
+            
+            h = R[0,:]
+            k = R[1,:]
+            l = R[2,:]
         else:
             h = scan.datacol('Hcnt')
             k = scan.datacol('Kcnt')
             l = scan.datacol('Lcnt')
-        offset = 0.9 # TODO: estimate from detector size via self.cfg...
+        offset = 0.5 # TODO: estimate from detector size via self.cfg...
         return (h.min()-offset, h.max()+offset), (k.min()-offset, k.max()+offset), (l.min()-offset, l.max()+offset)
 
     # arrays: gamma, delta
@@ -259,6 +265,7 @@ class TwoThetaProjection(HKLProjection):
 
     def _get_labels(self):
         return 'TwoTheta'
+
 
 '''
 class BackgroundBase(object):
@@ -512,11 +519,12 @@ class ZapScan(ScanBase):
         self.imagepattern = os.path.join(cfg.imagefolder, folder,'*{0}_mpx*'.format(scanname))
         self.scannumber = int(scanheaderC[2].split(' ')[-1])#is different from scanno should be changed in spec!
         
-        #UB matrix will be installed in new versions of the zapline, until then i keep this here.
-        if scanno < 405:
-            self.projection.UB = numpy.array([2.628602629,0.2730763688,-0.001032444885,1.202301748,2.877587966,-0.001081570571,0.002600281749,0.002198663001,1.54377945])
-        else:
-            self.projection.UB = numpy.array([2.624469378,0.2632191474,-0.001028869827,1.211297551,2.878506363,-0.001084906521,0.002600359765,0.002198324744,1.54377945])
+        #UB matrix will be installed in new versions of the zapline, it has to come from the configfile
+        if 'UB' not in cfg.__dict__.keys():
+            raise getconfig.ConfigError('UB')
+        
+        self.projection.UB = numpy.array(cfg.UB)
+        
         self.projection.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
 
         delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
@@ -537,6 +545,7 @@ class ZapScan(ScanBase):
     def GetData(self,n):
         return self.edf.GetData(n)
         
+
 
 class ClassicScan(ScanBase):
     def __init__(self, cfg, spec, scanno, scan=None):
@@ -565,6 +574,42 @@ class ClassicScan(ScanBase):
         return edf.GetData(0)
 
 
+class OldScan(ScanBase):
+    def __init__(self, cfg, spec, scanno, scan=None):
+        super(ClassicScan, self).__init__(cfg, spec, scanno, scan)
+                
+        self.projection.UB = numpy.array(self.scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
+        self.projection.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
+        
+        delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
+        self.theta = self.scan.datacol('thcnt')
+        self.gamma = self.scan.datacol('gamcnt')
+        self.delta = self.scan.datacol('delcnt')
+        
+        self.mon = self.scan.datacol('mon')
+        self.transm = self.scan.datacol('transm')
+        self.length = numpy.alen(self.theta)
+    
+    def GetData(self,n):
+        edf = EdfFile.EdfFile(self.filelist[n])
+        return edf.GetData(0)
+
+
+class timescan(object):
+    def __init__(self, cfg , scanno):
+        self.spec = specfilewrapper.Specfile(cfg.specfile)
+        self.cfg = cfg
+        self.scanno = scanno
+        a = ScanBase.detect_scan(self.cfg, self.spec, self.scanno)
+        a.initImdata()
+
+    def getmesh(self, imno):
+        mesh = a.get_space()
+        coordinates , intensity = a.getImdata(imno)
+        mesh.process_image(coordinates, intensity)
+        mesh.trim()
+        return mesh
+        
 def process(scanno):
     print scanno
     
@@ -575,7 +620,6 @@ def process(scanno):
         coordinates , intensity = a.getImdata(m)
         mesh.process_image(coordinates, intensity)
     return mesh
-
 
 def makeplot(space, args):
     import matplotlib.pyplot as pyplot
@@ -728,10 +772,10 @@ if __name__ == "__main__":
         prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1)) 
         jobs = []
         
-        if firstscan == lastscan:
-            jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, args.firstscan), str(scanno)))
+        if args.firstscan == args.lastscan:
+            jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, args.firstscan), str(args.firstscan)))
             print 'submitted 1 job, waiting...'
-            oarwait(jobs)
+            #oarwait(jobs)
             print 'done'
             return
 
