@@ -22,7 +22,7 @@ from PyMca import specfilewrapper
 import EdfFile
 
 import getconfig
-import Fitscurve
+#import Fitscurves
 
 import inspect
 import re
@@ -69,7 +69,7 @@ class Axis(object):
             return NotImplemented
         if not self.is_compatible(other):
             raise ValueError('cannot unite axes with different resolution/label')
-        return self.__class__(min(self.min, other.min), max(self.max, other.max), res)
+        return self.__class__(min(self.min, other.min), max(self.max, other.max), self.res, self.label)
 
     def __equal__(self, other):
         if not isinstance(other, Axis):
@@ -125,7 +125,7 @@ class Space(object):
     def __add__(self, other):
         if not isinstance(other, Space):
             return NotImplemented
-        if not len(self.axes) != len(other.axes) or not all(a.is_compatible(b) for (a, b) in zip(self.axes, other.axes)):
+        if not len(self.axes) == len(other.axes) or not all(a.is_compatible(b) for (a, b) in zip(self.axes, other.axes)):
             raise ValueError('cannot add spaces with different dimensionality or resolution')
 
         new = Space([a | b for (a, b) in zip(self.axes, other.axes)])
@@ -140,9 +140,9 @@ class Space(object):
             raise ValueError('cannot add spaces with different dimensionality or resolution')
 
         if not all(other_ax in self_ax for (self_ax, other_ax) in zip(self.axes, other.axes)):
-            return self.__add__(self, other)
+            return self.__add__(other)
 
-        index = tuple(slice(self_ax.get_index(other_ax.min), len(other_ax)+1) for (self_ax, other_ax) in zip(self.axes, other.axes))
+        index = tuple(slice(self_ax.get_index(other_ax.min), self_ax.get_index(other_ax.min) + len(other_ax)) for (self_ax, other_ax) in zip(self.axes, other.axes))
         self.photons[index] += other.photons
         self.contributions[index] += other.contributions
         return self
@@ -625,7 +625,7 @@ def makeplot(space, args):
     import matplotlib.pyplot as pyplot
     import matplotlib.colors
     
-    clipping = 0.02
+    clipping = float(args.c)
     mesh = space.get_masked()
     remaining = [0,1,2]
     projected = numpy.argmin(mesh.shape)
@@ -643,9 +643,11 @@ def makeplot(space, args):
     ymax = space.axes[remaining[1]].max
     
     pyplot.figure(figsize=(12,9))
-
-    pyplot.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
-    
+    if args.c:
+	pyplot.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
+    else:
+	pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto')
+	    
     #pyplot.imshow(data.transpose())
     
     #xgrid, ygrid = numpy.meshgrid(numpy.arange(data.shape[0]+1), numpy.arange(data.shape[1]+1))
@@ -974,7 +976,10 @@ if __name__ == "__main__":
     parser_plot = subparsers.add_parser('plot')
     parser_plot.add_argument('outfile')
     parser_plot.add_argument('-s',action='store_true')
+    parser_plot.add_argument('-c',default = 0.00)
     parser_plot.add_argument('--savefile')
+
+    
     parser_plot.set_defaults(func=plot)
 
     parser_test = subparsers.add_parser('test')
