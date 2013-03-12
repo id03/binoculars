@@ -528,9 +528,15 @@ class ZapScan(ScanBase):
         self.projection.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
 
         delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
-                
+        
+    
         self.theta = self.scan.datacol('th')        
         self.length = numpy.alen(self.theta)
+                
+        #correction for difference between back and forth in th motor
+        correction = (self.theta[1] - self.theta[0]) / (self.length * 1.0) / 2
+        self.theta -= correction
+                
         self.gamma = gamma.repeat(self.length)
         self.delta = delta.repeat(self.length)
 
@@ -731,7 +737,7 @@ if __name__ == "__main__":
 
 
     def oarsub(*args):
-        scriptname = './blisspython /data/id03/inhouse/2012/Sep12/si2515/iVoxOar/iVoxOar.py '
+        scriptname = './blisspython /users/onderwaa/iVoxOar/iVoxOar.py '
         command = '{0} {1}'.format(scriptname, ' '.join(args))
         ret, output = run('oarsub', command)
         if ret == 0:
