@@ -218,25 +218,16 @@ class ProjectionBase(object):
 
 class HKLProjection(ProjectionBase):
     def get_bounds(self, scan):
-        scantype = scan.header('S')[0].split()[2]
-        if scantype.startswith('zap'):
-            delta, theta, chi, phi, mu, gamma = numpy.array(scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
-            thstart = float(scan.header('S')[0].split()[4])
-            thend = float(scan.header('S')[0].split()[5])
-            thsteps = float(scan.header('S')[0].split()[6])
-            thetarange = numpy.linspace(thstart,thend,thsteps)
-            
-            R = numpy.hstack(SixCircle.getHKL(self.wavelength, self.UB, delta = delta, theta = n, chi = chi , phi = phi, mu = mu, gamma = gamma)for n in thetarange)
-            
-            h = R[0,:]
-            k = R[1,:]
-            l = R[2,:]
-        else:
-            h = scan.datacol('Hcnt')
-            k = scan.datacol('Kcnt')
-            l = scan.datacol('Lcnt')
-        offset = 0.5 # TODO: estimate from detector size via self.cfg...
-        return (h.min()-offset, h.max()+offset), (k.min()-offset, k.max()+offset), (l.min()-offset, l.max()+offset)
+        h = []
+        k = []
+        l = []
+        for n in range(self.length):
+            coordinates , intensity = self.getImdata(n)
+            h.extend([coordinates[0].min(),coordinates[0].max()])
+            k.extend([coordinates[1].min(),coordinates[1].max()])
+            l.extend([coordinates[2].min(),coordinates[2].max()])
+        offset = 0.0001
+        return (min(h) - offset, max(h) + offset), (min(k)- offset, max(k) + offset), (min(l)- offset, max(l) + offset)
 
     # arrays: gamma, delta
     # scalars: theta, mu, chi, phi
@@ -261,198 +252,32 @@ class TwoThetaProjection(HKLProjection):
         return self._hkl_to_tth(h, k, l)
 
     def _hkl_to_tth(self, h, k, l):
-        return 2 * numpy.arcsin(self.wavelength * sqrt(h**2+k**2+l**2) / 4 / numpy.pi)
+        return 2 * numpy.arcsin(self.wavelength * numpy.sqrt(h**2+k**2+l**2) / 4 / numpy.pi)
 
     def _get_labels(self):
         return 'TwoTheta'
 
 
-'''
-class BackgroundBase(object):
-    def __init__(self, cfg):
-        self.cfg = cfg
-    
-    @classmethod
-    def fromcfg(cls, cfg):
-        if cfg.background == None:
-            return NoBackground(cfg)
-        elif cfg.background == 'arc':
-            return ArcBackground(cfg)
-        else:
-            raise ValueError('unknown background {0}'.format(cfg.background))
 
-class NoBackground(BackgroundBase):
-    def correct(self, image_data):
-        return image_data
-
-class ArcBackground(BackgroundBase):
-    def gather(self, scanno):
-        return self
-    
-    def fit(self, data):
-        # data is dictionary like this: data[scanno] = object_as_returned_from_gather()
-        return self.fitobject.fit(data)
-    
-    def correct(self, image_data):
-        # passthrough fitdata via cfg?
-        bkg = bkg.reshape(1, bkg.shape[0]).repeat(self.cfg.ymask.shape[0], axis=0)
-        return image_data - self.cfg.fitdata.params # ...
-    
-    @staticmethod
-    def getmean(a,n):
-        data = a.getCorrectedData(n)
-        roi = a.apply_roi(data)
-        return roi.mean(axis = 0)
-
-    def getData():
-        spec = specfilewrapper.Specfile(self.cfg.specfile)
-        a = ScanBase.detect_scan(self.cfg, spec, scanno)
-        bkg = numpy.vstack(self.getmean(a,m) for m in range(a.length))
-        sort = numpy.sort(bkg, axis = 0)
-        clip = 0.2
-        clipped = sort[int(clip * bkg.shape[0]):int((1-clip) * bkg.shape[0]),:]
-        bkg = clipped.mean(axis = 0)
-    
-    
-    
-class FitBase(object):
-    def __init__(self, cfg):
-        self.cfg = cfg
-    
-    @classmethod
-    def fromcfg(cls, cfg):
-        if cfg.fitfunction == None:
-            return NoFit(cfg)
-        elif cfg.fitfunction == 'scurve':
-            return SCurve(cfg)
-        elif cfg.fitfunction == '2dscurve':
-            return TwoDscurve(cfg)
-        else:
-            raise ValueError('unknown fitfunction {0}'.format(cfg.fitfunction))
-    
-    def simplefit(self, func, x, y, guess):
-        args, varargs, varkw, defaults = inspect.getargspec(func)
-        paramnames = args[1]
-        return nonlinfit(lambda p: y-func(x,p), guess, paramnames)
-
-    def nonlinfit(self, func, guess, paramnames=None):
-        result = scipy.optimize.leastsq(func, guess, full_output=True, maxfev=3000,epsfcn=0.1)
-        msg = re.sub('\s{2,}', ' ', result[3].strip())
-        if result[4] not in (1,2,3,4):
-            raise ValueError("no solution found (%d): %s" % (result[4], msg))
-        
-        params = result[0]
-        errdata = result[2]['fvec']
-        if result[1] is None:
-            variance = numpy.zeros(len(params))
-        else:
-            variance = numpy.diagonal(result[1] * (errdata**2).sum() / (len(errdata) - len(params)))
-        
-        if not paramnames:
-            paramnames = [str(i+1) for i in range(len(guess))]
-        summary = '\n'.join('%s: %.4e +/- %.4e' % (n, p,v) for (n, p,v) in zip(paramnames, params, variance))
-        return params, variance, msg, summary
-
-class NoFit(FitBase):
-    def fit(self,data):
-        return data
-
-class SCurve(FitBase)
-    def fit(self,data):
-        params = {}
-        for n in data.keys()
-            params[n] = self.fitscurve(range(data[n]['background'].shape[0]),data[n]['background'])[0]
-        return params
-
-    @staticmethod
-    def scurve(x,(x0, slope , height , offset)):
-        return height * scipy.special.erf(slope * (x - x0)) + offset
-
-    def fitscurve(self, xdata,ydata):
-        height = (numpy.max(ydata) - numpy.min(ydata))/2.
-        offset = numpy.min(ydata) + height
-        sign = (ydata[-1] - ydata[0]) / (xdata[-1] - xdata[0]) > 0
-        if sign:
-            x0 = int((xdata[numpy.amin(numpy.where(ydata>offset))] + xdata[numpy.amax(numpy.where(ydata<offset))])/2)
-        else:
-            x0 = int((xdata[numpy.amax(numpy.where(ydata>offset))] + xdata[numpy.amin(numpy.where(ydata<offset))])/2)
-        try:
-            slope = (ydata[x0+5] - ydata[x0-5]) / (xdata[x0+5] - xdata[x0-5]) * numpy.sqrt(numpy.pi) / (2 * height)
-        except:
-            print 'x0 on edge'
-            slope = 0.001
-        print x0, slope , height , offset
-        params, variance, msg, summary = simplefit(self.scurve, xdata, ydata, (x0, slope , height , offset))
-    return params, summary
-
-class TwoDscurve(SCurve):
-    def fit(self,data):
-        params = {}
-        stack = numpy.vstack(data[n]['background'] for n in data.keys())
-        x = numpy.arange(stack.shape[0])
-        y = numpy.hstack(data[n]['params'][0] for n in data.keys())
-        fitparams = self.fitTwoDscurve((x,y),stack)[0]
-        params = {}
-        for (n,m) in  zip(y,data.keys())
-            params[m] = [self.cube(y,params[:4])]
-            params[m].extend(fitparams[4:])
-        return params
-            
-    def fitTwoDscurve(self, (x,y),zdata):
-        parameters = numpy.ma.zeros((x.shape[0],4))
-        parameters.mask = numpy.zeros_like(parameters.data.shape)
-        for n in range(x.shape[0]):
-            try:
-                params, summary = self.fitscurve(y,zdata[n,:])
-                parameters[n,:] = params
-            except:
-                parameters.mask[n,:] = True
-        
-        slope,height,offset =  numpy.median(parameters[:,1:],axis = 0)
-        slope = 0.1 * slope
-        x0 = numpy.ma.masked_outside(parameters[:,0],-5 * numpy.median(parameters[:,0]),5 * numpy.median(parameters[:,0]))
-        a,b,c,d = self.cubefit(x,x0)
-        
-        params, variance, msg, summary = simplefit(self.TwoDscurve, (x,y), zdata.flatten(), (a ,b ,c,d,slope,height,offset))
-        return params, summary
-
-    def cubefit(self, xdata,ydata):
-        guess= (1,1,1,1)
-        params, variance, msg, summary = simplefit(self.cube, xdata, ydata, guess)
-        return params
-
-    @staticmethod
-    def cube(x,(a,b,c,d)):
-        return a * x**3 + b * x**2 + c * x + d
-
-    def TwoDscurve(self, (x,y),(a ,b ,c,d,slope,height,offset)):
-        parameters = numpy.zeros((x.shape[0],4))
-        x0 = a * x**3 + b * x**2 + c * x + d
-        parameters[:,0] = x0
-        parameters[:,1] = slope
-        parameters[:,2] = height
-        parameters[:,3] = offset
-        fit = numpy.vstack(self.scurve(y,parameters[n,:])for n in range(x.shape[0]))
-        return fit.flatten()
-
-'''
 class ScanBase(object):
     def __init__(self, cfg, spec, scannumber, scan=None):
         self.cfg = cfg
         self.projection = ProjectionBase.fromcfg(cfg)
         #self.background = BackgroundBase.fromcfg(cfg)
-
+   
         self.scannumber = scannumber
         if scan:
             self.scan = scan
         else:
             self.scan = self.get_scan(scannumber)
-
+                
     def initImdata(self):
         self.buildfilelist()
     
     def buildfilelist(self):
         allfiles =  glob.glob(self.imagepattern)
+        if len(allfiles) == 0:
+            raise ValueError('Empty filelist, check if the specified imagefolder corresponds to the location of the images, looking for images in: {0}'.format(self.imagepattern))
         filelist = list()
         imagedict = {}
         for file in allfiles:
@@ -462,11 +287,13 @@ class ScanBase(object):
             if not scanno in imagedict:
                 imagedict[scanno] = {}
             imagedict[scanno][pointno] = file
-        filedict = imagedict[self.scannumber]
+        try:
+            filedict = imagedict[self.scannumber]
+        except:
+            raise ValueError('Scannumber {0} not in this folder. Folder contains scannumbers {1}-{2}'.format(self.scannumber, min(imagedict.keys()), max(imagedict.keys())))
         points = sorted(filedict.iterkeys())
         self.filelist = [filedict[i] for i in points]
-        if len(self.filelist) == 0:
-            raise ValueError('Empty filelist, check if the specified imagefolder corresponds to the location of the images')
+
     
     def apply_roi(self, data):
         roi = data[self.cfg.ymask, :]
@@ -492,6 +319,7 @@ class ScanBase(object):
                 
         return coordinates, intensity
 
+    
     @staticmethod
     def get_scan(spec, scannumber):
         return spec.select('{0}.1'.format(scannumber))
@@ -500,12 +328,22 @@ class ScanBase(object):
     def detect_scan(cls, cfg, spec, scanno):
         scan = cls.get_scan(spec, scanno)
         scantype = scan.header('S')[0].split()[2]
-        if scantype.startswith('zap'):
-            return ZapScan(cfg, spec, scanno, scan)
+        if cfg.hutch == 'EH1':
+            if scantype.startswith('zap'):
+                return ZapScan(cfg, spec, scanno, scan)
+            else:
+                return ClassicScan(cfg, spec, scanno, scan)
+        elif cfg.hutch =='EH2':
+            if scantype.startswith('zap'):
+                return EH2ZapScan(cfg, spec, scanno, scan)
+            else:
+                return EH2ClassicScan(cfg, spec, scanno, scan)
         else:
-            return ClassicScan(cfg, spec, scanno, scan)
+            raise ValueError('Hutch type not recognized: {0}'.format(cfg.hutch))
 
     def get_space(self):
+        self.projection.getImdata = self.getImdata
+        self.projection.length = self.length
         return self.projection.space_from_bounds(self.scan)
 
 
@@ -551,48 +389,76 @@ class ZapScan(ScanBase):
     def GetData(self,n):
         return self.edf.GetData(n)
         
-
-
 class ClassicScan(ScanBase):
     def __init__(self, cfg, spec, scanno, scan=None):
         super(ClassicScan, self).__init__(cfg, spec, scanno, scan)
 
-        UCCD = os.path.split(self.scan.header('UCCD')[0].split(' ')[-1])
-        folder = os.path.split(UCCD[0])[-1]
-        scanname = UCCD[-1].split('_')[0]
-        self.imagepattern = os.path.join(cfg.imagefolder, folder, '*{0}*'.format(scanname))
-        
-
-        self.projection.UB = numpy.array(self.scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
-        self.projection.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
-
-        delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
-        self.theta = self.scan.datacol('thcnt')
-        self.gamma = self.scan.datacol('gamcnt')
-        self.delta = self.scan.datacol('delcnt')
-
-        self.mon = self.scan.datacol('mon')
-        self.transm = self.scan.datacol('transm')
-        self.length = numpy.alen(self.theta)
-
-    def GetData(self,n):
-        edf = EdfFile.EdfFile(self.filelist[n])
-        return edf.GetData(0)
-
-
-class OldScan(ScanBase):
-    def __init__(self, cfg, spec, scanno, scan=None):
-        super(ClassicScan, self).__init__(cfg, spec, scanno, scan)
+        try:
+            UCCD = os.path.split(self.scan.header('UCCD')[0].split(' ')[-1])
+            folder = os.path.split(UCCD[0])[-1]
+            scanname = UCCD[-1].split('_')[0]
+            self.imagepattern = os.path.join(cfg.imagefolder, folder, '*{0}*'.format(scanname))
+        except:
+            print 'Warning: No UCCD tag was found. Searching folder {0} for all images'.format(cfg.imagefolder)
+            self.imagepattern = '*/*'
                 
         self.projection.UB = numpy.array(self.scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
         self.projection.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
+
+        delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
+        self.theta = self.scan.datacol('thcnt')
+        self.gamma = self.scan.datacol('gamcnt')
+        self.delta = self.scan.datacol('delcnt')
+
+        self.mon = self.scan.datacol('mon')
+        self.transm = self.scan.datacol('transm')
+        self.length = numpy.alen(self.theta)
+
+    def GetData(self,n):
+        edf = EdfFile.EdfFile(self.filelist[n])
+        return edf.GetData(0)
+
+class EH2ScanBase(ScanBase):
+    def getImdata(self,n):
+        sdd = self.cfg.sdd / numpy.cos(self.gamma[n] *numpy.pi /180)
+        areacorrection = (self.cfg.sdd / sdd)**2
+        data = self.getCorrectedData(n) * areacorrection
+        pixelsize = self.cfg.sdd * numpy.tan(self.cfg.app[0] *numpy.pi /180 )
+        app = numpy.arctan(pixelsize/sdd) * 180 / numpy.pi
+        centralpixel = self.cfg.centralpixel #(row,column)=(delta,gamma)
+        gamma = app*(numpy.arange(data.shape[1])-centralpixel[1])+self.gamma[n]
+        delta = app*(numpy.arange(data.shape[0])-centralpixel[0])+self.delta[n]
+        gamma = gamma[self.cfg.xmask]
+        delta = delta[self.cfg.ymask]
+        coordinates = self.projection.project(delta=delta, theta=self.theta[n], chi=self.chi, phi=self.phi, mu=self.mu, gamma=gamma)
+        roi = self.apply_roi(data)
+        intensity = numpy.rot90(roi).flatten()
+        #intensity = self.background.correct(roi, self.fitdata).flatten()
+        return coordinates, intensity
+
+
+class EH2ClassicScan(EH2ScanBase):
+    def __init__(self, cfg, spec, scanno, scan=None):
+        super(EH2ClassicScan, self).__init__(cfg, spec, scanno, scan)
+        
+        try:
+            UCCD = os.path.split(self.scan.header('UCCD')[0].split(' ')[-1])
+            folder = os.path.split(UCCD[0])[-1]
+            scanname = UCCD[-1].split('_')[0]
+            self.imagepattern = os.path.join(cfg.imagefolder, folder, '*{0}*'.format(scanname))
+        except:
+            print 'Warning: No UCCD tag was found. Searching folder {0} for all images'.format(cfg.imagefolder)
+            self.imagepattern = '*/*.edf*'
+        
+        self.projection.UB = numpy.array(self.scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
+        self.projection.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
         
         delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
         self.theta = self.scan.datacol('thcnt')
         self.gamma = self.scan.datacol('gamcnt')
         self.delta = self.scan.datacol('delcnt')
         
-        self.mon = self.scan.datacol('mon')
+        self.mon = self.scan.datacol('Monitor')
         self.transm = self.scan.datacol('transm')
         self.length = numpy.alen(self.theta)
     
@@ -600,32 +466,68 @@ class OldScan(ScanBase):
         edf = EdfFile.EdfFile(self.filelist[n])
         return edf.GetData(0)
 
-
-class timescan(object):
-    def __init__(self, cfg , scanno):
-        self.spec = specfilewrapper.Specfile(cfg.specfile)
-        self.cfg = cfg
-        self.scanno = scanno
-        a = ScanBase.detect_scan(self.cfg, self.spec, self.scanno)
-        a.initImdata()
-
-    def getmesh(self, imno):
-        mesh = a.get_space()
-        coordinates , intensity = a.getImdata(imno)
-        mesh.process_image(coordinates, intensity)
-        mesh.trim()
-        return mesh
+class EH2ZapScan(EH2ScanBase):
+    def __init__(self, cfg, spec, scanno, scan=None):
+        super(EH2ZapScan, self).__init__(cfg, spec, scanno, scan)
         
+        scanheaderC = self.scan.header('C')
+        folder = os.path.split(scanheaderC[0].split(' ')[-1])[-1]
+        scanname = scanheaderC[1].split(' ')[-1].split('_')[0]
+        self.imagepattern = os.path.join(cfg.imagefolder, folder,'*{0}*_mpx*'.format(scanname))
+        self.scannumber = int(scanheaderC[2].split(' ')[-1])#is different from scanno should be changed in spec!
+        
+        #UB matrix will be installed in new versions of the zapline, it has to come from the configfile
+        if 'UB' not in cfg.__dict__.keys():
+            raise getconfig.ConfigError('UB')
+        
+        self.projection.UB = numpy.array(cfg.UB)
+        
+        self.projection.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
+        
+        delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
+        
+        
+        self.theta = self.scan.datacol('th')
+        self.length = numpy.alen(self.theta)
+    
+        #correction for difference between back and forth in th motor
+        correction = (self.theta[1] - self.theta[0]) / (self.length * 1.0) / 2
+        self.theta -= correction
+        
+        self.gamma = gamma.repeat(self.length)
+        self.delta = delta.repeat(self.length)
+        
+        self.mon = self.scan.datacol('zap_mon')
+        self.transm = self.scan.datacol('zap_transm')
+        self.transm[-1]=self.transm[-2] #bug in specfile
+    
+    def initImdata(self):
+        super(EH2ZapScan, self).initImdata()
+        self.edf = EdfFile.EdfFile(self.filelist[0])
+    
+    def GetData(self,n):
+        return self.edf.GetData(n)
+
 def process(scanno):
     print scanno
-    
     a = ScanBase.detect_scan(cfg, spec, scanno)
-    mesh = a.get_space()
     a.initImdata()
+    mesh = a.get_space()
     for m in range(a.length):
         coordinates , intensity = a.getImdata(m)
         mesh.process_image(coordinates, intensity)
     return mesh
+
+def checkscan(scanno):
+    try:
+        spec = specfilewrapper.Specfile(cfg.specfile)
+        a = ScanBase.detect_scan(cfg, spec, scanno)
+        a.initImdata()
+    except Exception as e:
+        print 'Unable to load scan {0}\n'.format(scanno)
+        print e.message
+        return False
+    return True
 
 def makeplot(space, args):
     import matplotlib.pyplot as pyplot
@@ -761,32 +663,58 @@ if __name__ == "__main__":
         else:
             return 'Unknown'
 
-
     def oarwait(jobs):
-        i = 0
+        linelen = 0
         while jobs:
-            status = oarstat(jobs[i])
-            if status == 'Running' or status == 'Waiting' or status == 'Unknown':
+            time.sleep(30)
+            i = 0
+            R = 0
+            W = 0
+            U = 0
+            while i < len(jobs):
+                status = oarstat(jobs[i])
+                if status == 'Running':
+                    R += 1
+                elif status == 'Waiting':
+                    W += 1
+                elif status == 'Unknown':
+                    U += 1
+                else: # assume status == 'Finishing' or 'Terminated' but don't wait on something unknown
+                    del jobs[i]
+                    i -= 1 #otherwise it skips a job
                 i += 1
-                time.sleep(5)
-            else: # assume status == 'Finishing' or 'Terminated' but don't wait on something unknown
-                del jobs[i]
-                print '{0} {1} jobs to go'.format(time.ctime(), len(jobs))
-            if i == len(jobs):
-                i = 0
-
-
+            line = '{0}: {1} jobs to go. {2} waiting, {3} running, {4} unknown.'.format(time.ctime(),len(jobs),W,R,U)
+            sys.stdout.write('\r{0}\r{1}'.format(' '*linelen, line))
+            linelen = len(line)
+            sys.stdout.flush()
+            
     def cluster(args):
-        prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1)) 
+        prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1))
         jobs = []
+        
+        
+        if args.t:
+            print 'checking scans'
+            for scanno in range(args.firstscan, args.lastscan+1):
+                if not checkscan(scanno):
+                    print 'exiting...'
+                    return
         
         if args.firstscan == args.lastscan:
             jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, args.firstscan), str(args.firstscan)))
             print 'submitted 1 job, waiting...'
-            #oarwait(jobs)
+            oarwait(jobs)
             print 'done'
             return
 
+        if args.split:
+            for scanno in range(args.firstscan, args.lastscan+1):
+                jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, scanno), str(scanno)))
+            print 'submitted {0} jobs, waiting...'.format(len(jobs))
+            oarwait(jobs)
+            print 'done!'
+            return
+                    
         parts = []
         for scanno in range(args.firstscan, args.lastscan+1):
             part = '{0}/{1}-part-{2}.zpi'.format(args.tmpdir, prefix, scanno)
@@ -796,16 +724,16 @@ if __name__ == "__main__":
         count = args.lastscan - args.firstscan + 1
         chunkcount = int(numpy.ceil(float(count) / args.chunksize))
         if chunkcount == 1:
-            jobs.append(oarsub('--config', args.config,'_sum','--wait' ,'--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *parts))
+            jobs.append(oarsub('--config', args.config,'--wait','_sum' ,'--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *parts))
         else:
             chunksize = int(numpy.ceil(float(count) / chunkcount))
             chunks = []
             for i in range(chunkcount):
                 chunk = '{0}/{1}-chunk-{2}.zpi'.format(args.tmpdir, prefix, i+1)
-                jobs.append(oarsub('--config', args.config,'_sum','--wait', '--delete', '-o', chunk, *parts[i*chunksize:(i+1)*chunksize]))
+                jobs.append(oarsub('--config', args.config,'--wait','_sum', '--delete', '-o', chunk, *parts[i*chunksize:(i+1)*chunksize]))
                 chunks.append(chunk)
              
-            jobs.append(oarsub('--config', args.config,'_sum','--wait', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks))
+            jobs.append(oarsub('--config', args.config,'--wait','_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks))
             print 'submitted final job, waiting...'
         print 'submitted {0} jobs, waiting...'.format(len(jobs))
         oarwait(jobs)
@@ -948,6 +876,7 @@ if __name__ == "__main__":
     parser.add_argument('--config',default='./config')
     parser.add_argument('--projection')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
+    parser.add_argument('--split', action='store_true', help='dont sum files (for timescans)')
     subparsers = parser.add_subparsers()
 
     parser_cluster = subparsers.add_parser('cluster')
@@ -955,6 +884,7 @@ if __name__ == "__main__":
     parser_cluster.add_argument('lastscan', type=int, default=None, nargs='?')
     parser_cluster.add_argument('-o', '--outfile')
     parser_cluster.add_argument('--tmpdir', default='.')
+    parser_cluster.add_argument('-t', action='store_true')
     parser_cluster.add_argument('--chunksize', default=20, type=int)
     parser_cluster.set_defaults(func=cluster)
 
