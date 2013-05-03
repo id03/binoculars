@@ -22,7 +22,12 @@ from PyMca import specfilewrapper
 import EdfFile
 
 import getconfig
-import Fitscurve
+#import Fitscurves
+
+import inspect
+import re
+import scipy.optimize, scipy.special
+from scipy.stats import linregress
 
 
 def sum_onto(a, axis):
@@ -35,10 +40,14 @@ def sum_onto(a, axis):
 class Axis(object):
     def __init__(self, min, max, res, label=None):
         self.res = float(res)
-        self.min = numpy.floor(min/res)*res
-        self.max = numpy.ceil(max/res)*res
+        if round(min / self.res) != round(min / self.res,6) or round(max / self.res) != round(max / self.res,6):
+            self.min = numpy.floor(float(min)/self.res)*self.res
+            self.max = numpy.ceil(float(max)/self.res)*self.res
+        else:
+            self.min = min
+            self.max = max
         self.label = label
-
+    
     def __len__(self):
         return int(round((self.max - self.min) / self.res)) + 1
 
@@ -62,7 +71,7 @@ class Axis(object):
             return NotImplemented
         if not self.is_compatible(other):
             raise ValueError('cannot unite axes with different resolution/label')
-        return self.__class__(min(self.min, other.min), max(self.max, other.max), res)
+        return self.__class__(min(self.min, other.min), max(self.max, other.max), self.res, self.label)
 
     def __equal__(self, other):
         if not isinstance(other, Axis):
@@ -121,7 +130,7 @@ class Space(object):
     def __add__(self, other):
         if not isinstance(other, Space):
             return NotImplemented
-        if not len(self.axes) != len(other.axes) or not all(a.is_compatible(b) for (a, b) in zip(self.axes, other.axes)):
+        if not len(self.axes) == len(other.axes) or not all(a.is_compatible(b) for (a, b) in zip(self.axes, other.axes)):
             raise ValueError('cannot add spaces with different dimensionality or resolution')
 
         new = Space([a | b for (a, b) in zip(self.axes, other.axes)])
@@ -136,9 +145,9 @@ class Space(object):
             raise ValueError('cannot add spaces with different dimensionality or resolution')
 
         if not all(other_ax in self_ax for (self_ax, other_ax) in zip(self.axes, other.axes)):
-            return self.__add__(self, other)
+            return self.__add__(other)
 
-        index = tuple(slice(self_ax.get_index(other_ax.min), len(other_ax)+1) for (self_ax, other_ax) in zip(self.axes, other.axes))
+        index = tuple(slice(self_ax.get_index(other_ax.min), self_ax.get_index(other_ax.min) + len(other_ax)) for (self_ax, other_ax) in zip(self.axes, other.axes))
         self.photons[index] += other.photons
         self.contributions[index] += other.contributions
         return self
@@ -151,7 +160,7 @@ class Space(object):
         slices = tuple(slice(min, max+1) for (min, max) in lims)
         self.photons = self.photons[slices].copy()
         self.contributions = self.contributions[slices].copy()
-
+    
     def process_image(self, coordinates, intensity):
         # note: coordinates must be tuple of arrays, not a 2D array
         if len(coordinates) != len(self.axes):
@@ -211,42 +220,19 @@ class ProjectionBase(object):
             resolution = cfg.resolution
         return Space(Axis(min, max, res, label) for ((min, max), res, label) in zip(limits, resolution, self._get_labels()))
 
-'''
-class BackgroundBase(object):
-    def __init__(self, cfg):
-        self.cfg = cfg
-
-    @classethod
-    def fromcfg(cls, cfg):
-        # like ProjectionBase.fromcfg
-
-class ArcBackground(BackgroundBase):
-    def gather(self, scan):
-        # ...        
-        return some_object_to_be_zpickled
-
-    def fit(self, data):
-        # data is dictionary like this: data[scanno] = object_as_returned_from_gather()
-        return fitdata_to_be_zpickled
-
-    def correct(self, image_data):
-        # passthrough fitdata via cfg?
-        return image_data - self.cfg.fitdata.params # ...
-'''
 
 class HKLProjection(ProjectionBase):
     def get_bounds(self, scan):
-        scantype = scan.header('S')[0].split()[2]
-        if scantype.startswith('zap'):
-            h = scan.datacol('zap_Hcnt')
-            k = scan.datacol('zap_Kcnt')
-            l = scan.datacol('zap_Lcnt')
-        else:
-            h = scan.datacol('Hcnt')
-            k = scan.datacol('Kcnt')
-            l = scan.datacol('Lcnt')
-        offset = 1 # TODO: estimate from detector size via self.cfg...
-        return (h.min()-offset, h.max()+offset), (k.min()-offset, k.max()+offset), (l.min()-offset, l.max()+offset)
+        h = []
+        k = []
+        l = []
+        for n in range(self.length):
+            coordinates , intensity = self.getImdata(n)
+            h.extend([coordinates[0].min(),coordinates[0].max()])
+            k.extend([coordinates[1].min(),coordinates[1].max()])
+            l.extend([coordinates[2].min(),coordinates[2].max()])
+        offset = 0.0001
+        return (min(h) - offset, max(h) + offset), (min(k)- offset, max(k) + offset), (min(l)- offset, max(l) + offset)
 
     # arrays: gamma, delta
     # scalars: theta, mu, chi, phi
@@ -271,10 +257,11 @@ class TwoThetaProjection(HKLProjection):
         return self._hkl_to_tth(h, k, l)
 
     def _hkl_to_tth(self, h, k, l):
-        return 2 * numpy.arcsin(self.wavelength * sqrt(h**2+k**2+l**2) / 4 / numpy.pi)
+        return 2 * numpy.arcsin(self.wavelength * numpy.sqrt(h**2+k**2+l**2) / 4 / numpy.pi)
 
     def _get_labels(self):
         return 'TwoTheta'
+
 
 
 class ScanBase(object):
@@ -282,18 +269,20 @@ class ScanBase(object):
         self.cfg = cfg
         self.projection = ProjectionBase.fromcfg(cfg)
         #self.background = BackgroundBase.fromcfg(cfg)
-
+   
         self.scannumber = scannumber
         if scan:
             self.scan = scan
         else:
             self.scan = self.get_scan(scannumber)
-
+                
     def initImdata(self):
         self.buildfilelist()
     
     def buildfilelist(self):
         allfiles =  glob.glob(self.imagepattern)
+        if len(allfiles) == 0:
+            raise ValueError('Empty filelist, check if the specified imagefolder corresponds to the location of the images, looking for images in: {0}'.format(self.imagepattern))
         filelist = list()
         imagedict = {}
         for file in allfiles:
@@ -303,18 +292,23 @@ class ScanBase(object):
             if not scanno in imagedict:
                 imagedict[scanno] = {}
             imagedict[scanno][pointno] = file
-        filedict = imagedict[self.scannumber]
+        try:
+            filedict = imagedict[self.scannumber]
+        except:
+            raise ValueError('Scannumber {0} not in this folder. Folder contains scannumbers {1}-{2}'.format(self.scannumber, min(imagedict.keys()), max(imagedict.keys())))
         points = sorted(filedict.iterkeys())
         self.filelist = [filedict[i] for i in points]
-        if len(self.filelist) == 0:
-            raise ValueError('Empty filelist, check if the specified imagefolder corresponds to the location of the images')
+
     
     def apply_roi(self, data):
         roi = data[self.cfg.ymask, :]
         return roi[:, self.cfg.xmask]
 
+    def getCorrectedData(self,n):
+        return self.GetData(n)/(self.mon[n]*self.transm[n])
+    
     def getImdata(self,n):
-        data = self.GetData(n)/(self.mon[n]*self.transm[n])
+        data = self.getCorrectedData(n)
         app = self.cfg.app #angle per pixel (delta,gamma)
         centralpixel = self.cfg.centralpixel #(row,column)=(delta,gamma)
         gamma = -app[1]*(numpy.arange(data.shape[1])-centralpixel[1])+self.gamma[n]
@@ -325,26 +319,12 @@ class ScanBase(object):
         coordinates = self.projection.project(delta=delta, theta=self.theta[n], chi=self.chi, phi=self.phi, mu=self.mu, gamma=gamma)
         
         roi = self.apply_roi(data)
+        intensity = roi.flatten()
         #intensity = self.background.correct(roi, self.fitdata).flatten()
                 
         return coordinates, intensity
 
-    def getmean(self,n):
-        data = self.GetData(n)
-        roi = self.apply_roi(data)
-        return roi.mean(axis = 0)
     
-    def getbkg(self):
-        bkg = numpy.vstack(self.getmean(m) for m in range(self.length))
-        sort = numpy.sort(bkg, axis = 0)
-        clip = 0.1
-        clipped = sort[int(clip * bkg.shape[0]):int((1-clip) * bkg.shape[0]),:]
-        abkg = clipped.mean(axis = 0)
-        return abkg
-
-    def setbkg(self,bkg):
-        self.bkg = bkg.reshape(1, bkg.shape[0]).repeat(self.cfg.ymask.shape[0], axis=0)
-
     @staticmethod
     def get_scan(spec, scannumber):
         return spec.select('{0}.1'.format(scannumber))
@@ -353,12 +333,22 @@ class ScanBase(object):
     def detect_scan(cls, cfg, spec, scanno):
         scan = cls.get_scan(spec, scanno)
         scantype = scan.header('S')[0].split()[2]
-        if scantype.startswith('zap'):
-            return ZapScan(cfg, spec, scanno, scan)
+        if cfg.hutch == 'EH1':
+            if scantype.startswith('zap'):
+                return ZapScan(cfg, spec, scanno, scan)
+            else:
+                return ClassicScan(cfg, spec, scanno, scan)
+        elif cfg.hutch =='EH2':
+            if scantype.startswith('zap'):
+                return EH2ZapScan(cfg, spec, scanno, scan)
+            else:
+                return EH2ClassicScan(cfg, spec, scanno, scan)
         else:
-            return ClassicScan(cfg, spec, scanno, scan)
+            raise ValueError('Hutch type not recognized: {0}'.format(cfg.hutch))
 
     def get_space(self):
+        self.projection.getImdata = self.getImdata
+        self.projection.length = self.length
         return self.projection.space_from_bounds(self.scan)
 
 
@@ -372,17 +362,24 @@ class ZapScan(ScanBase):
         self.imagepattern = os.path.join(cfg.imagefolder, folder,'*{0}_mpx*'.format(scanname))
         self.scannumber = int(scanheaderC[2].split(' ')[-1])#is different from scanno should be changed in spec!
         
-        #UB matrix will be installed in new versions of the zapline, until then i keep this here.
-        if scanno < 405:
-            self.projection.UB = numpy.array([2.628602629,0.2730763688,-0.001032444885,1.202301748,2.877587966,-0.001081570571,0.002600281749,0.002198663001,1.54377945])
-        else:
-            self.projection.UB = numpy.array([2.624469378,0.2632191474,-0.001028869827,1.211297551,2.878506363,-0.001084906521,0.002600359765,0.002198324744,1.54377945])
+        #UB matrix will be installed in new versions of the zapline, it has to come from the configfile
+        if 'UB' not in cfg.__dict__.keys():
+            raise getconfig.ConfigError('UB')
+        
+        self.projection.UB = numpy.array(cfg.UB)
+        
         self.projection.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
 
         delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
-                
+        
+    
         self.theta = self.scan.datacol('th')        
         self.length = numpy.alen(self.theta)
+                
+        #correction for difference between back and forth in th motor
+        correction = (self.theta[1] - self.theta[0]) / (self.length * 1.0) / 2
+        self.theta -= correction
+                
         self.gamma = gamma.repeat(self.length)
         self.delta = delta.repeat(self.length)
 
@@ -397,17 +394,19 @@ class ZapScan(ScanBase):
     def GetData(self,n):
         return self.edf.GetData(n)
         
-
 class ClassicScan(ScanBase):
     def __init__(self, cfg, spec, scanno, scan=None):
         super(ClassicScan, self).__init__(cfg, spec, scanno, scan)
 
-        UCCD = os.path.split(self.scan.header('UCCD')[0].split(' ')[-1])
-        folder = os.path.split(UCCD[0])[-1]
-        scanname = UCCD[-1].split('_')[0]
-        self.imagepattern = os.path.join(cfg.imagefolder, folder, '*{0}*'.format(scanname))
-        
-
+        try:
+            UCCD = os.path.split(self.scan.header('UCCD')[0].split(' ')[-1])
+            folder = os.path.split(UCCD[0])[-1]
+            scanname = UCCD[-1].split('_')[0]
+            self.imagepattern = os.path.join(cfg.imagefolder, folder, '*{0}*'.format(scanname))
+        except:
+            print 'Warning: No UCCD tag was found. Searching folder {0} for all images'.format(cfg.imagefolder)
+            self.imagepattern = '*/*'
+                
         self.projection.UB = numpy.array(self.scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
         self.projection.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
 
@@ -424,24 +423,122 @@ class ClassicScan(ScanBase):
         edf = EdfFile.EdfFile(self.filelist[n])
         return edf.GetData(0)
 
+class EH2ScanBase(ScanBase):
+    def getImdata(self,n):
+        sdd = self.cfg.sdd / numpy.cos(self.gamma[n] *numpy.pi /180)
+        areacorrection = (self.cfg.sdd / sdd)**2
+        data = self.getCorrectedData(n) * areacorrection
+        pixelsize = self.cfg.sdd * numpy.tan(self.cfg.app[0] *numpy.pi /180 )
+        app = numpy.arctan(pixelsize/sdd) * 180 / numpy.pi
+        centralpixel = self.cfg.centralpixel #(row,column)=(delta,gamma)
+        gamma = app*(numpy.arange(data.shape[1])-centralpixel[1])+self.gamma[n]
+        delta = app*(numpy.arange(data.shape[0])-centralpixel[0])+self.delta[n]
+        gamma = gamma[self.cfg.xmask]
+        delta = delta[self.cfg.ymask]
+        coordinates = self.projection.project(delta=delta, theta=self.theta[n], chi=self.chi, phi=self.phi, mu=self.mu, gamma=gamma)
+        roi = self.apply_roi(data)
+        intensity = numpy.rot90(roi).flatten()
+        #intensity = self.background.correct(roi, self.fitdata).flatten()
+        return coordinates, intensity
+
+
+class EH2ClassicScan(EH2ScanBase):
+    def __init__(self, cfg, spec, scanno, scan=None):
+        super(EH2ClassicScan, self).__init__(cfg, spec, scanno, scan)
+        
+        try:
+            UCCD = os.path.split(self.scan.header('UCCD')[0].split(' ')[-1])
+            folder = os.path.split(UCCD[0])[-1]
+            scanname = UCCD[-1].split('_')[0]
+            self.imagepattern = os.path.join(cfg.imagefolder, folder, '*{0}*'.format(scanname))
+        except:
+            print 'Warning: No UCCD tag was found. Searching folder {0} for all images'.format(cfg.imagefolder)
+            self.imagepattern = '*/*.edf*'
+        
+        self.projection.UB = numpy.array(self.scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
+        self.projection.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
+        
+        delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
+        self.theta = self.scan.datacol('thcnt')
+        self.gamma = self.scan.datacol('gamcnt')
+        self.delta = self.scan.datacol('delcnt')
+        
+        self.mon = self.scan.datacol('Monitor')
+        self.transm = self.scan.datacol('transm')
+        self.length = numpy.alen(self.theta)
+    
+    def GetData(self,n):
+        edf = EdfFile.EdfFile(self.filelist[n])
+        return edf.GetData(0)
+
+class EH2ZapScan(EH2ScanBase):
+    def __init__(self, cfg, spec, scanno, scan=None):
+        super(EH2ZapScan, self).__init__(cfg, spec, scanno, scan)
+        
+        scanheaderC = self.scan.header('C')
+        folder = os.path.split(scanheaderC[0].split(' ')[-1])[-1]
+        scanname = scanheaderC[1].split(' ')[-1].split('_')[0]
+        self.imagepattern = os.path.join(cfg.imagefolder, folder,'*{0}*_mpx*'.format(scanname))
+        self.scannumber = int(scanheaderC[2].split(' ')[-1])#is different from scanno should be changed in spec!
+        
+        #UB matrix will be installed in new versions of the zapline, it has to come from the configfile
+        if 'UB' not in cfg.__dict__.keys():
+            raise getconfig.ConfigError('UB')
+        
+        self.projection.UB = numpy.array(cfg.UB)
+        
+        self.projection.wavelength = float(self.scan.header('G')[1].split(' ')[-1])
+        
+        delta, theta, self.chi, self.phi, self.mu, gamma = numpy.array(self.scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
+        
+        
+        self.theta = self.scan.datacol('th')
+        self.length = numpy.alen(self.theta)
+    
+        #correction for difference between back and forth in th motor
+        correction = (self.theta[1] - self.theta[0]) / (self.length * 1.0) / 2
+        self.theta -= correction
+        
+        self.gamma = gamma.repeat(self.length)
+        self.delta = delta.repeat(self.length)
+        
+        self.mon = self.scan.datacol('zap_mon')
+        self.transm = self.scan.datacol('zap_transm')
+        self.transm[-1]=self.transm[-2] #bug in specfile
+    
+    def initImdata(self):
+        super(EH2ZapScan, self).initImdata()
+        self.edf = EdfFile.EdfFile(self.filelist[0])
+    
+    def GetData(self,n):
+        return self.edf.GetData(n)
 
 def process(scanno):
     print scanno
-    
     a = ScanBase.detect_scan(cfg, spec, scanno)
-    mesh = a.get_space()
     a.initImdata()
+    mesh = a.get_space()
     for m in range(a.length):
         coordinates , intensity = a.getImdata(m)
         mesh.process_image(coordinates, intensity)
     return mesh
 
+def checkscan(scanno):
+    try:
+        spec = specfilewrapper.Specfile(cfg.specfile)
+        a = ScanBase.detect_scan(cfg, spec, scanno)
+        a.initImdata()
+    except Exception as e:
+        print 'Unable to load scan {0}\n'.format(scanno)
+        print e.message
+        return False
+    return True
 
 def makeplot(space, args):
     import matplotlib.pyplot as pyplot
     import matplotlib.colors
     
-    clipping = 0.02
+    clipping = float(args.c)
     mesh = space.get_masked()
     remaining = [0,1,2]
     projected = numpy.argmin(mesh.shape)
@@ -459,9 +556,11 @@ def makeplot(space, args):
     ymax = space.axes[remaining[1]].max
     
     pyplot.figure(figsize=(12,9))
-
-    pyplot.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
-    
+    if args.c:
+	pyplot.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
+    else:
+	pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto')
+	    
     #pyplot.imshow(data.transpose())
     
     #xgrid, ygrid = numpy.meshgrid(numpy.arange(data.shape[0]+1), numpy.arange(data.shape[1]+1))
@@ -486,7 +585,7 @@ def makeplot(space, args):
 
 def mfinal(filename, first, last=None):
     base, ext = os.path.splitext(filename)
-    if last is None:
+    if last is None or last == first:
         return ('{0}_{2}{1}').format(base,ext,first)
     else:
         return ('{0}_{2}-{3}{1}').format(base,ext,first,last)
@@ -545,7 +644,7 @@ if __name__ == "__main__":
 
 
     def oarsub(*args):
-        scriptname = './blisspython /data/id03/inhouse/2012/Sep12/si2515/iVoxOar/iVoxOar.py '
+        scriptname = './blisspython /users/onderwaa/iVoxOar/iVoxOar.py '
         command = '{0} {1}'.format(scriptname, ' '.join(args))
         ret, output = run('oarsub', command)
         if ret == 0:
@@ -569,32 +668,58 @@ if __name__ == "__main__":
         else:
             return 'Unknown'
 
-
     def oarwait(jobs):
-        i = 0
+        linelen = 0
         while jobs:
-            status = oarstat(jobs[i])
-            if status == 'Running' or status == 'Waiting' or status == 'Unknown':
+            time.sleep(30)
+            i = 0
+            R = 0
+            W = 0
+            U = 0
+            while i < len(jobs):
+                status = oarstat(jobs[i])
+                if status == 'Running':
+                    R += 1
+                elif status == 'Waiting':
+                    W += 1
+                elif status == 'Unknown':
+                    U += 1
+                else: # assume status == 'Finishing' or 'Terminated' but don't wait on something unknown
+                    del jobs[i]
+                    i -= 1 #otherwise it skips a job
                 i += 1
-                time.sleep(5)
-            else: # assume status == 'Finishing' or 'Terminated' but don't wait on something unknown
-                del jobs[i]
-                print '{0} {1} jobs to go'.format(time.ctime(), len(jobs))
-            if i == len(jobs):
-                i = 0
-
-
+            line = '{0}: {1} jobs to go. {2} waiting, {3} running, {4} unknown.'.format(time.ctime(),len(jobs),W,R,U)
+            sys.stdout.write('\r{0}\r{1}'.format(' '*linelen, line))
+            linelen = len(line)
+            sys.stdout.flush()
+            
     def cluster(args):
-        prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1)) 
+        prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1))
         jobs = []
         
-        if firstscan == lastscan:
-            jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, args.firstscan), str(scanno)))
+        
+        if args.t:
+            print 'checking scans'
+            for scanno in range(args.firstscan, args.lastscan+1):
+                if not checkscan(scanno):
+                    print 'exiting...'
+                    return
+        
+        if args.firstscan == args.lastscan:
+            jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, args.firstscan), str(args.firstscan)))
             print 'submitted 1 job, waiting...'
             oarwait(jobs)
             print 'done'
             return
 
+        if args.split:
+            for scanno in range(args.firstscan, args.lastscan+1):
+                jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, scanno), str(scanno)))
+            print 'submitted {0} jobs, waiting...'.format(len(jobs))
+            oarwait(jobs)
+            print 'done!'
+            return
+                    
         parts = []
         for scanno in range(args.firstscan, args.lastscan+1):
             part = '{0}/{1}-part-{2}.zpi'.format(args.tmpdir, prefix, scanno)
@@ -604,16 +729,16 @@ if __name__ == "__main__":
         count = args.lastscan - args.firstscan + 1
         chunkcount = int(numpy.ceil(float(count) / args.chunksize))
         if chunkcount == 1:
-            jobs.append(oarsub('--config', args.config,'_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *parts))
+            jobs.append(oarsub('--config', args.config,'--wait','_sum' ,'--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *parts))
         else:
             chunksize = int(numpy.ceil(float(count) / chunkcount))
             chunks = []
             for i in range(chunkcount):
                 chunk = '{0}/{1}-chunk-{2}.zpi'.format(args.tmpdir, prefix, i+1)
-                jobs.append(oarsub('--config', args.config,'_sum', '--delete', '-o', chunk, *parts[i*chunksize:(i+1)*chunksize]))
+                jobs.append(oarsub('--config', args.config,'--wait','_sum', '--delete', '-o', chunk, *parts[i*chunksize:(i+1)*chunksize]))
                 chunks.append(chunk)
              
-            jobs.append(oarsub('--config', args.config,'_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks))
+            jobs.append(oarsub('--config', args.config,'--wait','_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks))
             print 'submitted final job, waiting...'
         print 'submitted {0} jobs, waiting...'.format(len(jobs))
         oarwait(jobs)
@@ -684,7 +809,6 @@ if __name__ == "__main__":
             else:
                 makeplot(globalspace, args.plot)
 
-
     def plot(args):
         if args.wait:
             wait_for_file(args.outfile)
@@ -703,6 +827,7 @@ if __name__ == "__main__":
                 header[str(a.label)] = '{0} {1} {2}'.format(a.min,a.max,a.res)
             edf = EdfFile.EdfFile(args.savefile)
             edf.WriteImage(header,space.get_masked().filled(0),DataType="Float")
+            print 'saved at {0}'.format(args.savefile)
 
         if ext == '.txt':
             tmpfile = '{0}-{1:x}.tmp'.format(os.path.splitext(args.savefile)[0], random.randint(0, 2**32-1))
@@ -713,7 +838,7 @@ if __name__ == "__main__":
                 data = space.get_masked().filled(0).flatten()
                 for a in space.axes:
                     fp.write('{0}\t'.format(a.label))
-                fp.write('croif')
+                fp.write('intensity')
                 fp.write('\n')
                 for n in range(len(data)):
                     for m in range(grid.ndim-1):
@@ -724,7 +849,8 @@ if __name__ == "__main__":
                     fp.flush()
             finally:
                 fp.close()
-            os.rename(tmpfile, args.savefile)
+                print 'saved at {0}'.format(args.savefile)
+                os.rename(tmpfile, args.savefile)
 
     def test(args):
         spec = specfilewrapper.Specfile(cfg.specfile)
@@ -755,6 +881,7 @@ if __name__ == "__main__":
     parser.add_argument('--config',default='./config')
     parser.add_argument('--projection')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
+    parser.add_argument('--split', action='store_true', help='dont sum files (for timescans)')
     subparsers = parser.add_subparsers()
 
     parser_cluster = subparsers.add_parser('cluster')
@@ -762,6 +889,7 @@ if __name__ == "__main__":
     parser_cluster.add_argument('lastscan', type=int, default=None, nargs='?')
     parser_cluster.add_argument('-o', '--outfile')
     parser_cluster.add_argument('--tmpdir', default='.')
+    parser_cluster.add_argument('-t', action='store_true')
     parser_cluster.add_argument('--chunksize', default=20, type=int)
     parser_cluster.set_defaults(func=cluster)
 
@@ -789,7 +917,10 @@ if __name__ == "__main__":
     parser_plot = subparsers.add_parser('plot')
     parser_plot.add_argument('outfile')
     parser_plot.add_argument('-s',action='store_true')
+    parser_plot.add_argument('-c',default = 0.00)
     parser_plot.add_argument('--savefile')
+
+    
     parser_plot.set_defaults(func=plot)
 
     parser_test = subparsers.add_parser('test')

@@ -47,6 +47,10 @@ def cfg(configfile):
         configdict['resolution'] = parsetuple(configdict['resolution'])
     except:
         pass
+
+    if 'UB' in configdict.keys():
+        configdict['UB'] = parsetuple(configdict['UB'],9)
+
     configdict['centralpixel'] = parsetuple(configdict['centralpixel'], 2)
     configdict['app'] = parsetuple(configdict['app'], 2)
 
