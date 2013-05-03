@@ -43,6 +43,8 @@ class Axis(object):
         return int(round((self.max - self.min) / self.res)) + 1
 
     def __getitem__(self, index):
+        if index >= len(self):  # to support iteration
+            raise IndexError('index out of range')
         return self.min + index * self.res
 
     def get_index(self, value):
@@ -110,8 +112,12 @@ class Space(object):
             Axis(cfg.Lmin, cfg.Lmax, cfg.Lres, 'L'),
         ))
 
+    def get(self):
+        return self.photons/self.contributions
+
     def get_masked(self):
         return numpy.ma.array(data=self.photons/self.contributions, mask=(self.contributions == 0))
+        return numpy.ma.array(data=self.get(), mask=(self.contributions == 0))
         
     def __add__(self, other):
         if not isinstance(other, Space):
