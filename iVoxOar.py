@@ -116,7 +116,6 @@ class Space(object):
         return self.photons/self.contributions
 
     def get_masked(self):
-        return numpy.ma.array(data=self.photons/self.contributions, mask=(self.contributions == 0))
         return numpy.ma.array(data=self.get(), mask=(self.contributions == 0))
         
     def __add__(self, other):
