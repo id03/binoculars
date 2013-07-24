@@ -438,7 +438,6 @@ class EH2ScanBase(ScanBase):
         coordinates = self.projection.project(delta=delta, theta=self.theta[n], chi=self.chi, phi=self.phi, mu=self.mu, gamma=gamma)
         roi = self.apply_roi(data)
         intensity = numpy.rot90(roi).flatten()
-        #intensity = self.background.correct(roi, self.fitdata).flatten()
         return coordinates, intensity
 
 
@@ -528,6 +527,7 @@ def checkscan(scanno):
         spec = specfilewrapper.Specfile(cfg.specfile)
         a = ScanBase.detect_scan(cfg, spec, scanno)
         a.initImdata()
+        numpy.savetxt('test_{0}.txt.gz'.format(scanno),a.GetData(0))
     except Exception as e:
         print 'Unable to load scan {0}\n'.format(scanno)
         print e.message
@@ -557,7 +557,7 @@ def makeplot(space, args):
     
     pyplot.figure(figsize=(12,9))
     if args.c:
-	pyplot.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=matplotlib.colors.Normalize(vmin, vmax))
+	pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=matplotlib.colors.Normalize(numpy.log(vmin), numpy.log(vmax)))
     else:
 	pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto')
 	    
@@ -613,12 +613,12 @@ def detect_hkllimits(cfg, firstscan, lastscan):
 def wait_for_files(filelist):
     i = 0
     while filelist:
+        i = i % len(filelist)
         if os.path.exists(filelist[i]):
             yield filelist.pop(i)
-            i = i % len(arcs)
         else:
             time.sleep(5)
-            i = (i + 1) % len(arcs)
+            i == 1
 
 
 def wait_for_file(filename):
@@ -657,13 +657,15 @@ if __name__ == "__main__":
 
 
     def oarstat(jobid):
-# % oarstat -s -j 5651374
-# 5651374: Running
-# % oarstat -s -j 5651374
-# 5651374: Finishing
+        # % oarstat -s -j 5651374
+        # 5651374: Running
+        # % oarstat -s -j 5651374
+        # 5651374: Finishing
         ret, output = run('oarstat', '-s', '-j', str(jobid))
         if ret == 0:
-            job, status = output.split(':')
+            for n in output.split('\n'):
+                if n.startswith(str(jobid)):
+                    job, status = n.split(':')
             return status.strip()
         else:
             return 'Unknown'
@@ -696,15 +698,7 @@ if __name__ == "__main__":
     def cluster(args):
         prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1))
         jobs = []
-        
-        
-        if args.t:
-            print 'checking scans'
-            for scanno in range(args.firstscan, args.lastscan+1):
-                if not checkscan(scanno):
-                    print 'exiting...'
-                    return
-        
+                
         if args.firstscan == args.lastscan:
             jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, args.firstscan), str(args.firstscan)))
             print 'submitted 1 job, waiting...'
@@ -759,7 +753,7 @@ if __name__ == "__main__":
         globalspace = EmptySpace()
 
         if args.wait:
-            fileiter = wait_for_files(args.infiles)
+            fileiter = wait_for_files(args.infiles[:])#destroy the reference
         else:
             fileiter = args.infiles
 
@@ -876,7 +870,18 @@ if __name__ == "__main__":
         bkg = numpy.vstack(gbkg(spec, scanno,cfg) for scanno in scanlist)
         numpy.savetxt('background.txt', bkg)
     
-    
+
+    def check(args):
+        print 'checking scans'
+        for scanno in range(args.firstscan, args.lastscan+1):
+            print 'Checking scan: {0}'.format(scanno)
+            if not checkscan(scanno):
+                print 'exiting...'
+                return
+        print 'all good'
+        
+
+
     parser = argparse.ArgumentParser(prog='iVoxOar')
     parser.add_argument('--config',default='./config')
     parser.add_argument('--projection')
@@ -889,7 +894,6 @@ if __name__ == "__main__":
     parser_cluster.add_argument('lastscan', type=int, default=None, nargs='?')
     parser_cluster.add_argument('-o', '--outfile')
     parser_cluster.add_argument('--tmpdir', default='.')
-    parser_cluster.add_argument('-t', action='store_true')
     parser_cluster.add_argument('--chunksize', default=20, type=int)
     parser_cluster.set_defaults(func=cluster)
 
@@ -919,8 +923,6 @@ if __name__ == "__main__":
     parser_plot.add_argument('-s',action='store_true')
     parser_plot.add_argument('-c',default = 0.00)
     parser_plot.add_argument('--savefile')
-
-    
     parser_plot.set_defaults(func=plot)
 
     parser_test = subparsers.add_parser('test')
@@ -933,6 +935,13 @@ if __name__ == "__main__":
     parser_export.add_argument('outfile')
     parser_export.add_argument('savefile')
     parser_export.set_defaults(func=export)
+
+    parser_check = subparsers.add_parser('check')
+    parser_check.add_argument('firstscan', type=int)
+    parser_check.add_argument('lastscan', type=int, default=None, nargs='?')
+    parser_check.add_argument('-o', '--outfile')
+    parser_check.set_defaults(func=check)
+    
     
     args = parser.parse_args()
 
