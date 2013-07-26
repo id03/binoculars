@@ -168,6 +168,8 @@ class Space(object):
 
         valid = numpy.isfinite(intensity)
         intensity = intensity[valid]
+        if not intensity.size:
+            return
         coordinates = tuple(coord[valid] for coord in coordinates)
 
         indices = numpy.array(tuple(ax.get_index(coord) for (ax, coord) in zip(self.axes, coordinates)))
