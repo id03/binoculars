@@ -557,10 +557,10 @@ def makeplot(space, args):
     
     pyplot.figure(figsize=(12,9))
     if args.c:
-	pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=matplotlib.colors.Normalize(numpy.log(vmin), numpy.log(vmax)))
+        pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=matplotlib.colors.Normalize(numpy.log(vmin), numpy.log(vmax)))
     else:
-	pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto')
-	    
+        pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto')
+
     #pyplot.imshow(data.transpose())
     
     #xgrid, ygrid = numpy.meshgrid(numpy.arange(data.shape[0]+1), numpy.arange(data.shape[1]+1))
