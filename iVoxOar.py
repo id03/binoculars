@@ -166,12 +166,16 @@ class Space(object):
         if len(coordinates) != len(self.axes):
             raise ValueError('dimension mismatch between coordinates and axes')
 
-        indices = numpy.array(tuple(ax.get_index(coord.flatten()) for (ax, coord) in zip(self.axes, coordinates)))
+        valid = numpy.isfinite(intensity)
+        intensity = intensity[valid]
+        coordinates = tuple(coord[valid] for coord in coordinates)
+
+        indices = numpy.array(tuple(ax.get_index(coord) for (ax, coord) in zip(self.axes, coordinates)))
         for i in range(0, len(self.axes)):
             for j in range(i+1, len(self.axes)):
                 indices[i,:] *= len(self.axes[j])
         indices = indices.sum(axis=0).astype(int)
-        photons = numpy.bincount(indices, weights=intensity.flatten())
+        photons = numpy.bincount(indices, weights=intensity)
         contributions = numpy.bincount(indices)
     
         self.photons.ravel()[:photons.size] += photons
