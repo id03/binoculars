@@ -533,7 +533,6 @@ def checkscan(scanno):
         spec = specfilewrapper.Specfile(cfg.specfile)
         a = ScanBase.detect_scan(cfg, spec, scanno)
         a.initImdata()
-        numpy.savetxt('test_{0}.txt.gz'.format(scanno),a.GetData(0))
     except Exception as e:
         print 'Unable to load scan {0}\n'.format(scanno)
         print e.message
@@ -589,31 +588,9 @@ def makeplot(space, args):
         pyplot.show()
 
 
-def mfinal(filename, first, last=None):
+def mfinal(filename, scanrange):
     base, ext = os.path.splitext(filename)
-    if last is None or last == first:
-        return ('{0}_{2}{1}').format(base,ext,first)
-    else:
-        return ('{0}_{2}-{3}{1}').format(base,ext,first,last)
-
-
-def detect_hkllimits(cfg, firstscan, lastscan):
-    spec = specfilewrapper.Specfile(cfg.specfile)
-
-    arcs = []
-    for scanno in range(firstscan, lastscan+1):
-        try:
-            a = Arc(spec, scanno,cfg)
-        except NotAZaplineError:
-            continue
-        arcs.append(a)
-
-    hkls = []
-    for i, a in enumerate(arcs):
-        hkls.extend(a.getHKLbounds(i == 0 or (i + 1) == len(arcs)))
-
-    hkls = numpy.array(hkls)
-    return hkls.min(axis=0), hkls.max(axis=0)
+    return ('{0}_{2}{1}').format(base,ext,scanrange)
 
 
 def wait_for_files(filelist):
@@ -704,16 +681,17 @@ if __name__ == "__main__":
     def cluster(args):
         prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1))
         jobs = []
+		scanrange = getconfig.parsemultirange(args.scanrange)
                 
-        if args.firstscan == args.lastscan:
-            jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, args.firstscan), str(args.firstscan)))
+        if len(scanrange) == 1:
+            jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, args.scanrange), str(scanrange[0])))
             print 'submitted 1 job, waiting...'
             oarwait(jobs)
             print 'done'
             return
 
         if args.split:
-            for scanno in range(args.firstscan, args.lastscan+1):
+            for scanno in scanrange:
                 jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, scanno), str(scanno)))
             print 'submitted {0} jobs, waiting...'.format(len(jobs))
             oarwait(jobs)
@@ -721,15 +699,15 @@ if __name__ == "__main__":
             return
                     
         parts = []
-        for scanno in range(args.firstscan, args.lastscan+1):
+        for scanno in scanrange:
             part = '{0}/{1}-part-{2}.zpi'.format(args.tmpdir, prefix, scanno)
             jobs.append(oarsub('--config', args.config,'_part','-o', part, str(scanno)))
             parts.append(part)
 
-        count = args.lastscan - args.firstscan + 1
+        count = len(scanrange)
         chunkcount = int(numpy.ceil(float(count) / args.chunksize))
         if chunkcount == 1:
-            jobs.append(oarsub('--config', args.config,'--wait','_sum' ,'--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *parts))
+            jobs.append(oarsub('--config', args.config,'--wait','_sum' ,'--trim', '--delete', '-o', mfinal(cfg.outfile,args.scanrange), *parts))
         else:
             chunksize = int(numpy.ceil(float(count) / chunkcount))
             chunks = []
@@ -738,7 +716,7 @@ if __name__ == "__main__":
                 jobs.append(oarsub('--config', args.config,'--wait','_sum', '--delete', '-o', chunk, *parts[i*chunksize:(i+1)*chunksize]))
                 chunks.append(chunk)
              
-            jobs.append(oarsub('--config', args.config,'--wait','_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.firstscan,args.lastscan), *chunks))
+            jobs.append(oarsub('--config', args.config,'--wait','_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.scanrange), *chunks))
             print 'submitted final job, waiting...'
         print 'submitted {0} jobs, waiting...'.format(len(jobs))
         oarwait(jobs)
@@ -786,7 +764,7 @@ if __name__ == "__main__":
         global spec
         spec = specfilewrapper.Specfile(cfg.specfile)
         
-        scanlist = range(args.firstscan, args.lastscan+1)
+        scanlist = getconfig.parsemultirange(args.scanrange)
         globalspace = EmptySpace()
      
         if args.multiprocessing:
@@ -801,7 +779,7 @@ if __name__ == "__main__":
                 globalspace += result
 
         globalspace.trim()
-        globalspace.tofile(mfinal(cfg.outfile, args.firstscan, args.lastscan))
+        globalspace.tofile(mfinal(cfg.outfile, args.scanrange))
 
         if args.plot:
             if args.plot is True:
@@ -852,34 +830,9 @@ if __name__ == "__main__":
                 print 'saved at {0}'.format(args.savefile)
                 os.rename(tmpfile, args.savefile)
 
-    def test(args):
-        spec = specfilewrapper.Specfile(cfg.specfile)
-        scanlist = range(args.firstscan, args.lastscan+1)
-        globalspace = Space.fromcfg(cfg)
-        fit = numpy.loadtxt('fit.txt')
-        for scanno in scanlist:
-            print scanno
-            mesh = Space.fromcfg(cfg)
-            a = ScanBase.detect_scan(cfg, spec, scanno)
-            a.initImdata()
-            a.setbkg(fit[scanno-args.firstscan,:])
-            for m in range(a.length):
-                coordinates , intensity = a.getImdata(m)
-                mesh.process_image(coordinates, intensity)
-            globalspace += mesh
-        globalspace.trim()
-        globalspace.tofile(mfinal(cfg.outfile, args.firstscan, args.lastscan))
-    
-    def test1(args):
-        spec = specfilewrapper.Specfile(cfg.specfile)
-        scanlist = range(args.firstscan, args.lastscan+1)
-        bkg = numpy.vstack(gbkg(spec, scanno,cfg) for scanno in scanlist)
-        numpy.savetxt('background.txt', bkg)
-    
-
     def check(args):
         print 'checking scans'
-        for scanno in range(args.firstscan, args.lastscan+1):
+        for scanno in getconfig.parsemultirange(args.scanrange):
             print 'Checking scan: {0}'.format(scanno)
             if not checkscan(scanno):
                 print 'exiting...'
@@ -896,8 +849,7 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers()
 
     parser_cluster = subparsers.add_parser('cluster')
-    parser_cluster.add_argument('firstscan', type=int)
-    parser_cluster.add_argument('lastscan', type=int, default=None, nargs='?')
+    parser_cluster.add_argument('scanrange')
     parser_cluster.add_argument('-o', '--outfile')
     parser_cluster.add_argument('--tmpdir', default='.')
     parser_cluster.add_argument('--chunksize', default=20, type=int)
@@ -917,8 +869,7 @@ if __name__ == "__main__":
     parser_sum.set_defaults(func=sum)
 
     parser_local = subparsers.add_parser('local')
-    parser_local.add_argument('firstscan', type=int)
-    parser_local.add_argument('lastscan', type=int, default=None, nargs='?')
+    parser_local.add_argument('scanrange')
     parser_local.add_argument('-o', '--outfile')
     parser_local.add_argument('-p', '--plot', nargs='?', const=True)
     parser_local.add_argument('-m', '--multiprocessing', action='store_true')
@@ -931,29 +882,18 @@ if __name__ == "__main__":
     parser_plot.add_argument('--savefile')
     parser_plot.set_defaults(func=plot)
 
-    parser_test = subparsers.add_parser('test')
-    parser_test.add_argument('firstscan', type=int)
-    parser_test.add_argument('lastscan', type=int, default=None, nargs='?')
-    parser_test.add_argument('--outfile', default = 'test.zpi')
-    parser_test.set_defaults(func=test)
-    
     parser_export = subparsers.add_parser('export')
     parser_export.add_argument('outfile')
     parser_export.add_argument('savefile')
     parser_export.set_defaults(func=export)
 
     parser_check = subparsers.add_parser('check')
-    parser_check.add_argument('firstscan', type=int)
-    parser_check.add_argument('lastscan', type=int, default=None, nargs='?')
+    parser_check.add_argument('scanrange')
     parser_check.add_argument('-o', '--outfile')
     parser_check.set_defaults(func=check)
     
     
     args = parser.parse_args()
-
-    if 'lastscan' in args.__dict__.keys() and 'firstscan' in args.__dict__.keys():
-        if args.lastscan is None:
-            args.lastscan = args.firstscan
     
     cfg = getconfig.cfg(args.config)
 
