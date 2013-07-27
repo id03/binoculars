@@ -681,7 +681,7 @@ if __name__ == "__main__":
     def cluster(args):
         prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1))
         jobs = []
-		scanrange = getconfig.parsemultirange(args.scanrange)
+        scanrange = getconfig.parsemultirange(args.scanrange)
                 
         if len(scanrange) == 1:
             jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, args.scanrange), str(scanrange[0])))
