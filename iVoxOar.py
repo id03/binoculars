@@ -22,7 +22,6 @@ from PyMca import specfilewrapper
 import EdfFile
 
 import getconfig
-#import Fitscurves
 
 import inspect
 import re
@@ -543,13 +542,24 @@ def makeplot(space, args):
     import matplotlib.pyplot as pyplot
     import matplotlib.colors
     
-    clipping = float(args.c)
+    clipping = float(args.clip)
     mesh = space.get_masked()
-    remaining = [0,1,2]
-    projected = numpy.argmin(mesh.shape)
-    remaining.pop(projected)
-    
-    data = mesh.mean(axis=projected)
+
+    # project automatically onto the smallest dimension or from command line argument
+    remaining = range(len(space.axes))
+    if len(space.axes) == 3:
+        if args.project:
+            axlabels = [ax.label.lower() for ax in space.axes]
+            if args.project.lower() in axlabels:
+                projected = axlabels.index(args.project.lower())
+        else:
+            projected = numpy.argmin(mesh.shape)     
+        remaining.pop(projected)
+ 
+        data = mesh.mean(axis=projected)
+    else:
+        data = mesh
+
     compresseddata = data.compressed()
     chop = int(round(compresseddata.size * clipping))
     clip = sorted(compresseddata)[chop:-(1+chop)]
@@ -561,23 +571,17 @@ def makeplot(space, args):
     ymax = space.axes[remaining[1]].max
     
     pyplot.figure(figsize=(12,9))
-    if args.c:
+    if args.clip:
         pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=matplotlib.colors.Normalize(numpy.log(vmin), numpy.log(vmax)))
     else:
         pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto')
 
-    #pyplot.imshow(data.transpose())
-    
-    #xgrid, ygrid = numpy.meshgrid(numpy.arange(data.shape[0]+1), numpy.arange(data.shape[1]+1))
-    #ax=pyplot.subplot(111)
-    #ax.pcolorfast(numpy.sin(60. /180 * numpy.pi) * xgrid+numpy.cos(60. /180 * numpy.pi) * ygrid, ygrid , data.transpose(),norm=matplotlib.colors.Normalize(vmin, vmax))
-    
     pyplot.xlabel(space.axes[remaining[0]].label)
     pyplot.ylabel(space.axes[remaining[1]].label)
     pyplot.suptitle('{0}.pdf'.format(os.path.splitext(args.outfile)[0])) 
     pyplot.colorbar()
     
-    if args.s:
+    if args.savepdf:
         if args.savefile != None:
             pyplot.savefig(args.savefile)
             print 'saved at {0}'.format(args.savefile)
@@ -877,8 +881,9 @@ if __name__ == "__main__":
 
     parser_plot = subparsers.add_parser('plot')
     parser_plot.add_argument('outfile')
-    parser_plot.add_argument('-s',action='store_true')
-    parser_plot.add_argument('-c',default = 0.00)
+    parser_plot.add_argument('-s', '--savepdf', action='store_true')
+    parser_plot.add_argument('-c', '--clip', default = 0.00)
+    parser_plot.add_argument('-p', '--project', default=False)
     parser_plot.add_argument('--savefile')
     parser_plot.set_defaults(func=plot)
 
