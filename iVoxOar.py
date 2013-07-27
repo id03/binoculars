@@ -363,7 +363,7 @@ class ZapScan(ScanBase):
         scanheaderC = self.scan.header('C')
         folder = os.path.split(scanheaderC[0].split(' ')[-1])[-1]
         scanname = scanheaderC[1].split(' ')[-1]
-        self.imagepattern = os.path.join(cfg.imagefolder, folder,'*{0}_mpx*'.format(scanname))
+        self.imagepattern = os.path.join(cfg.imagefolder, folder,'*{0}*mpx*'.format(scanname))
         self.scannumber = int(scanheaderC[2].split(' ')[-1])#is different from scanno should be changed in spec!
         
         #UB matrix will be installed in new versions of the zapline, it has to come from the configfile
