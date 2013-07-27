@@ -660,7 +660,6 @@ if __name__ == "__main__":
     def oarwait(jobs):
         linelen = 0
         while jobs:
-            time.sleep(30)
             i = 0
             R = 0
             W = 0
@@ -681,6 +680,7 @@ if __name__ == "__main__":
             sys.stdout.write('\r{0}\r{1}'.format(' '*linelen, line))
             linelen = len(line)
             sys.stdout.flush()
+            time.sleep(30)
             
     def cluster(args):
         prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1))
