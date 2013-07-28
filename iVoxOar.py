@@ -549,35 +549,35 @@ def makeplot(space, args):
     # project automatically onto the smallest dimension or from command line argument
     remaining = range(len(space.axes))
     
-    if args.slice:
-        if len(space.axes) == 3:
-            s = [slice(None)] * 3
-            axlabels = [ax.label.lower() for ax in space.axes]
-            if args.slice[0].lower() in axlabels:
-                projected = axlabels.index(args.slice[0].lower())
-            if '-' in args.slice[1]:
-                r = numpy.array(args.slice[1].split('-'),dtype = numpy.float)
-                s[projected] = slice(space.axes[projected].get_index(r[0]),space.axes[projected].get_index(r[1]))
-                data = mesh[s].mean(axis = projected)
-            else:
-                index = space.axes[projected].get_index(float(args.slice[1]))
-                s[projected] = index
-                data = mesh[s]
-            remaining.pop(projected)
-    elif len(space.axes) == 3:
+    if args.slice and len(space.axes) == 3:
+        s = [slice(None)] * 3
+        axlabels = [ax.label.lower() for ax in space.axes]
+        if args.slice[0].lower() in axlabels:
+            projected = axlabels.index(args.slice[0].lower())
+        if ':' in args.slice[1]:
+            r = numpy.array(args.slice[1].split(':'),dtype = numpy.float)
+            s[projected] = slice(space.axes[projected].get_index(r[0]), space.axes[projected].get_index(r[1]))
+            data = mesh[s].mean(axis = projected)
+        else:
+            index = space.axes[projected].get_index(float(args.slice[1]))
+            s[projected] = index
+            data = mesh[s]
+        info = ' sliced at {0} = {1}'.format(space.axes[projected].label, args.slice[1])
+        remaining.pop(projected)
+
+    if len(space.axes) == 3:
         if args.project:
             axlabels = [ax.label.lower() for ax in space.axes]
             if args.project.lower() in axlabels:
                 projected = axlabels.index(args.project.lower())
         else:
-            projected = numpy.argmin(mesh.shape)     
+            projected = numpy.argmin(mesh.shape)
+        info = ' projected on {0}'.format(space.axes[projected].label)
         remaining.pop(projected)
  
         data = mesh.mean(axis=projected)
     else:
         data = mesh
-
-
 
     compresseddata = data.compressed()
     chop = int(round(compresseddata.size * clipping))
@@ -597,11 +597,11 @@ def makeplot(space, args):
 
     pyplot.xlabel(space.axes[remaining[0]].label)
     pyplot.ylabel(space.axes[remaining[1]].label)
-    pyplot.suptitle('{0}.pdf'.format(os.path.splitext(args.outfile)[0])) 
+    pyplot.suptitle('{0}{1}'.format(os.path.splitext(args.outfile)[0]), info)
     pyplot.colorbar()
     
-    if args.savepdf:
-        if args.savefile != None:
+    if args.savepdf or args.savefile:
+        if args.savefile:
             pyplot.savefig(args.savefile)
             print 'saved at {0}'.format(args.savefile)
         else:
