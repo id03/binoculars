@@ -597,7 +597,7 @@ def makeplot(space, args):
 
     pyplot.xlabel(space.axes[remaining[0]].label)
     pyplot.ylabel(space.axes[remaining[1]].label)
-    pyplot.suptitle('{0}{1}'.format(os.path.splitext(args.outfile)[0]), info)
+    pyplot.suptitle('{0}{1}'.format(os.path.splitext(args.outfile)[0], info))
     pyplot.colorbar()
     
     if args.savepdf or args.savefile:
