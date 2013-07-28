@@ -555,9 +555,14 @@ def makeplot(space, args):
             axlabels = [ax.label.lower() for ax in space.axes]
             if args.slice[0].lower() in axlabels:
                 projected = axlabels.index(args.slice[0].lower())
-            index = space.axes[projected].get_index(float(args.slice[1]))
-            s[projected] = index
-            data = mesh[s]
+            if '-' in args.slice[1]:
+                r = numpy.array(args.slice[1].split('-'),dtype = numpy.float)
+                s[projected] = slice(space.axes[projected].get_index(r[0]),space.axes[projected].get_index(r[1]))
+                data = mesh[s].mean(axis = projected)
+            else:
+                index = space.axes[projected].get_index(float(args.slice[1]))
+                s[projected] = index
+                data = mesh[s]
             remaining.pop(projected)
     elif len(space.axes) == 3:
         if args.project:
