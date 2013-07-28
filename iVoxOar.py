@@ -17,6 +17,7 @@ import numbers
 
 import numpy
 
+
 from PyMca import SixCircle
 from PyMca import specfilewrapper
 import EdfFile
@@ -547,7 +548,18 @@ def makeplot(space, args):
 
     # project automatically onto the smallest dimension or from command line argument
     remaining = range(len(space.axes))
-    if len(space.axes) == 3:
+    
+    if args.slice:
+        if len(space.axes) == 3:
+            s = [slice(None)] * 3
+            axlabels = [ax.label.lower() for ax in space.axes]
+            if args.slice[0].lower() in axlabels:
+                projected = axlabels.index(args.slice[0].lower())
+            index = space.axes[projected].get_index(float(args.slice[1]))
+            s[projected] = index
+            data = mesh[s]
+            remaining.pop(projected)
+    elif len(space.axes) == 3:
         if args.project:
             axlabels = [ax.label.lower() for ax in space.axes]
             if args.project.lower() in axlabels:
@@ -559,6 +571,8 @@ def makeplot(space, args):
         data = mesh.mean(axis=projected)
     else:
         data = mesh
+
+
 
     compresseddata = data.compressed()
     chop = int(round(compresseddata.size * clipping))
@@ -884,6 +898,7 @@ if __name__ == "__main__":
     parser_plot.add_argument('-s', '--savepdf', action='store_true')
     parser_plot.add_argument('-c', '--clip', default = 0.00)
     parser_plot.add_argument('-p', '--project', default=False)
+    parser_plot.add_argument('--slice', nargs=2, default=False)
     parser_plot.add_argument('--savefile')
     parser_plot.set_defaults(func=plot)
 
