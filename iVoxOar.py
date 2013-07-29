@@ -761,7 +761,7 @@ if __name__ == "__main__":
         space.tofile(args.outfile)
 
 
-    def sum(args):
+    def cmd_sum(args):
         globalspace = EmptySpace()
 
         if args.wait:
@@ -835,7 +835,7 @@ if __name__ == "__main__":
             edf.WriteImage(header,space.get_masked().filled(0),DataType="Float")
             print 'saved at {0}'.format(args.savefile)
 
-        if ext == '.txt':
+        elif ext == '.txt':
             tmpfile = '{0}-{1:x}.tmp'.format(os.path.splitext(args.savefile)[0], random.randint(0, 2**32-1))
             fp = open(tmpfile,'w')
             try:
@@ -858,6 +858,14 @@ if __name__ == "__main__":
                 print 'saved at {0}'.format(args.savefile)
                 os.rename(tmpfile, args.savefile)
 
+        elif ext == '.zpi':
+            space.tofile(args.savefile)
+            print 'saved at {0}'.format(args.savefile)
+
+        else:
+            print 'unknown extension, unable to save!'
+            sys.exit(1)
+
     def check(args):
         print 'checking scans'
         for scanno in getconfig.parsemultirange(args.scanrange):
@@ -873,7 +881,6 @@ if __name__ == "__main__":
     parser.add_argument('--config',default='./config')
     parser.add_argument('--projection')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
-    parser.add_argument('--split', action='store_true', help='dont sum files (for timescans)')
     subparsers = parser.add_subparsers()
 
     parser_cluster = subparsers.add_parser('cluster')
@@ -881,6 +888,7 @@ if __name__ == "__main__":
     parser_cluster.add_argument('-o', '--outfile')
     parser_cluster.add_argument('--tmpdir', default='.')
     parser_cluster.add_argument('--chunksize', default=20, type=int)
+    parser_cluster.add_argument('--split', action='store_true', help='dont sum files (for timescans)')
     parser_cluster.set_defaults(func=cluster)
 
     parser_part = subparsers.add_parser('_part')
@@ -894,7 +902,7 @@ if __name__ == "__main__":
     parser_sum.add_argument('--delete', action='store_true')
     parser_sum.add_argument('--trim', action='store_true')
     parser_sum.add_argument('infiles', nargs='+')
-    parser_sum.set_defaults(func=sum)
+    parser_sum.set_defaults(func=cmd_sum)
 
     parser_local = subparsers.add_parser('local')
     parser_local.add_argument('scanrange')
