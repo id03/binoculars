@@ -670,7 +670,7 @@ def statusnl(line):
     """Shortcut for status(..., eol=True)"""
     return status(line, eol=True)
 
-def statuseol(line):
+def statuseol():
     """Starts a new status line, keeping the previous one intact"""
     global _status_line_length
     _status_line_length = 0
