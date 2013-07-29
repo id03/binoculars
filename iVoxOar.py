@@ -617,6 +617,7 @@ def mfinal(filename, scanrange):
 
 
 def wait_for_files(filelist):
+    filelist = filelist[:] # make copy
     i = 0
     while filelist:
         i = i % len(filelist)
@@ -652,7 +653,7 @@ if __name__ == "__main__":
     def oarsub(*args):
         scriptname = './blisspython /users/onderwaa/iVoxOar/iVoxOar.py '
         command = '{0} {1}'.format(scriptname, ' '.join(args))
-        ret, output = run('oarsub', command)
+        ret, output = run('oarsub', '-l walltime=0:15', command)
         if ret == 0:
             lines = output.split('\n')
             for line in lines:
@@ -676,9 +677,17 @@ if __name__ == "__main__":
         else:
             return 'Unknown'
 
-    def oarwait(jobs):
+    def oarwait(jobs, remaining=0):
         linelen = 0
-        while jobs:
+        if len(jobs) > remaining:
+            line = '{0}: getting status of {1} jobs...'.format(time.ctime(), len(jobs))
+            linelen = len(line)
+            sys.stdout.write(line)
+            sys.stdout.flush()
+        else:
+            return
+     
+        while 1:
             i = 0
             R = 0
             W = 0
@@ -699,7 +708,11 @@ if __name__ == "__main__":
             sys.stdout.write('\r{0}\r{1}'.format(' '*linelen, line))
             linelen = len(line)
             sys.stdout.flush()
-            time.sleep(30)
+            if len(jobs) <= remaining:
+                sys.stdout.write('\n')
+                return
+            else:
+                time.sleep(30) # only sleep if we're not done yet
             
     def cluster(args):
         prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1))
@@ -726,6 +739,8 @@ if __name__ == "__main__":
             part = '{0}/{1}-part-{2}.zpi'.format(args.tmpdir, prefix, scanno)
             jobs.append(oarsub('--config', args.config,'_part','-o', part, str(scanno)))
             parts.append(part)
+        print 'submitted {0} jobs, waiting...'.format(len(jobs))
+        oarwait(jobs, 25)
 
         count = len(scanrange)
         chunkcount = int(numpy.ceil(float(count) / args.chunksize))
@@ -740,7 +755,6 @@ if __name__ == "__main__":
                 chunks.append(chunk)
              
             jobs.append(oarsub('--config', args.config,'--wait','_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.scanrange), *chunks))
-            print 'submitted final job, waiting...'
         print 'submitted {0} jobs, waiting...'.format(len(jobs))
         oarwait(jobs)
         print 'done!'
@@ -760,7 +774,7 @@ if __name__ == "__main__":
         globalspace = EmptySpace()
 
         if args.wait:
-            fileiter = wait_for_files(args.infiles[:])#destroy the reference
+            fileiter = wait_for_files(args.infiles)
         else:
             fileiter = args.infiles
 
