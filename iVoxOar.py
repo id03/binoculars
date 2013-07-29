@@ -548,15 +548,19 @@ def makeplot(space, args):
 
     # project automatically onto the smallest dimension or from command line argument
     remaining = range(len(space.axes))
-    
+
     if args.slice and len(space.axes) == 3:
         s = [slice(None)] * 3
         axlabels = [ax.label.lower() for ax in space.axes]
         if args.slice[0].lower() in axlabels:
             projected = axlabels.index(args.slice[0].lower())
         if ':' in args.slice[1]:
-            r = numpy.array(args.slice[1].split(':'),dtype = numpy.float)
-            s[projected] = slice(space.axes[projected].get_index(r[0]), space.axes[projected].get_index(r[1]))
+            mi,ma = args.slice[1].split(':')
+            if mi == '':
+                mi = space.axes[projected].min
+            if ma == '':
+                ma = space.axes[projected].max
+            s[projected] = slice(space.axes[projected].get_index(float(mi)), space.axes[projected].get_index(float(ma)))
             data = mesh[s].mean(axis = projected)
         else:
             index = space.axes[projected].get_index(float(args.slice[1]))
@@ -565,7 +569,7 @@ def makeplot(space, args):
         info = ' sliced at {0} = {1}'.format(space.axes[projected].label, args.slice[1])
         remaining.pop(projected)
 
-    if len(space.axes) == 3:
+    elif len(space.axes) == 3:
         if args.project:
             axlabels = [ax.label.lower() for ax in space.axes]
             if args.project.lower() in axlabels:
