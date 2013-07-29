@@ -641,6 +641,36 @@ def gbkg(spec, scanno,cfg):
     return bkg
 
 
+_status_line_length = 0
+def status(line, eol=False):
+    """Prints a status line to sys.stdout, overwriting the previous one.
+    Set eol to True to append a newline to the end of the line"""
+
+    global _status_line_length
+    sys.stdout.write('\r{0}\r{1}'.format(' '*_status_line_length, line))
+    if eol:
+        sys.stdout.write('\n')
+        _status_line_length = 0
+    else:
+        _status_line_length = len(line)
+
+    sys.stdout.flush()
+
+def statusnl(line):
+    """Shortcut for status(..., eol=True)"""
+    return status(line, eol=True)
+
+def statuseol(line):
+    """Starts a new status line, keeping the previous one intact"""
+    global _status_line_length = 0
+    sys.stdout.write('\n')
+    sys.stdout.flush()
+
+def statuscl():
+    """Clears the status line, shortcut for status('')"""
+    return status('')
+
+
 if __name__ == "__main__":    
     
     def run(*command):
@@ -680,10 +710,7 @@ if __name__ == "__main__":
     def oarwait(jobs, remaining=0):
         linelen = 0
         if len(jobs) > remaining:
-            line = '{0}: getting status of {1} jobs...'.format(time.ctime(), len(jobs))
-            linelen = len(line)
-            sys.stdout.write(line)
-            sys.stdout.flush()
+            status('{0}: getting status of {1} jobs...'.format(time.ctime(), len(jobs)))
         else:
             return
      
@@ -693,23 +720,20 @@ if __name__ == "__main__":
             W = 0
             U = 0
             while i < len(jobs):
-                status = oarstat(jobs[i])
-                if status == 'Running':
+                state = oarstat(jobs[i])
+                if state == 'Running':
                     R += 1
-                elif status == 'Waiting':
+                elif state == 'Waiting':
                     W += 1
-                elif status == 'Unknown':
+                elif state == 'Unknown':
                     U += 1
-                else: # assume status == 'Finishing' or 'Terminated' but don't wait on something unknown
+                else: # assume state == 'Finishing' or 'Terminated' but don't wait on something unknown
                     del jobs[i]
                     i -= 1 #otherwise it skips a job
                 i += 1
-            line = '{0}: {1} jobs to go. {2} waiting, {3} running, {4} unknown.'.format(time.ctime(),len(jobs),W,R,U)
-            sys.stdout.write('\r{0}\r{1}'.format(' '*linelen, line))
-            linelen = len(line)
-            sys.stdout.flush()
+            status('{0}: {1} jobs to go. {2} waiting, {3} running, {4} unknown.'.format(time.ctime(),len(jobs),W,R,U))
             if len(jobs) <= remaining:
-                sys.stdout.write('\n')
+                statuseol()
                 return
             else:
                 time.sleep(30) # only sleep if we're not done yet
@@ -735,11 +759,12 @@ if __name__ == "__main__":
             return
                     
         parts = []
-        for scanno in scanrange:
+        for i, scanno in enumerate(scanrange):
             part = '{0}/{1}-part-{2}.zpi'.format(args.tmpdir, prefix, scanno)
             jobs.append(oarsub('--config', args.config,'_part','-o', part, str(scanno)))
+            status('submitted {0} jobs...'.format(i+1))
             parts.append(part)
-        print 'submitted {0} jobs, waiting...'.format(len(jobs))
+        statusnl('submitted {0} jobs, waiting...'.format(len(jobs)))
         oarwait(jobs, 25)
 
         count = len(scanrange)
