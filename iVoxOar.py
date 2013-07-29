@@ -545,49 +545,54 @@ def makeplot(space, args):
     
     clipping = float(args.clip)
     mesh = space.get_masked()
+    axes = space.axes
+    del space
 
     # project automatically onto the smallest dimension or from command line argument
-    remaining = range(len(space.axes))
+    remaining = range(len(axes))
     
-    if args.slice and len(space.axes) == 3:
+    if args.slice and len(axes) == 3:
         s = [slice(None)] * 3
-        axlabels = [ax.label.lower() for ax in space.axes]
+        axlabels = [ax.label.lower() for ax in axes]
         if args.slice[0].lower() in axlabels:
             projected = axlabels.index(args.slice[0].lower())
         if ':' in args.slice[1]:
             r = numpy.array(args.slice[1].split(':'),dtype = numpy.float)
-            s[projected] = slice(space.axes[projected].get_index(r[0]), space.axes[projected].get_index(r[1]))
+            s[projected] = slice(axes[projected].get_index(r[0]), axes[projected].get_index(r[1]))
             data = mesh[s].mean(axis = projected)
         else:
-            index = space.axes[projected].get_index(float(args.slice[1]))
+            index = axes[projected].get_index(float(args.slice[1]))
             s[projected] = index
-            data = mesh[s]
-        info = ' sliced at {0} = {1}'.format(space.axes[projected].label, args.slice[1])
+            data = mesh[s].copy() # make a copy so the rest of the mesh can be released from memory
+        info = ' sliced at {0} = {1}'.format(axes[projected].label, args.slice[1])
         remaining.pop(projected)
 
-    if len(space.axes) == 3:
+    elif len(remaining) == 3:
         if args.project:
-            axlabels = [ax.label.lower() for ax in space.axes]
+            axlabels = [ax.label.lower() for ax in axes]
             if args.project.lower() in axlabels:
                 projected = axlabels.index(args.project.lower())
         else:
             projected = numpy.argmin(mesh.shape)
-        info = ' projected on {0}'.format(space.axes[projected].label)
+        info = ' projected on {0}'.format(axes[projected].label)
         remaining.pop(projected)
  
         data = mesh.mean(axis=projected)
     else:
         data = mesh
 
+    del mesh
+
     compresseddata = data.compressed()
     chop = int(round(compresseddata.size * clipping))
     clip = sorted(compresseddata)[chop:-(1+chop)]
     vmin, vmax = clip[0], clip[-1]
+    del compresseddata, clip
         
-    xmin = space.axes[remaining[0]].min
-    xmax = space.axes[remaining[0]].max
-    ymin = space.axes[remaining[1]].min
-    ymax = space.axes[remaining[1]].max
+    xmin = axes[remaining[0]].min
+    xmax = axes[remaining[0]].max
+    ymin = axes[remaining[1]].min
+    ymax = axes[remaining[1]].max
     
     pyplot.figure(figsize=(12,9))
     if args.clip:
@@ -595,9 +600,9 @@ def makeplot(space, args):
     else:
         pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto')
 
-    pyplot.xlabel(space.axes[remaining[0]].label)
-    pyplot.ylabel(space.axes[remaining[1]].label)
-    pyplot.suptitle('{0}{1}'.format(os.path.splitext(args.outfile)[0]), info)
+    pyplot.xlabel(axes[remaining[0]].label)
+    pyplot.ylabel(axes[remaining[1]].label)
+    pyplot.suptitle('{0}{1}'.format(os.path.splitext(args.outfile)[0], info))
     pyplot.colorbar()
     
     if args.savepdf or args.savefile:
