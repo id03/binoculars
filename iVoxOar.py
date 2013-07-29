@@ -95,8 +95,15 @@ class Axis(object):
     def rebound(self, min, max):
         return self.__class__(min, max, self.res, self.label)
 
+    def rebin(self, factor):
+        newres = self.res*factor
+        left = int(round(self.min/self.res))
+        right = int(round(self.max/self.res))
+        new = self.__class__(newres * numpy.floor(round(self.min / newres, 3)), newres * numpy.ceil(round(self.max / newres, 3)), newres, self.label)
+        return left % factor, -right % factor, new
+
     def __repr__(self):
-        return '{0.__class__.__name__} {0.label} (min={0.min}, max={0.max}, res={0.res})'.format(self)
+        return '{0.__class__.__name__} {0.label} (min={0.min}, max={0.max}, res={0.res}, count={1})'.format(self, len(self))
 
 
 class EmptySpace(object):
@@ -160,6 +167,29 @@ class Space(object):
         slices = tuple(slice(min, max+1) for (min, max) in lims)
         self.photons = self.photons[slices].copy()
         self.contributions = self.contributions[slices].copy()
+
+    def rebin(self, factors):
+        if len(factors) != len(self.axes):
+            raise ValueError('dimension mismatch between factors and axes')
+        if not all(isinstance(factor, int) for factor in factors) or not all(factor % 2 == 0 for factor in factors):
+            raise ValueError('binning factors must be even integers')
+
+        lefts, rights, newaxes = zip(*[ax.rebin(factor) for ax, factor in zip(self.axes, factors)])
+        tempshape = tuple(size + left + right + factor for size, left, right, factor in zip(self.photons.shape, lefts, rights, factors))
+
+        photons = numpy.zeros(tempshape, order='C')
+        contributions = numpy.zeros(tempshape, dtype=numpy.uint32, order='C')
+        pad = tuple(slice(left+factor/2, left+factor/2+size) for left, factor, size in zip(lefts, factors, self.photons.shape))
+        photons[pad] = self.photons
+        contributions[pad] = self.contributions
+
+        new = Space(newaxes)
+        for offsets in itertools.product(*[range(factor) for factor in factors]):
+            stride = tuple(slice(offset, offset+size+left+factor/2, factor) for offset, size, factor, left in zip(offsets, self.photons.shape, factors, lefts))
+            new.photons += photons[stride]
+            new.contributions += contributions[stride]
+
+        return new
     
     def process_image(self, coordinates, intensity):
         # note: coordinates must be tuple of arrays, not a 2D array
@@ -872,6 +902,13 @@ if __name__ == "__main__":
         space = Space.fromfile(args.outfile)
         ext = os.path.splitext(args.savefile)[-1]
         
+        if args.rebin:
+            if ',' in args.rebin:
+                factors = tuple(int(i) for i in args.rebin.split(','))
+            else:
+                factors = (int(args.rebin),)
+            space = space.rebin(factors)
+ 
         if ext == '.edf':
             header = {}
             for a in space.axes:
@@ -966,6 +1003,7 @@ if __name__ == "__main__":
     parser_plot.set_defaults(func=plot)
 
     parser_export = subparsers.add_parser('export')
+    parser_export.add_argument('--rebin', default=None)
     parser_export.add_argument('outfile')
     parser_export.add_argument('savefile')
     parser_export.set_defaults(func=export)
