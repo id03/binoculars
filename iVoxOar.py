@@ -130,6 +130,37 @@ class Space(object):
 
     def get(self):
         return self.photons/self.contributions
+    
+    def __getitem__(self, key):
+        if key is Ellipsis:
+            return self.get_masked()
+        if isinstance(key, numbers.Number) or isinstance(key, slice):
+            if not len(self.axes) == 1:
+                raise IndexError('dimension mismatch')
+            else:
+                key = [key]
+        elif not isinstance(key, tuple) or not len(key) == len(self.axes):
+            raise IndexError('dimension mismatch')
+
+        newkey = tuple(self._convertindex(k,ax) for k, ax in zip(key, self.axes))
+        return self.get_masked()[newkey]
+
+    def _convertindex(self,key,ax):
+        if isinstance(key,slice):
+            if key.step is not None:
+                raise IndexError('stride not supported')
+            if key.start is None:
+                start = None
+            else:
+                start = ax.get_index(key.start)
+            if key.stop is None:
+                stop = None
+            else:
+                stop = ax.get_index(key.stop)
+            return slice(start, stop)
+        if isinstance(key, numbers.Number):
+            return ax.get_index(key)
+        raise TypeError('unrecognized slice')
 
     def get_masked(self):
         return numpy.ma.array(data=self.get(), mask=(self.contributions == 0))
@@ -616,24 +647,31 @@ def makeplot(space, args):
     else:
         data = mesh
 
+    if args.ecs:
+        colordata = mesh
+    else:
+        colordata = data
     del mesh
 
-    compresseddata = data.compressed()
-    chop = int(round(compresseddata.size * clipping))
-    clip = sorted(compresseddata)[chop:-(1+chop)]
-    vmin, vmax = clip[0], clip[-1]
-    del compresseddata, clip
-        
+    colordata.mask[colordata == 0] = 1
+    colordata = colordata.compressed()
+
+    if args.clip:
+        chop = int(round(colordata.size * clipping))
+        clip = sorted(colordata)[chop:-(1+chop)]
+        vmin, vmax = clip[0], clip[-1]
+        del clip
+    else:
+        vmin, vmax = colordata.min(),colordata.max()
+    del colordata
+
     xmin = axes[remaining[0]].min
     xmax = axes[remaining[0]].max
     ymin = axes[remaining[1]].min
     ymax = axes[remaining[1]].max
     
     pyplot.figure(figsize=(12,9))
-    if args.clip:
-        pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=matplotlib.colors.Normalize(numpy.log(vmin), numpy.log(vmax)))
-    else:
-        pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto')
+    pyplot.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=matplotlib.colors.LogNorm(vmin,vmax))
 
     pyplot.xlabel(axes[remaining[0]].label)
     pyplot.ylabel(axes[remaining[1]].label)
@@ -998,6 +1036,7 @@ if __name__ == "__main__":
     parser_plot.add_argument('-s', '--savepdf', action='store_true')
     parser_plot.add_argument('-c', '--clip', default = 0.00)
     parser_plot.add_argument('-p', '--project', default=False)
+    parser_plot.add_argument('-ecs', action='store_true', help='extend color scale to whole mesh not just the to be plotted data')
     parser_plot.add_argument('--slice', nargs=2, default=False)
     parser_plot.add_argument('--savefile')
     parser_plot.set_defaults(func=plot)
