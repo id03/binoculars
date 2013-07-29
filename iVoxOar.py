@@ -1036,7 +1036,7 @@ if __name__ == "__main__":
     parser_plot.add_argument('-s', '--savepdf', action='store_true')
     parser_plot.add_argument('-c', '--clip', default = 0.00)
     parser_plot.add_argument('-p', '--project', default=False)
-    parser_plot.add_argument('-ecs', action='store_true', help='extend color scale to whole mesh not just the to be plotted data')
+    parser_plot.add_argument('--ecs', action='store_true', help='extend color scale to whole mesh not just the to be plotted data')
     parser_plot.add_argument('--slice', nargs=2, default=False)
     parser_plot.add_argument('--savefile')
     parser_plot.set_defaults(func=plot)
