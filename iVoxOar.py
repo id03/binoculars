@@ -672,7 +672,8 @@ def statusnl(line):
 
 def statuseol(line):
     """Starts a new status line, keeping the previous one intact"""
-    global _status_line_length = 0
+    global _status_line_length
+    _status_line_length = 0
     sys.stdout.write('\n')
     sys.stdout.flush()
 
