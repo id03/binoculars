@@ -545,53 +545,59 @@ def makeplot(space, args):
     
     clipping = float(args.clip)
     mesh = space.get_masked()
+    axes = space.axes
+    del space
 
     # project automatically onto the smallest dimension or from command line argument
-    remaining = range(len(space.axes))
 
-    if args.slice and len(space.axes) == 3:
+    remaining = range(len(axes))
+    
+    if args.slice and len(axes) == 3:
         s = [slice(None)] * 3
-        axlabels = [ax.label.lower() for ax in space.axes]
+        axlabels = [ax.label.lower() for ax in axes]
         if args.slice[0].lower() in axlabels:
             projected = axlabels.index(args.slice[0].lower())
         if ':' in args.slice[1]:
             mi,ma = args.slice[1].split(':')
             if mi == '':
-                mi = space.axes[projected].min
+                mi = axes[projected].min
             if ma == '':
-                ma = space.axes[projected].max
-            s[projected] = slice(space.axes[projected].get_index(float(mi)), space.axes[projected].get_index(float(ma)))
+                ma = axes[projected].max
+            s[projected] = slice(axes[projected].get_index(float(mi)), axes[projected].get_index(float(ma)))
             data = mesh[s].mean(axis = projected)
         else:
-            index = space.axes[projected].get_index(float(args.slice[1]))
+            index = axes[projected].get_index(float(args.slice[1]))
             s[projected] = index
-            data = mesh[s]
-        info = ' sliced at {0} = {1}'.format(space.axes[projected].label, args.slice[1])
+            data = mesh[s].copy() # make a copy so the rest of the mesh can be released from memory
+        info = ' sliced at {0} = {1}'.format(axes[projected].label, args.slice[1])
         remaining.pop(projected)
 
-    elif len(space.axes) == 3:
+    elif len(remaining) == 3:
         if args.project:
-            axlabels = [ax.label.lower() for ax in space.axes]
+            axlabels = [ax.label.lower() for ax in axes]
             if args.project.lower() in axlabels:
                 projected = axlabels.index(args.project.lower())
         else:
             projected = numpy.argmin(mesh.shape)
-        info = ' projected on {0}'.format(space.axes[projected].label)
+        info = ' projected on {0}'.format(axes[projected].label)
         remaining.pop(projected)
  
         data = mesh.mean(axis=projected)
     else:
         data = mesh
 
+    del mesh
+
     compresseddata = data.compressed()
     chop = int(round(compresseddata.size * clipping))
     clip = sorted(compresseddata)[chop:-(1+chop)]
     vmin, vmax = clip[0], clip[-1]
+    del compresseddata, clip
         
-    xmin = space.axes[remaining[0]].min
-    xmax = space.axes[remaining[0]].max
-    ymin = space.axes[remaining[1]].min
-    ymax = space.axes[remaining[1]].max
+    xmin = axes[remaining[0]].min
+    xmax = axes[remaining[0]].max
+    ymin = axes[remaining[1]].min
+    ymax = axes[remaining[1]].max
     
     pyplot.figure(figsize=(12,9))
     if args.clip:
@@ -599,8 +605,8 @@ def makeplot(space, args):
     else:
         pyplot.imshow(numpy.log(data.transpose()), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto')
 
-    pyplot.xlabel(space.axes[remaining[0]].label)
-    pyplot.ylabel(space.axes[remaining[1]].label)
+    pyplot.xlabel(axes[remaining[0]].label)
+    pyplot.ylabel(axes[remaining[1]].label)
     pyplot.suptitle('{0}{1}'.format(os.path.splitext(args.outfile)[0], info))
     pyplot.colorbar()
     
@@ -799,7 +805,7 @@ if __name__ == "__main__":
         space.tofile(args.outfile)
 
 
-    def sum(args):
+    def cmd_sum(args):
         globalspace = EmptySpace()
 
         if args.wait:
@@ -873,7 +879,7 @@ if __name__ == "__main__":
             edf.WriteImage(header,space.get_masked().filled(0),DataType="Float")
             print 'saved at {0}'.format(args.savefile)
 
-        if ext == '.txt':
+        elif ext == '.txt':
             tmpfile = '{0}-{1:x}.tmp'.format(os.path.splitext(args.savefile)[0], random.randint(0, 2**32-1))
             fp = open(tmpfile,'w')
             try:
@@ -896,6 +902,14 @@ if __name__ == "__main__":
                 print 'saved at {0}'.format(args.savefile)
                 os.rename(tmpfile, args.savefile)
 
+        elif ext == '.zpi':
+            space.tofile(args.savefile)
+            print 'saved at {0}'.format(args.savefile)
+
+        else:
+            print 'unknown extension, unable to save!'
+            sys.exit(1)
+
     def check(args):
         print 'checking scans'
         for scanno in getconfig.parsemultirange(args.scanrange):
@@ -911,7 +925,6 @@ if __name__ == "__main__":
     parser.add_argument('--config',default='./config')
     parser.add_argument('--projection')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
-    parser.add_argument('--split', action='store_true', help='dont sum files (for timescans)')
     subparsers = parser.add_subparsers()
 
     parser_cluster = subparsers.add_parser('cluster')
@@ -919,6 +932,7 @@ if __name__ == "__main__":
     parser_cluster.add_argument('-o', '--outfile')
     parser_cluster.add_argument('--tmpdir', default='.')
     parser_cluster.add_argument('--chunksize', default=20, type=int)
+    parser_cluster.add_argument('--split', action='store_true', help='dont sum files (for timescans)')
     parser_cluster.set_defaults(func=cluster)
 
     parser_part = subparsers.add_parser('_part')
@@ -932,7 +946,7 @@ if __name__ == "__main__":
     parser_sum.add_argument('--delete', action='store_true')
     parser_sum.add_argument('--trim', action='store_true')
     parser_sum.add_argument('infiles', nargs='+')
-    parser_sum.set_defaults(func=sum)
+    parser_sum.set_defaults(func=cmd_sum)
 
     parser_local = subparsers.add_parser('local')
     parser_local.add_argument('scanrange')
