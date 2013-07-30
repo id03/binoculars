@@ -15,31 +15,31 @@ import inspect
 
 # handle old zpi's from before ivoxoar's major restructuring
 def _pickle_translate(module, name):
-	if module == '__main__' and name in ('Space', 'Axis'):
-		return 'ivoxoar.space', name
-	return module, name
+    if module == '__main__' and name in ('Space', 'Axis'):
+        return 'ivoxoar.space', name
+    return module, name
 
 if inspect.isbuiltin(pickle.Unpickler):
-	# real cPickle: cannot subclass
-	def _find_global(module, name):
-		module, name = _pickle_translate(module, name)
-		__import__(module)
-		return getattr(sys.modules[module], name)
+    # real cPickle: cannot subclass
+    def _find_global(module, name):
+        module, name = _pickle_translate(module, name)
+        __import__(module)
+        return getattr(sys.modules[module], name)
 
-	def pickle_load(fileobj):
-		unpickler = pickle.Unpickler(fileobj)
-		unpickler.find_global = _find_global
-		return unpickler.load()
+    def pickle_load(fileobj):
+        unpickler = pickle.Unpickler(fileobj)
+        unpickler.find_global = _find_global
+        return unpickler.load()
 else:
-	# pure python implementation
-	class _Unpickler(pickle.Unpickler):
-		def find_class(self, module, name):
-			module, name = _pickle_translate(module, name)
-			return pickle.Unpickler.find_class(self, module, name)
+    # pure python implementation
+    class _Unpickler(pickle.Unpickler):
+        def find_class(self, module, name):
+            module, name = _pickle_translate(module, name)
+            return pickle.Unpickler.find_class(self, module, name)
 
-	def pickle_load(fileobj):
-		unpickler = _Unpickler(fileobj)
-		return unpickler.load()
+    def pickle_load(fileobj):
+        unpickler = _Unpickler(fileobj)
+        return unpickler.load()
 
 
 def sum_onto(a, axis):
@@ -131,14 +131,6 @@ class Space(object):
         
         self.photons = numpy.zeros([len(ax) for ax in self.axes], order='C')
         self.contributions = numpy.zeros(self.photons.shape, dtype=numpy.uint32, order='C')
-
-    @classmethod
-    def fromcfg(cls, cfg): # FIXME: to be removed once automatic HKL limits detection is working
-        return cls((
-            Axis(cfg.Hmin, cfg.Hmax, cfg.Hres, 'H'),
-            Axis(cfg.Kmin, cfg.Kmax, cfg.Kres, 'K'),
-            Axis(cfg.Lmin, cfg.Lmax, cfg.Lres, 'L'),
-        ))
 
     def get(self):
         return self.photons/self.contributions
