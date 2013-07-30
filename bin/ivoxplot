@@ -11,7 +11,7 @@ import numpy
 import matplotlib.pyplot as pyplot
 import matplotlib.colors
 
-import ivoxoar.space
+import ivoxoar.space, ivoxoar.plot
 
 
 if __name__ == "__main__":
@@ -21,7 +21,6 @@ if __name__ == "__main__":
     parser.add_argument('-c', '--clip', default = 0.00)
     parser.add_argument('-p', '--project', action='append', default=[])
     parser.add_argument('--nolog', action='store_true')
-    parser.add_argument('--ecs', action='store_true', help='extend color scale to whole mesh not just the to be plotted data')
     parser.add_argument('--slice', nargs=2, action='append', default=[])
     parser.add_argument('--savefile')
     parser.add_argument('--subtract')
@@ -35,10 +34,7 @@ if __name__ == "__main__":
         del diffspace
         args.nolog = True
 
-    orgspace = space # for --ecs
-
     info = ''
-
 
     # SLICING
     for sl in args.slice:
@@ -78,62 +74,9 @@ if __name__ == "__main__":
         info += ' projected on {0}'.format(space.axes[projectaxis].label)
         space = space.project(projectaxis)
 
-    # CHOOSE PLOT TYPE BASED ON DIMENSIONALITY
-    if space.dimension == 1:
-        data = space.get_masked()
-        xrange = space.axes[0][:]
-        if args.nolog:
-            pyplot.plot(xrange, data)
-        else:
-            pyplot.semilogy(xrange, data)
-        
-        pyplot.xlabel(space.axes[0].label)
-        pyplot.ylabel('Intensity (a.u.)')
-
-    elif space.dimension == 2:
-        # COLOR CLIPPING
-        clipping = float(args.clip)
-
-        if args.ecs:
-            colorspace = orgspace
-        else:
-            colorspace = space
-        colordata = colorspace.get_masked()
-        colordata.mask[colordata == 0] = 1
-        colordata = colordata.compressed()
-
-        if args.clip:
-            chop = int(round(colordata.size * clipping))
-            clip = sorted(colordata)[chop:-(1+chop)]
-            vmin, vmax = clip[0], clip[-1]
-            del clip
-        else:
-            vmin, vmax = colordata.min(),colordata.max()
-        del colordata, colorspace
-
-        # 2D IMSHOW PLOT
-        data = space.get_masked()
-
-        xmin = space.axes[0].min
-        xmax = space.axes[0].max
-        ymin = space.axes[1].min
-        ymax = space.axes[1].max
-        
-        pyplot.figure(figsize=(12,9))
-        if args.nolog:
-            norm = matplotlib.colors.Normalize(vmin, vmax)
-        else:
-            norm = matplotlib.colors.LogNorm(vmin, vmax)
-        pyplot.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=norm)
-
-        pyplot.xlabel(space.axes[0].label)
-        pyplot.ylabel(space.axes[1].label)
-        pyplot.colorbar()
-
-    elif space.dimension > 2:
-        print "Cannot plot 3 or higher dimensional spaces.\nUse --project and or --slice to decrease dimensionality."
-        sys.exit(1)
-
+    # PLOTTING
+    pyplot.figure(figsize=(12,9))
+    ivoxoar.plot.plot(space, pyplot.gcf(), pyplot.gca(), log=not args.nolog, clipping=args.clip)
     pyplot.suptitle('{0}{1}'.format(os.path.splitext(args.infile)[0], info))
     
     if args.savepdf or args.savefile:
