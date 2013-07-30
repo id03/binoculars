@@ -1,4 +1,5 @@
 import subprocess
+import time
 
 from . import util
 
@@ -14,7 +15,7 @@ def oarsub(*args, **kwargs):
     opts = kwargs.pop('options', 'walltime=0:15')
     if kwargs:
         raise ValueError('invalid keyword parameter(s): {0}'.format(kwargs))
-    scriptname = './blisspython /users/onderwaa/iVoxOar/iVoxOar.py '
+    scriptname = './ivoxoar'
     command = '{0} {1}'.format(scriptname, ' '.join(args))
     ret, output = run('oarsub', '-l {0}'.format(opts), command)
     if ret == 0:

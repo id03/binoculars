@@ -91,9 +91,9 @@ if __name__ == "__main__":
         for i, scanno in enumerate(scanrange):
             part = '{0}/{1}-part-{2}.zpi'.format(args.tmpdir, prefix, scanno)
             jobs.append(oarsub('--config', args.config,'_part','-o', part, str(scanno)))
-            status('submitted {0} jobs...'.format(i+1))
+            util.status('submitted {0} jobs...'.format(i+1))
             parts.append(part)
-        statusnl('submitted {0} jobs, waiting...'.format(len(jobs)))
+        util.statusnl('submitted {0} jobs, waiting...'.format(len(jobs)))
         oarwait(jobs, 25)
 
         count = len(scanrange)
@@ -134,7 +134,7 @@ if __name__ == "__main__":
 
         for fn in fileiter:
             print fn
-            result = Space.fromfile(fn)
+            result = space.Space.fromfile(fn)
             if result is not None:
                 globalspace += result
 
@@ -185,13 +185,13 @@ if __name__ == "__main__":
     def plot(args):
         if args.wait:
             wait_for_file(args.outfile)
-        space = Space.fromfile(args.outfile)
+        space = space.Space.fromfile(args.outfile)
         makeplot(space, args)
     
     def export(args):
         if args.wait:
             wait_for_file(args.outfile)
-        space = Space.fromfile(args.outfile)
+        space = space.Space.fromfile(args.outfile)
         ext = os.path.splitext(args.savefile)[-1]
         
         if args.rebin:
