@@ -10,6 +10,36 @@ import cPickle as pickle
 import gzip
 import numbers
 import numpy
+import inspect
+
+
+# handle old zpi's from before ivoxoar's major restructuring
+def _pickle_translate(module, name):
+	if module == '__main__' and name in ('Space', 'Axis'):
+		return 'ivoxoar.space', name
+	return module, name
+
+if inspect.isbuiltin(pickle.Unpickler):
+	# real cPickle: cannot subclass
+	def _find_global(module, name):
+		module, name = _pickle_translate(module, name)
+		__import__(module)
+		return getattr(sys.modules[module], name)
+
+	def pickle_load(fileobj):
+		unpickler = pickle.Unpickler(fileobj)
+		unpickler.find_global = _find_global
+		return unpickler.load()
+else:
+	# pure python implementation
+	class _Unpickler(pickle.Unpickler):
+		def find_class(self, module, name):
+			module, name = _pickle_translate(module, name)
+			return pickle.Unpickler.find_class(self, module, name)
+
+	def pickle_load(fileobj):
+		unpickler = _Unpickler(fileobj)
+		return unpickler.load()
 
 
 def sum_onto(a, axis):
@@ -239,6 +269,6 @@ class Space(object):
     def fromfile(cls, filename):
         fp = gzip.open(filename,'rb')
         try:
-            return pickle.load(fp)
+            return pickle_load(fp)
         finally:
             fp.close()
