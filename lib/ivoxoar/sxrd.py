@@ -9,13 +9,12 @@ import glob
 import numpy
 
 from PyMca import SixCircle
-from PyMca import specfilewrapper
 try:
 	import EdfFile # allow user to provide a local version of EdfFile if the PyMca one is too old
 except:
 	from PyMca import EdfFile
 
-from . import config
+from . import config, space
 
 
 class ProjectionBase(object):
@@ -34,14 +33,14 @@ class ProjectionBase(object):
     def space_from_bounds(self, *args, **kwargs):
         limits = self.get_bounds(*args, **kwargs)
         try:
-            iter(cfg.resolution)
+            iter(self.cfg.resolution)
         except TypeError:
-            resolution = itertools.repeat(cfg.resolution)
+            resolution = itertools.repeat(self.cfg.resolution)
         else:
-            if len(cfg.resolution) != len(limits):
+            if len(self.cfg.resolution) != len(limits):
                 raise ValueError('not enough values in given for resolution')
-            resolution = cfg.resolution
-        return Space(Axis(min, max, res, label) for ((min, max), res, label) in zip(limits, resolution, self._get_labels()))
+            resolution = self.cfg.resolution
+        return space.Space(space.Axis(min, max, res, label) for ((min, max), res, label) in zip(limits, resolution, self._get_labels()))
 
 
 class HKLProjection(ProjectionBase):

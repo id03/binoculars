@@ -101,7 +101,7 @@ if __name__ == "__main__":
 
     pyplot.xlabel(axes[remaining[0]].label)
     pyplot.ylabel(axes[remaining[1]].label)
-    pyplot.suptitle('{0}{1}'.format(os.path.splitext(args.outfile)[0], info))
+    pyplot.suptitle('{0}{1}'.format(os.path.splitext(args.infile)[0], info))
     pyplot.colorbar()
     
     if args.savepdf or args.savefile:
@@ -109,7 +109,7 @@ if __name__ == "__main__":
             pyplot.savefig(args.savefile)
             print 'saved at {0}'.format(args.savefile)
         else:
-            pyplot.savefig('{0}.pdf'.format(os.path.splitext(args.outfile)[0]))
-            print 'saved at {0}.pdf'.format(os.path.splitext(args.outfile)[0])
+            pyplot.savefig('{0}.pdf'.format(os.path.splitext(args.infile)[0]))
+            print 'saved at {0}.pdf'.format(os.path.splitext(args.infile)[0])
     else:
         pyplot.show()

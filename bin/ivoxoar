@@ -9,8 +9,10 @@ import time
 import itertools
 import subprocess
 import random
-
+import argparse
 import numpy
+
+from PyMca import specfilewrapper
 
 from ivoxoar import space, sxrd, config, util
 from ivoxoar.oar import *
@@ -18,7 +20,7 @@ from ivoxoar.oar import *
 
 def process(scanno):
     print scanno
-    a = ScanBase.detect_scan(cfg, spec, scanno)
+    a = sxrd.ScanBase.detect_scan(cfg, spec, scanno)
     a.initImdata()
     mesh = a.get_space()
     for m in range(a.length):
@@ -29,7 +31,7 @@ def process(scanno):
 def checkscan(scanno):
     try:
         spec = specfilewrapper.Specfile(cfg.specfile)
-        a = ScanBase.detect_scan(cfg, spec, scanno)
+        a = sxrd.ScanBase.detect_scan(cfg, spec, scanno)
         a.initImdata()
     except Exception as e:
         print 'Unable to load scan {0}\n'.format(scanno)
@@ -68,7 +70,7 @@ if __name__ == "__main__":
 
         prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1))
         jobs = []
-        scanrange = getconfig.parsemultirange(args.scanrange)
+        scanrange = config.parsemultirange(args.scanrange)
                 
         if len(scanrange) == 1:
             jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, args.scanrange), str(scanrange[0])))
@@ -153,8 +155,8 @@ if __name__ == "__main__":
         global spec
         spec = specfilewrapper.Specfile(cfg.specfile)
         
-        scanlist = getconfig.parsemultirange(args.scanrange)
-        globalspace = EmptySpace()
+        scanlist = config.parsemultirange(args.scanrange)
+        globalspace = space.EmptySpace()
      
         if args.multiprocessing:
             import multiprocessing
@@ -240,7 +242,7 @@ if __name__ == "__main__":
 
     def check(args):
         print 'checking scans'
-        for scanno in getconfig.parsemultirange(args.scanrange):
+        for scanno in config.parsemultirange(args.scanrange):
             print 'Checking scan: {0}'.format(scanno)
             if not checkscan(scanno):
                 print 'exiting...'
@@ -298,7 +300,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    cfg = getconfig.cfg(args.config)
+    cfg = config.cfg(args.config)
 
     if args.projection:
         cfg.projection = args.projection
