@@ -1,0 +1,307 @@
+#!/usr/bin/python
+# Written by Willem Onderwaater and Sander Roobol as part of a collaboration
+# between the ID03 beamline at the European Synchrotron Radiation Facility and
+# the Interface Physics group at Leiden University.
+
+import sys
+import os
+import time
+import itertools
+import subprocess
+import random
+
+import numpy
+
+from ivoxoar import space, sxrd, config, util
+from ivoxoar.oar import *
+
+
+def process(scanno):
+    print scanno
+    a = ScanBase.detect_scan(cfg, spec, scanno)
+    a.initImdata()
+    mesh = a.get_space()
+    for m in range(a.length):
+        coordinates , intensity = a.getImdata(m)
+        mesh.process_image(coordinates, intensity)
+    return mesh
+
+def checkscan(scanno):
+    try:
+        spec = specfilewrapper.Specfile(cfg.specfile)
+        a = ScanBase.detect_scan(cfg, spec, scanno)
+        a.initImdata()
+    except Exception as e:
+        print 'Unable to load scan {0}\n'.format(scanno)
+        print e.message
+        return False
+    return True
+
+def mfinal(filename, scanrange):
+    base, ext = os.path.splitext(filename)
+    return ('{0}_{2}{1}').format(base,ext,scanrange)
+
+
+def wait_for_files(filelist):
+    filelist = filelist[:] # make copy
+    i = 0
+    while filelist:
+        i = i % len(filelist)
+        if os.path.exists(filelist[i]):
+            yield filelist.pop(i)
+        else:
+            time.sleep(5)
+            i == 1
+
+
+def wait_for_file(filename):
+    return bool(list(wait_for_files([filename])))
+
+
+if __name__ == "__main__":    
+    def cluster(args):
+        if args.single:
+            job = oarsub('--config', args.config, 'local', '--multiprocessing', '-o', mfinal(cfg.outfile, args.scanrange), args.scanrange, options='nodes=1/core=4,walltime=0:30')
+            oarwait([job])
+            print "done"
+            return
+
+        prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1))
+        jobs = []
+        scanrange = getconfig.parsemultirange(args.scanrange)
+                
+        if len(scanrange) == 1:
+            jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, args.scanrange), str(scanrange[0])))
+            print 'submitted 1 job, waiting...'
+            oarwait(jobs)
+            print 'done'
+            return
+
+        if args.split:
+            for scanno in scanrange:
+                jobs.append(oarsub('--config', args.config, '_part', '--trim', '-o', mfinal(cfg.outfile, scanno), str(scanno)))
+            print 'submitted {0} jobs, waiting...'.format(len(jobs))
+            oarwait(jobs)
+            print 'done!'
+            return
+                    
+        parts = []
+        for i, scanno in enumerate(scanrange):
+            part = '{0}/{1}-part-{2}.zpi'.format(args.tmpdir, prefix, scanno)
+            jobs.append(oarsub('--config', args.config,'_part','-o', part, str(scanno)))
+            status('submitted {0} jobs...'.format(i+1))
+            parts.append(part)
+        statusnl('submitted {0} jobs, waiting...'.format(len(jobs)))
+        oarwait(jobs, 25)
+
+        count = len(scanrange)
+        chunkcount = int(numpy.ceil(float(count) / args.chunksize))
+        if chunkcount == 1:
+            jobs.append(oarsub('--config', args.config,'--wait','_sum' ,'--trim', '--delete', '-o', mfinal(cfg.outfile,args.scanrange), *parts))
+        else:
+            chunksize = int(numpy.ceil(float(count) / chunkcount))
+            chunks = []
+            for i in range(chunkcount):
+                chunk = '{0}/{1}-chunk-{2}.zpi'.format(args.tmpdir, prefix, i+1)
+                jobs.append(oarsub('--config', args.config,'--wait','_sum', '--delete', '-o', chunk, *parts[i*chunksize:(i+1)*chunksize]))
+                chunks.append(chunk)
+             
+            jobs.append(oarsub('--config', args.config,'--wait','_sum', '--trim', '--delete', '-o', mfinal(cfg.outfile,args.scanrange), *chunks))
+        print 'submitted {0} jobs, waiting...'.format(len(jobs))
+        oarwait(jobs)
+        print 'done!'
+
+
+    def part(args):
+        global spec
+        spec = specfilewrapper.Specfile(cfg.specfile)
+        space = process(args.scan)
+        
+        if args.trim:
+            space.trim()
+        space.tofile(args.outfile)
+
+
+    def cmd_sum(args):
+        globalspace = space.EmptySpace()
+
+        if args.wait:
+            fileiter = wait_for_files(args.infiles)
+        else:
+            fileiter = args.infiles
+
+        for fn in fileiter:
+            print fn
+            result = Space.fromfile(fn)
+            if result is not None:
+                globalspace += result
+
+        if args.trim:
+            globalspace.trim()
+        
+        globalspace.tofile(args.outfile)
+                    
+        if args.delete:
+            for fn in args.infiles:
+                try:
+                    os.remove(fn)
+                except:
+                    pass
+
+
+    def local(args):
+        global spec
+        spec = specfilewrapper.Specfile(cfg.specfile)
+        
+        scanlist = getconfig.parsemultirange(args.scanrange)
+        globalspace = EmptySpace()
+     
+        if args.multiprocessing:
+            import multiprocessing
+            pool = multiprocessing.Pool()
+            iter = pool.imap_unordered(process, scanlist, 1)
+        else:
+            iter = itertools.imap(process, scanlist)
+     
+        for result in iter:
+            if result is not None:
+                globalspace += result
+
+        globalspace.trim()
+        if args.outfile:
+            outfile = args.outfile
+        else:
+            outfile = mfinal(cfg.outfile, args.scanrange)
+        globalspace.tofile(outfile)
+
+        if args.plot:
+            if args.plot is True:
+                makeplot(globalspace, None)
+            else:
+                makeplot(globalspace, args.plot)
+
+    def plot(args):
+        if args.wait:
+            wait_for_file(args.outfile)
+        space = Space.fromfile(args.outfile)
+        makeplot(space, args)
+    
+    def export(args):
+        if args.wait:
+            wait_for_file(args.outfile)
+        space = Space.fromfile(args.outfile)
+        ext = os.path.splitext(args.savefile)[-1]
+        
+        if args.rebin:
+            if ',' in args.rebin:
+                factors = tuple(int(i) for i in args.rebin.split(','))
+            else:
+                factors = (int(args.rebin),)
+            space = space.rebin(factors)
+ 
+        if ext == '.edf':
+            header = {}
+            for a in space.axes:
+                header[str(a.label)] = '{0} {1} {2}'.format(a.min,a.max,a.res)
+            edf = EdfFile.EdfFile(args.savefile)
+            edf.WriteImage(header,space.get_masked().filled(0),DataType="Float")
+            print 'saved at {0}'.format(args.savefile)
+
+        elif ext == '.txt':
+            tmpfile = '{0}-{1:x}.tmp'.format(os.path.splitext(args.savefile)[0], random.randint(0, 2**32-1))
+            fp = open(tmpfile,'w')
+            try:
+                grid = numpy.mgrid[tuple(slice(0, len(a)) for a in space.axes)]
+                columns = tuple((grid[n] * space.axes[n].res + space.axes[n].min).flatten() for n in range(grid.ndim-1))
+                data = space.get_masked().filled(0).flatten()
+                for a in space.axes:
+                    fp.write('{0}\t'.format(a.label))
+                fp.write('intensity')
+                fp.write('\n')
+                for n in range(len(data)):
+                    for m in range(grid.ndim-1):
+                        fp.write(str(columns[m][n]))
+                        fp.write('\t')
+                    fp.write(str(data[n]))
+                    fp.write('\n')
+                    fp.flush()
+            finally:
+                fp.close()
+                print 'saved at {0}'.format(args.savefile)
+                os.rename(tmpfile, args.savefile)
+
+        elif ext == '.zpi':
+            space.tofile(args.savefile)
+            print 'saved at {0}'.format(args.savefile)
+
+        else:
+            print 'unknown extension, unable to save!'
+            sys.exit(1)
+
+    def check(args):
+        print 'checking scans'
+        for scanno in getconfig.parsemultirange(args.scanrange):
+            print 'Checking scan: {0}'.format(scanno)
+            if not checkscan(scanno):
+                print 'exiting...'
+                return
+        print 'all good'
+        
+
+
+    parser = argparse.ArgumentParser(prog='iVoxOar')
+    parser.add_argument('--config',default='./config')
+    parser.add_argument('--projection')
+    parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
+    subparsers = parser.add_subparsers()
+
+    parser_cluster = subparsers.add_parser('cluster')
+    parser_cluster.add_argument('scanrange')
+    parser_cluster.add_argument('-o', '--outfile')
+    parser_cluster.add_argument('--tmpdir', default='.')
+    parser_cluster.add_argument('--chunksize', default=20, type=int)
+    parser_cluster.add_argument('--split', action='store_true', help='dont sum files (for timescans)')
+    parser_cluster.add_argument('--single', action='store_true', help='run entire job on a single node')
+    parser_cluster.set_defaults(func=cluster)
+
+    parser_part = subparsers.add_parser('_part')
+    parser_part.add_argument('scan', type=int)
+    parser_part.add_argument('-o', '--outfile',required=True)
+    parser_part.add_argument('--trim', action='store_true')
+    parser_part.set_defaults(func=part)
+    
+    parser_sum = subparsers.add_parser('_sum')
+    parser_sum.add_argument('-o', '--outfile',required=True)
+    parser_sum.add_argument('--delete', action='store_true')
+    parser_sum.add_argument('--trim', action='store_true')
+    parser_sum.add_argument('infiles', nargs='+')
+    parser_sum.set_defaults(func=cmd_sum)
+
+    parser_local = subparsers.add_parser('local')
+    parser_local.add_argument('scanrange')
+    parser_local.add_argument('-o', '--outfile')
+    parser_local.add_argument('-p', '--plot', nargs='?', const=True)
+    parser_local.add_argument('-m', '--multiprocessing', action='store_true')
+    parser_local.set_defaults(func=local)
+
+    parser_export = subparsers.add_parser('export')
+    parser_export.add_argument('--rebin', default=None)
+    parser_export.add_argument('outfile')
+    parser_export.add_argument('savefile')
+    parser_export.set_defaults(func=export)
+
+    parser_check = subparsers.add_parser('check')
+    parser_check.add_argument('scanrange')
+    parser_check.add_argument('-o', '--outfile')
+    parser_check.set_defaults(func=check)
+    
+    
+    args = parser.parse_args()
+    
+    cfg = getconfig.cfg(args.config)
+
+    if args.projection:
+        cfg.projection = args.projection
+    
+
+    args.func(args)
