@@ -48,18 +48,18 @@ if __name__ == "__main__":
         if ':' in key:
             start, stop = key.split(':')
             if start:
-                start = float(start)
+                start = float(start.replace('m', '-'))
             else:
                 start = space.axes[axindex].min
             if stop:
-                stop = float(stop)
+                stop = float(stop.replace('m', '-'))
             else:
                 stop = space.axes[axindex].max
             key = slice(start, stop)
 
             info += ' sliced in {0} from {1} to {2}'.format(axlabel, start, stop)
         else:
-            key = float(key)
+            key = float(key.replace('m', '-'))
             info += ' sliced in {0} at {1}'.format(axlabel, key)
         olddim = space.dimension
         space = space.slice(axindex, key)
@@ -77,7 +77,6 @@ if __name__ == "__main__":
         projectaxis = numpy.argmin(space.photons.shape)
         info += ' projected on {0}'.format(space.axes[projectaxis].label)
         space = space.project(projectaxis)
-
 
     # CHOOSE PLOT TYPE BASED ON DIMENSIONALITY
     if space.dimension == 1:
