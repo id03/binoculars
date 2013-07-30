@@ -76,7 +76,7 @@ if __name__ == "__main__":
 
     # PLOTTING
     pyplot.figure(figsize=(12,9))
-    ivoxoar.plot.plot(space, pyplot.gcf(), pyplot.gca(), log=not args.nolog, clipping=args.clip)
+    ivoxoar.plot.plot(space, pyplot.gcf(), pyplot.gca(), log=not args.nolog, clipping=float(args.clip))
     pyplot.suptitle('{0}{1}'.format(os.path.splitext(args.infile)[0], info))
     
     if args.savepdf or args.savefile:
