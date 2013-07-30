@@ -759,10 +759,13 @@ if __name__ == "__main__":
         return retcode, output
 
 
-    def oarsub(*args):
+    def oarsub(*args, **kwargs):
+        opts = kwargs.pop('options', 'walltime=0:15')
+        if kwargs:
+            raise ValueError('invalid keyword parameter(s): {0}'.format(kwargs))
         scriptname = './blisspython /users/onderwaa/iVoxOar/iVoxOar.py '
         command = '{0} {1}'.format(scriptname, ' '.join(args))
-        ret, output = run('oarsub', '-l walltime=0:15', command)
+        ret, output = run('oarsub', '-l {0}'.format(opts), command)
         if ret == 0:
             lines = output.split('\n')
             for line in lines:
@@ -818,6 +821,12 @@ if __name__ == "__main__":
                 time.sleep(30) # only sleep if we're not done yet
             
     def cluster(args):
+        if args.single:
+            job = oarsub('--config', args.config, 'local', '--multiprocessing', '-o', mfinal(cfg.outfile, args.scanrange), args.scanrange, options='nodes=1/core=4,walltime=0:30')
+            oarwait([job])
+            print "done"
+            return
+
         prefix = 'iVoxOar-{0:x}'.format(random.randint(0, 2**32-1))
         jobs = []
         scanrange = getconfig.parsemultirange(args.scanrange)
@@ -920,7 +929,11 @@ if __name__ == "__main__":
                 globalspace += result
 
         globalspace.trim()
-        globalspace.tofile(mfinal(cfg.outfile, args.scanrange))
+        if args.outfile:
+            outfile = args.outfile
+        else:
+            outfile = mfinal(cfg.outfile, args.scanrange)
+        globalspace.tofile(outfile)
 
         if args.plot:
             if args.plot is True:
@@ -1009,6 +1022,7 @@ if __name__ == "__main__":
     parser_cluster.add_argument('--tmpdir', default='.')
     parser_cluster.add_argument('--chunksize', default=20, type=int)
     parser_cluster.add_argument('--split', action='store_true', help='dont sum files (for timescans)')
+    parser_cluster.add_argument('--single', action='store_true', help='run entire job on a single node')
     parser_cluster.set_defaults(func=cluster)
 
     parser_part = subparsers.add_parser('_part')
@@ -1057,8 +1071,6 @@ if __name__ == "__main__":
     
     cfg = getconfig.cfg(args.config)
 
-    if args.outfile:
-        cfg.outfile = args.outfile
     if args.projection:
         cfg.projection = args.projection
     
