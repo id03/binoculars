@@ -71,8 +71,7 @@ def space_to_edf(space, filename):
 
 
 def space_to_txt(space, filename):
-    data = numpy.mgrid[tuple(slice(0, len(ax)) for ax in space.axes)]
-    data = [(coord * ax.res + ax.min).flatten() for coord, ax in zip(data, space.axes)]
+    data = [coord.flatten() for coord in space.get_grid()]
     data.append(space.get_masked().filled(0).flatten())
     data = numpy.array(data).T
 
