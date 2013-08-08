@@ -1,0 +1,113 @@
+#!/usr/bin/python
+# Written by Willem Onderwaater and Sander Roobol as part of a collaboration
+# between the ID03 beamline at the European Synchrotron Radiation Facility and
+# the Interface Physics group at Leiden University.
+
+import sys
+import os
+import argparse
+import numbers
+import numpy
+import matplotlib.pyplot as pyplot
+import matplotlib.colors
+
+import ivoxoar.space, ivoxoar.plot, ivoxoar.fit, ivoxoar.util
+
+if __name__ == "__main__":
+    numpy.seterr(divide='ignore', invalid='ignore')
+
+    parser = argparse.ArgumentParser(prog='ivoxplot')
+    parser.add_argument('infile')
+    parser.add_argument('axis')
+    parser.add_argument('resolution')
+    parser.add_argument('func')
+    parser.add_argument('-s', '--savepdf', action='store_true')
+    parser.add_argument('-c', '--clip', default = 0.00)
+    parser.add_argument('-p', '--project', action='append', default=[])
+    parser.add_argument('--nolog', action='store_true')
+    parser.add_argument('--slice', nargs=2, action='append', default=[])
+    parser.add_argument('--savefile')
+    parser.add_argument('--subtract')
+    args = parser.parse_args()
+
+    if args.subtract:
+        subtrspace = ivoxoar.space.Space.fromfile(args.subtract)
+        subtrspace, subtrinfo = project_and_sice(subtrspace, args)
+        args.nolog = True
+
+    space = ivoxoar.space.Space.fromfile(args.infile)
+    space, info = ivoxoar.util.project_and_slice(space, args)
+
+    axindex = space.get_axindex_by_label(args.axis)
+    axlabel = space.axes[axindex].label
+    mi , ma = space.axes[axindex].min,space.axes[axindex].max,
+    bins = numpy.linspace(mi,ma,numpy.ceil(1 / numpy.float(args.resolution) * (ma - mi)))
+
+    parameters = []
+    variance = []
+    fitlabel = []
+
+    basename = os.path.splitext(os.path.basename(args.infile))[0]
+
+    for i,(start,stop) in enumerate(zip(bins[:-1],bins[1:])):
+        info = []
+    
+        key = slice(start,stop)
+        newspace = space.slice(axindex, key)
+        if newspace.dimension == space.dimension:
+            newspace = newspace.project(axindex)
+
+        try:
+            params,variances,fit,paramnames = ivoxoar.fit.fit(newspace,args.func)
+            fitlabel.append(numpy.mean([start,stop]))
+            parameters.append(params)
+            print params
+            variance.append(variances)
+        except Exception as e:
+            print e.message
+            fit = None
+
+        pyplot.figure(figsize=(12,9))
+        pyplot.subplot(121)
+        ivoxoar.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip),fit = None)
+        pyplot.subplot(122)
+        ivoxoar.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip),fit = fit)
+
+        info.append('sliced in {0} from {1} to {2}'.format(axlabel, start, stop))
+        pyplot.suptitle('{0}'.format(' '.join(info)))
+
+        if args.savepdf or args.savefile:
+            if args.savefile:
+                root,ext = os.path.split(args.savefile) 
+                pyplot.savefig('{0}_{1}{2}'.format(root,i,ext))
+                print 'saved at {0}_{1}{2}'.format(root,i,ext)
+            else:
+                pyplot.savefig('{0}_{1}.pdf'.format(os.path.splitext(args.infile)[0],i))
+                print 'saved at {0}_{1}.pdf'.format(os.path.splitext(args.infile)[0],i)
+
+        pyplot.close()
+  
+    parameters = numpy.vstack(n for n in parameters).T
+    variance = numpy.vstack(n for n in variance).T
+
+    pyplot.figure(figsize=(9,4 * parameters.shape[0] + 2))
+
+    for i in range(parameters.shape[0]):
+        pyplot.subplot(parameters.shape[0], 1, i)
+        pyplot.plot(fitlabel, parameters[i,:])
+        if paramnames[i] in ['I']:
+            pyplot.semilogy()
+        pyplot.xlabel(paramnames[i])
+        
+    pyplot.suptitle('fit summary of {0}'.format(args.infile))     
+    if args.savepdf or args.savefile:
+        if args.savefile:
+            root,ext = os.path.split(args.savefile) 
+            pyplot.savefig('{0}_summary{1}'.format(root,ext))
+            print 'saved at {0}_summary{1}'.format(root,ext)
+        else:
+            pyplot.savefig('{0}_summary.pdf'.format(os.path.splitext(args.infile)[0]))
+            print 'saved at {0}_summary.pdf'.format(os.path.splitext(args.infile)[0])
+
+    
+     

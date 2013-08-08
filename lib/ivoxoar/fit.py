@@ -75,7 +75,7 @@ def nonlinfit(func, guess, paramnames=None):
     if not paramnames:
         paramnames = [str(i+1) for i in range(len(guess))]
     summary = '\n'.join('%s: %.4e +/- %.4e' % (n, p,v) for (n, p,v) in zip(paramnames, params, variance))
-    return params, variance, msg, summary
+    return params, variance, paramnames, summary
 
 
 def gaussian(x, (x0, I, sigma, offset, slope)):
@@ -154,17 +154,17 @@ def fitlorentzian(space,guess):
         I =  gydata[numpy.argmax(gydata)]
         gamma = (gydata.compressed() > I/2).sum() * space.axes[0].res /  2
         xdata.mask = ydata.mask
-        params, variance, msg, summary = simplefit(lorentzian, xdata.compressed(), ydata.compressed(), (x0, I, gamma, offset, slope))
+        params, variance, paramnames, summary = simplefit(lorentzian, xdata.compressed(), ydata.compressed(), (x0, I, gamma, offset, slope))
     else:
-        params, variance, msg, summary = simplefit(lorentzian, xdata.compressed(), ydata.compressed(), guess)
+        params, variance, paramnames, summary = simplefit(lorentzian, xdata.compressed(), ydata.compressed(), guess)
     fit = lorentzian(xdata,params)
-    return params, summary , fit
+    return params, variance, fit, paramnames
 
 def fitlorentzian2D(space,guess):
     xdata = space.get_grid()
     ydata = space.get_masked()
     if len(guess) == 0:
-        offset = numpy.mean(ydata[ydata < numpy.median(ydata)])
+        offset = numpy.mean(ydata[ydata < numpy.ma.median(ydata)])
         gydata = ydata - offset
         argloc0,argloc1 = numpy.unravel_index(numpy.argmax(gydata), gydata.shape)
         loc0 = xdata[0][argloc0,argloc1]
@@ -173,23 +173,24 @@ def fitlorentzian2D(space,guess):
         th = 0
         gamma0 = (gydata[:,argloc1].compressed() > I/2).sum() * space.axes[0].res /2
         gamma1 = (gydata[argloc0,:].compressed() > I/2).sum() * space.axes[1].res /2
-        cxdata = tuple(array.compressed() for array in xdata)
-        params, variance, msg, summary = simplefit(lorentzian2Dcart, cxdata, ydata.compressed(), (loc0, loc1, I, gamma0, gamma1, th , offset))
+        cxdata = tuple(numpy.ma.array(array, mask = ydata.mask).compressed() for array in xdata)
+        params, variance,  paramnames, summary = simplefit(lorentzian2Dcart, cxdata, ydata.compressed(), (loc0, loc1, I, gamma0, gamma1, th , offset))
     else:
         xdata = tuple(array.compressed for array in xdata)
-        params, variance, msg, summary = simplefit(lorentzian2Dcart, xdata, ydata.compressed(), guess)
-    fit = lorentzian2Dcart(xdata,params)
-    return params, summary , fit
+        params, variance, paramnames, summary = simplefit(lorentzian2Dcart, xdata, ydata.compressed(), guess)
+    fit = numpy.ma.array(lorentzian2Dcart(xdata,params),mask = ydata.mask)
+   
+    return params, variance,fit, paramnames
 
 def lorentzian2Dpolar((x,y), (x0, y0, A, gammax, gammay, th , B)):
     a,b = rot2d(x,y,th)
     a0,b0 = rot2d(x0,y0,th)
     return (A  / (1 + gammax * (a-a0)**2 + gammay * (b-b0)**2) + B)
 
-def lorentzian2Dcart((x,y), (x0, y0, A, gammax, gammay, th , B)):
+def lorentzian2Dcart((x,y), (x0, y0, I, gammax, gammay, th , B)):
     a,b = rot2d(x,y,th)
     a0,b0 = rot2d(x0,y0,th)
-    return (A  / (1 + ((a-a0)/gammax)**2) * 1 / (1 + ((b-b0)/gammay)**2) + B)
+    return (I  / (1 + ((a-a0)/gammax)**2) * 1 / (1 + ((b-b0)/gammay)**2) + B)
 
 def rot2d(x,y,th):
     xrot = x * numpy.cos(th) + y * numpy.sin(th) 
@@ -214,7 +215,7 @@ def noblorentz3dfit(xdata,ydata, guess):
     return params, summary
 
   
-def fit(space, func, guess):
+def fit(space, func, guess = []):
     if space.dimension == 1:
         if func == 'gaussian':
             fitfunc = fitgaussian
@@ -224,11 +225,7 @@ def fit(space, func, guess):
             fitfunc = fitvoigt
         else:
             raise ValueError('Unknown fit function')
-        try:
-            return fitfunc(space,guess)
-        except:
-            print 'Fit fail for:\n{0}'.format(space)
-            return None
+        return fitfunc(space,guess)
 
     elif space.dimension == 2:
         if func == 'gaussian':
@@ -239,11 +236,7 @@ def fit(space, func, guess):
             fitfunc = fitvoigt
         else:
             raise ValueError('Unknown fit function')
-        try:
-            return fitfunc(space,guess)
-        except:
-            print 'Fit fail for:\n{0}'.format(space)
-            return None
+        return fitfunc(space,guess)
 
         
  

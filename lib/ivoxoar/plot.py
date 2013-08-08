@@ -7,10 +7,10 @@ def plot(space, fig, ax, log=True, clipping=0.0, fit=None, **plotopts):
         if fit:   
             if log:
                 ax.semilogy(xrange, data, 'wo', **plotopts)
-                ax.semilogy(xrange, fit[2], 'r', linewidth=2, **plotopts)
+                ax.semilogy(xrange, fit, 'r', linewidth=2, **plotopts)
             else:
                 ax.plot(xrange, data, 'wo', **plotopts)
-                ax.plot(xrange, fit[2], 'r', linewidth=2, **plotopts)
+                ax.plot(xrange, fit, 'r', linewidth=2, **plotopts)
         else:
             if log:
                 ax.semilogy(xrange, data, **plotopts)
@@ -50,7 +50,10 @@ def plot(space, fig, ax, log=True, clipping=0.0, fit=None, **plotopts):
         else:
             norm = matplotlib.colors.Normalize(vmin, vmax)
 
-        im = ax.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=norm, **plotopts)
+        if fit is not None:
+            im = ax.imshow(fit.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=norm, **plotopts)
+        else:
+            im = ax.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=norm, **plotopts)
 
         ax.set_xlabel(space.axes[0].label)
         ax.set_ylabel(space.axes[1].label)

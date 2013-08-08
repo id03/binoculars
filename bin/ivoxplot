@@ -48,7 +48,11 @@ if __name__ == "__main__":
         space, info = ivoxoar.util.project_and_slice(space, args, auto3to2=True)
 
         if args.fit:
-            fit = ivoxoar.fit.fit(space,args.fit,guess)
+            fit = ivoxoar.fit.fit(space,args.fit,guess)[2]
+            try:
+                fit = ivoxoar.fit.fit(space,args.fit,guess)[2]
+            except:
+                fit = None
         else:
             fit = None
 
