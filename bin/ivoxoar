@@ -61,6 +61,8 @@ def wait_for_file(filename):
 
 
 if __name__ == "__main__":    
+    numpy.seterr(divide='ignore', invalid='ignore')
+
     def cluster(args):
         if args.single:
             job = oarsub('--config', args.config, 'local', '--multiprocessing', '-o', mfinal(cfg.outfile, args.scanrange), args.scanrange, options='nodes=1/core=4,walltime=0:30')
