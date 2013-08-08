@@ -15,6 +15,8 @@ import ivoxoar.space, ivoxoar.plot
 
 
 if __name__ == "__main__":
+    numpy.seterr(divide='ignore', invalid='ignore')
+
     parser = argparse.ArgumentParser(prog='ivoxplot')
     parser.add_argument('infile')
     parser.add_argument('-s', '--savepdf', action='store_true')
