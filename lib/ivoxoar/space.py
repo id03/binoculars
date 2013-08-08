@@ -247,9 +247,8 @@ class Space(object):
         return numpy.ma.array(data=self.get(), mask=(self.contributions == 0))
         
     def get_grid(self):
-        mask = self.get_masked().mask
-        igrid = numpy.mgrid[list(slice(0,len(ax)) for ax in self.axes)]
-        grid = tuple(numpy.ma.array(igrid[i,...] * ax.res + ax.min, mask = mask) for i,ax in zip(range(igrid.shape[0]),self.axes) )
+        igrid = numpy.mgrid[tuple(slice(0, len(ax)) for ax in self.axes)]
+        grid = tuple(numpy.array(grid * ax.res + ax.min) for grid, ax in zip(igrid, self.axes))
         return grid
 
     def __add__(self, other):

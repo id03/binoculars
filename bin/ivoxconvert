@@ -1,0 +1,55 @@
+#!/usr/bin/python
+
+import sys
+import os
+import argparse
+import numpy
+
+import ivoxoar.space, ivoxoar.util
+
+
+if __name__ == "__main__":    
+    numpy.seterr(divide='ignore', invalid='ignore')
+
+    parser = argparse.ArgumentParser(prog='ivoxconvert')
+    parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
+    parser.add_argument('--rebin', default=None)
+    parser.add_argument('-p', '--project', action='append', default=[])
+    parser.add_argument('--slice', nargs=2, action='append', default=[])
+    parser.add_argument('infile')
+    parser.add_argument('outfile')
+
+    args = parser.parse_args()
+    
+    if args.wait:
+        ivoxoar.util.statusnl('waiting for {0} to appear'.format(args.infile))
+        ivoxoar.util.wait_for_file(args.infile)
+        ivoxoar.util.statusnl('processing...')
+
+    space = ivoxoar.space.Space.fromfile(args.infile)
+    ext = os.path.splitext(args.outfile)[-1]
+
+    space, info = ivoxoar.util.project_and_slice(space, args)
+    
+    if args.rebin:
+        if ',' in args.rebin:
+            factors = tuple(int(i) for i in args.rebin.split(','))
+        else:
+            factors = (int(args.rebin),)
+        space = space.rebin(factors)
+
+    if ext == '.edf':
+        ivoxoar.util.space_to_edf(space, args.outfile)
+        print 'saved at {0}'.format(args.outfile)
+
+    elif ext == '.txt':
+        ivoxoar.util.space_to_txt(space, args.outfile)
+        print 'saved at {0}'.format(args.outfile)
+
+    elif ext == '.zpi':
+        space.tofile(args.outfile)
+        print 'saved at {0}'.format(args.outfile)
+
+    else:
+        sys.stderr.write('unknown extension {0}, unable to save!\n'.format(ext))
+        sys.exit(1)
