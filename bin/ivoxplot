@@ -77,14 +77,12 @@ if __name__ == "__main__":
         subtrspace, subtrinfo = project_and_sice(subtrspace, args)
         args.nolog = True
 
-    # FITTING
     guess = []
     if args.guess is not None:
         for n in args.guess.split(','):
             guess.append(float(n.replace('m', '-')))
 
-
-    # PLOTTING AND FITTING
+    # PLOTTING AND SIMPLEFITTING
     pyplot.figure(figsize=(12,9))
     plotcount = len(args.infile)
     plotcolumns = int(numpy.ceil(numpy.sqrt(plotcount)))

@@ -152,7 +152,7 @@ def fitlorentzian(space,guess):
         gydata = ydata - slope * xdata - offset
         x0 = xdata[numpy.argmax(gydata)]
         I =  gydata[numpy.argmax(gydata)]
-        gamma = (gydata.compressed() > I/2).sum() * (xdata.data[1] - xdata.data[0]) / 2
+        gamma = (gydata.compressed() > I/2).sum() * space.axes[0].res /  2
         xdata.mask = ydata.mask
         params, variance, msg, summary = simplefit(lorentzian, xdata.compressed(), ydata.compressed(), (x0, I, gamma, offset, slope))
     else:
