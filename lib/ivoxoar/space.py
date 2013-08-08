@@ -291,8 +291,6 @@ class Space(object):
         if not isinstance(other, Space):
             return NotImplemented
         if self.axes != other.axes or not (self.contributions == other.contributions).all():
-             print self.axes
-             print other.axes
              raise ValueError('cannot subtract spaces that are not identical (axes + contributions)')
         self.photons -= other.photons
         return self
