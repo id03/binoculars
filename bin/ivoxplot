@@ -11,7 +11,7 @@ import numpy
 import matplotlib.pyplot as pyplot
 import matplotlib.colors
 
-import ivoxoar.space, ivoxoar.plot
+import ivoxoar.space, ivoxoar.plot, ivoxoar.fit
 
 
 if __name__ == "__main__":
@@ -24,7 +24,8 @@ if __name__ == "__main__":
     parser.add_argument('--slice', nargs=2, action='append', default=[])
     parser.add_argument('--savefile')
     parser.add_argument('--subtract')
-    
+    parser.add_argument('--fit', default = None)
+    parser.add_argument('--guess',default = None)
     args = parser.parse_args()
 
     space = ivoxoar.space.Space.fromfile(args.infile)
@@ -74,11 +75,23 @@ if __name__ == "__main__":
         info += ' projected on {0}'.format(space.axes[projectaxis].label)
         space = space.project(projectaxis)
 
+    # FITTING
+    guess = []
+    if args.guess is not None:
+        for n in args.guess.split(','):
+            guess.append(float(n.replace('m', '-')))
+    if args.fit:
+        fit = ivoxoar.fit.fit(space,args.fit,guess)
+    else:
+        fit = None
+
     # PLOTTING
     pyplot.figure(figsize=(12,9))
-    ivoxoar.plot.plot(space, pyplot.gcf(), pyplot.gca(), log=not args.nolog, clipping=args.clip)
+    ivoxoar.plot.plot(space, pyplot.gcf(), pyplot.gca(), log=not args.nolog, clipping=args.clip, fit = fit)
     pyplot.suptitle('{0}{1}'.format(os.path.splitext(args.infile)[0], info))
-    
+    if fit:
+        pyplot.figtext(0.2,0.7,fit[1])
+        
     if args.savepdf or args.savefile:
         if args.savefile:
             pyplot.savefig(args.savefile)

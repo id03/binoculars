@@ -1,14 +1,21 @@
 import matplotlib.colors
-
-def plot(space, fig, ax, log=True, clipping=0.0):
+import pdb
+def plot(space, fig, ax, log=True, clipping=0.0 , fit = None):
     if space.dimension == 1:
         data = space.get_masked()
         xrange = space.axes[0][:]
-        if log:
-            ax.semilogy(xrange, data)
+        if fit:   
+            if log:
+                ax.semilogy(xrange, data,'wo')
+                ax.semilogy(xrange, fit[2],'r',linewidth = 2)
+            else:
+                ax.plot(xrange, data, 'wo')
+                ax.plot(xrange,fit[2],'r', linewidth = 2)
         else:
-            ax.plot(xrange, data)
-        
+            if log:
+                ax.semilogy(xrange, data)
+            else:
+                ax.plot(xrange, data)
         ax.set_xlabel(space.axes[0].label)
         ax.set_ylabel('Intensity (a.u.)')
 
@@ -50,3 +57,4 @@ def plot(space, fig, ax, log=True, clipping=0.0):
 
     elif space.dimension > 2:
         raise ValueError("Cannot plot 3 or higher dimensional spaces, use projections or slices to decrease dimensionality.")
+
