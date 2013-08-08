@@ -14,29 +14,8 @@ import matplotlib.colors
 import ivoxoar.space, ivoxoar.plot
 
 
-if __name__ == "__main__":
-    numpy.seterr(divide='ignore', invalid='ignore')
-
-    parser = argparse.ArgumentParser(prog='ivoxplot')
-    parser.add_argument('infile')
-    parser.add_argument('-s', '--savepdf', action='store_true')
-    parser.add_argument('-c', '--clip', default = 0.00)
-    parser.add_argument('-p', '--project', action='append', default=[])
-    parser.add_argument('--nolog', action='store_true')
-    parser.add_argument('--slice', nargs=2, action='append', default=[])
-    parser.add_argument('--savefile')
-    parser.add_argument('--subtract')
-    
-    args = parser.parse_args()
-
-    space = ivoxoar.space.Space.fromfile(args.infile)
-    if args.subtract:
-        diffspace = ivoxoar.space.Space.fromfile(args.subtract)
-        space -= diffspace
-        del diffspace
-        args.nolog = True
-
-    info = ''
+def project_and_slice(space, args):
+    info = []
 
     # SLICING
     for sl in args.slice:
@@ -55,31 +34,92 @@ if __name__ == "__main__":
                 stop = space.axes[axindex].max
             key = slice(start, stop)
 
-            info += ' sliced in {0} from {1} to {2}'.format(axlabel, start, stop)
+            info.append('sliced in {0} from {1} to {2}'.format(axlabel, start, stop))
         else:
             key = float(key.replace('m', '-'))
-            info += ' sliced in {0} at {1}'.format(axlabel, key)
+            info.append('sliced in {0} at {1}'.format(axlabel, key))
         olddim = space.dimension
         space = space.slice(axindex, key)
         if space.dimension == olddim:
             space = space.project(axindex)
 
-
     # PROJECTION
     for proj in args.project:
         projectaxis = space.get_axindex_by_label(proj)
-        info += ' projected on {0}'.format(space.axes[projectaxis].label)
+        info.append('projected on {0}'.format(space.axes[projectaxis].label))
         space = space.project(projectaxis)
 
     if space.dimension == 3: # automatic projection on smallest axis
         projectaxis = numpy.argmin(space.photons.shape)
-        info += ' projected on {0}'.format(space.axes[projectaxis].label)
+        info.append('projected on {0}'.format(space.axes[projectaxis].label))
         space = space.project(projectaxis)
+
+    return space, info
+
+
+if __name__ == "__main__":
+    numpy.seterr(divide='ignore', invalid='ignore')
+
+    parser = argparse.ArgumentParser(prog='ivoxplot')
+    parser.add_argument('infile', nargs='+')
+    parser.add_argument('-s', '--savepdf', action='store_true')
+    parser.add_argument('-c', '--clip', default = 0.00)
+    parser.add_argument('-p', '--project', action='append', default=[])
+    parser.add_argument('--nolog', action='store_true')
+    parser.add_argument('--slice', nargs=2, action='append', default=[])
+    parser.add_argument('--savefile')
+    parser.add_argument('--subtract')
+    parser.add_argument('--multi', default=None, choices=('grid', 'stack'))
+    
+    args = parser.parse_args()
+
+    if args.subtract:
+        subtrspace = ivoxoar.space.Space.fromfile(args.subtract)
+        subtrspace, subtrinfo = project_and_sice(subtrspace, args)
+        args.nolog = True
 
     # PLOTTING
     pyplot.figure(figsize=(12,9))
-    ivoxoar.plot.plot(space, pyplot.gcf(), pyplot.gca(), log=not args.nolog, clipping=float(args.clip))
-    pyplot.suptitle('{0}{1}'.format(os.path.splitext(args.infile)[0], info))
+    plotcount = len(args.infile)
+    plotcolumns = int(numpy.ceil(numpy.sqrt(plotcount)))
+    plotrows = int(numpy.ceil(float(plotcount) / plotcolumns))
+
+    for i, filename in enumerate(args.infile):
+        space = ivoxoar.space.Space.fromfile(filename)
+        space, info = project_and_slice(space, args)
+
+        if plotcount > 1:
+            if space.dimension == 1 and args.multi is None:
+                args.multi = 'stack'
+            if space.dimension == 2 and args.multi != 'grid':
+                if args.multi is not None:
+                    sys.stderr.write('warning: stack display not supported for multi-file-plotting, falling back to grid\n')
+                args.multi = 'grid'
+            # elif space.dimension == 3:
+                # not reached, project_and_slice() guarantees that
+            elif space.dimension > 3:
+                sys.stderr.write('error: cannot display 4 or higher dimensional data, use --project or --slice to decrease dimensionality\n')
+                sys.exit(1)
+
+        if args.subtract:
+            space -= subtrspace
+
+        basename = os.path.splitext(os.path.basename(filename))[0]
+
+        if args.multi == 'grid':
+            pyplot.subplot(plotrows, plotcolumns, i+1)
+        ivoxoar.plot.plot(space, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip))
+
+        if plotcount == 1:
+            pyplot.suptitle('{0} {1}'.format(basename, ' '.join(info)))
+        elif args.multi == 'grid':
+            pyplot.gca().set_title(basename)
+
+
+    if plotcount > 1:
+        pyplot.suptitle('{0} files, {1}'.format(plotcount, ' '.join(info)))
+        if args.multi == 'stack':
+            pyplot.legend()
     
     if args.savepdf or args.savefile:
         if args.savefile:

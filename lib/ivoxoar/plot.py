@@ -1,13 +1,13 @@
 import matplotlib.colors
 
-def plot(space, fig, ax, log=True, clipping=0.0):
+def plot(space, fig, ax, log=True, clipping=0.0, **plotopts):
     if space.dimension == 1:
         data = space.get_masked()
         xrange = space.axes[0][:]
         if log:
-            ax.semilogy(xrange, data)
+            ax.semilogy(xrange, data, **plotopts)
         else:
-            ax.plot(xrange, data)
+            ax.plot(xrange, data, **plotopts)
         
         ax.set_xlabel(space.axes[0].label)
         ax.set_ylabel('Intensity (a.u.)')
@@ -42,7 +42,7 @@ def plot(space, fig, ax, log=True, clipping=0.0):
         else:
             norm = matplotlib.colors.Normalize(vmin, vmax)
 
-        im = ax.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=norm)
+        im = ax.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=norm, **plotopts)
 
         ax.set_xlabel(space.axes[0].label)
         ax.set_ylabel(space.axes[1].label)
