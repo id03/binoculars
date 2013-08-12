@@ -1,0 +1,37 @@
+### the DISPATCHER is responsible for job management
+[dispatcher]
+type = local # run locally
+#ncores = 4 # optionally, specify number of cores (autodetect by default)
+
+# to use the OAR cluster:
+#type = oar
+#tmpdir = /some/globally/available/path
+#oarsub_options = walltime=0:15 # optionally, tweak oarsub parameters
+#executable = /path/to/custom/python /path/to/bin/ivoxoar # optionally, override default location of python and/or ivoxoar installation
+
+# specificy destination file
+destination = test.zpi # TODO: to be improved
+
+
+### choose an appropriate INPUT class and specify custom options
+[input]
+type = id03:eh1 # refers to class EH1 in ivoxoar/backends/id03.py
+specfile = /path/to/data/file.spec
+imagefolder = /path/to/data/images
+
+## approximate number of images per job, only useful when running on the oar cluster
+target_weigth = 4000 
+
+# technical yadayada for this particular input class
+centralpixel = 40, 255
+app = 0.003125, 0.003125
+ymask = 185-253,262-400
+xmask = 50-235
+#if you are using zapline you have to add the UB matrix
+UB = 2.628602629,0.2730763688,-0.001032444885,1.202301748,2.877587966,-0.001081570571,0.002600281749,0.002198663001,1.54377945
+
+
+### choose PROJECTION plus resolution
+[projection]
+type = id03:hklprojection # refers to HKLProjection in ivoxoar/backends/id03.py
+resolution = 0.002, 0.002, 1 # or just give 1 number for all dimensions

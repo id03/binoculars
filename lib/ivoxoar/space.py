@@ -1,45 +1,8 @@
-# Written by Willem Onderwaater and Sander Roobol as part of a collaboration
-# between the ID03 beamline at the European Synchrotron Radiation Facility and
-# the Interface Physics group at Leiden University.
-
-import sys
-import os
 import itertools
-import random
-import cPickle as pickle
-import gzip
 import numbers
 import numpy
-import inspect
 
-
-# handle old zpi's from before ivoxoar's major restructuring
-def _pickle_translate(module, name):
-    if module == '__main__' and name in ('Space', 'Axis'):
-        return 'ivoxoar.space', name
-    return module, name
-
-if inspect.isbuiltin(pickle.Unpickler):
-    # real cPickle: cannot subclass
-    def _find_global(module, name):
-        module, name = _pickle_translate(module, name)
-        __import__(module)
-        return getattr(sys.modules[module], name)
-
-    def pickle_load(fileobj):
-        unpickler = pickle.Unpickler(fileobj)
-        unpickler.find_global = _find_global
-        return unpickler.load()
-else:
-    # pure python implementation
-    class _Unpickler(pickle.Unpickler):
-        def find_class(self, module, name):
-            module, name = _pickle_translate(module, name)
-            return pickle.Unpickler.find_class(self, module, name)
-
-    def pickle_load(fileobj):
-        unpickler = _Unpickler(fileobj)
-        return unpickler.load()
+from . import util
 
 
 def sum_onto(a, axis):
@@ -343,19 +306,52 @@ class Space(object):
         self.photons.ravel()[:photons.size] += photons
         self.contributions.ravel()[:contributions.size] += contributions
 
+    @classmethod
+    def from_image(cls, resolutions, labels, coordinates, intensity):
+        axes = tuple(Axis(coord.min(), coord.max(), res, label) for res, label, coord in zip(resolutions, labels, coordinates))
+        newspace = cls(axes)
+        newspace.process_image(coordinates, intensity)
+        return newspace
+
     def tofile(self, filename):
-        tmpfile = '{0}-{1:x}.tmp'.format(os.path.splitext(filename)[0], random.randint(0, 2**32-1))
-        fp = gzip.open(tmpfile, 'wb')
-        try:
-            pickle.dump(self, fp, pickle.HIGHEST_PROTOCOL)
-        finally:
-            fp.close()
-        os.rename(tmpfile, filename)
+        util.zpi_save(self, filename)
     
     @classmethod
     def fromfile(cls, filename):
-        fp = gzip.open(filename,'rb')
-        try:
-            return pickle_load(fp)
-        finally:
-            fp.close()
+        return util.zpi_load(filename)
+
+
+def union_axes(axes):
+    axes = tuple(axes)
+    if len(axes) == 1:
+        return axes[0]
+    if not all(isinstance(ax, Axis) for ax in axes):
+        raise TypeError('not all objects are Axis instances')
+    if len(set(ax.res for ax in axes)) != 1 or len(set(ax.label for ax in axes)) != 1:
+        raise ValueError('cannot unite axes with different resolution/label')
+    mi = min(ax.min for ax in axes)
+    ma = max(ax.max for ax in axes)
+    first = axes[0]
+    return first.__class__(mi, ma, first.res, first.label)
+
+
+def sum(spaces):
+    spaces = tuple(spaces)
+    if len(spaces) == 1:
+        return spaces[0]
+    if len(set(space.dimension for space in spaces)) != 1:
+        raise TypeError('dimension mismatch in spaces')
+
+    first = spaces[0]
+    axes = tuple(union_axes(space.axes[i] for space in spaces) for i in range(first.dimension))
+    newspace = first.__class__(axes)
+    for space in spaces:
+        newspace += space
+    return newspace
+
+# hybrid sum() / __iadd__()
+def chunked_sum(spaces, chunksize=10):
+    result = EmptySpace()
+    for chunk in util.grouper(spaces, chunksize):
+        result += sum(space for space in chunk)
+    return result
