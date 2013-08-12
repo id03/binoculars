@@ -32,14 +32,12 @@ if __name__ == "__main__":
         subtrspace, subtrinfo = ivoxoar.util.project_and_slice(subtrspace, args, auto3to2=True)
         args.nolog = True
 
-    # FITTING
     guess = []
     if args.guess is not None:
         for n in args.guess.split(','):
             guess.append(float(n.replace('m', '-')))
 
-
-    # PLOTTING AND FITTING
+    # PLOTTING AND SIMPLEFITTING
     pyplot.figure(figsize=(12,9))
     plotcount = len(args.infile)
     plotcolumns = int(numpy.ceil(numpy.sqrt(plotcount)))
@@ -50,7 +48,11 @@ if __name__ == "__main__":
         space, info = ivoxoar.util.project_and_slice(space, args, auto3to2=True)
 
         if args.fit:
-            fit = ivoxoar.fit.fit(space,args.fit,guess)
+            fit = ivoxoar.fit.fit(space,args.fit,guess)[2]
+            try:
+                fit = ivoxoar.fit.fit(space,args.fit,guess)[2]
+            except:
+                fit = None
         else:
             fit = None
 

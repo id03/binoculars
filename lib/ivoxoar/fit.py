@@ -75,7 +75,7 @@ def nonlinfit(func, guess, paramnames=None):
     if not paramnames:
         paramnames = [str(i+1) for i in range(len(guess))]
     summary = '\n'.join('%s: %.4e +/- %.4e' % (n, p,v) for (n, p,v) in zip(paramnames, params, variance))
-    return params, variance, msg, summary
+    return params, variance, paramnames, summary
 
 
 def gaussian(x, (x0, I, sigma, offset, slope)):
@@ -146,50 +146,58 @@ def fitlorentzian(space,guess):
     xdata = space.get_grid()[0]
     ydata = space.get_masked()
     if len(guess) == 0:
+        offset, max_values, gamma, intensity =  get_lorentzparams(space)
         left,right = numpy.where(numpy.bitwise_not(ydata.mask))[0][0],numpy.where(numpy.bitwise_not(ydata.mask))[0][-1] 
         slope = (ydata[right] - ydata[left]) / (xdata[right] - xdata[left])
-        offset = numpy.mean((ydata - slope * xdata)[(ydata - slope * xdata) < numpy.median(ydata - slope * xdata)])
-        gydata = ydata - slope * xdata - offset
-        x0 = xdata[numpy.argmax(gydata)]
-        I =  gydata[numpy.argmax(gydata)]
-        gamma = (gydata.compressed() > I/2).sum() * (xdata.data[1] - xdata.data[0]) / 2
-        xdata.mask = ydata.mask
-        params, variance, msg, summary = simplefit(lorentzian, xdata.compressed(), ydata.compressed(), (x0, I, gamma, offset, slope))
+        cxdata = numpy.ma.array(xdata, mask = ydata.mask)
+        params, variance, paramnames, summary = simplefit(lorentzian, cxdata.compressed(), ydata.compressed(), (max_values[0], intensity, gamma[0], offset, slope))
     else:
-        params, variance, msg, summary = simplefit(lorentzian, xdata.compressed(), ydata.compressed(), guess)
+        params, variance, paramnames, summary = simplefit(lorentzian, xdata.compressed(), ydata.compressed(), guess)
     fit = lorentzian(xdata,params)
-    return params, summary , fit
+    return params, variance, fit, paramnames
+
+def get_lorentzparams(space):
+    xdata = space.get_grid()
+    ydata = space.get_masked()
+    offset = numpy.mean(ydata[ydata < numpy.ma.median(ydata)])
+    max_indices = numpy.unravel_index(numpy.argmax(ydata), ydata.shape)
+    max_values = list(grid[max_indices] for grid in xdata)
+    intensity = ydata[max_indices] - offset
+    skey = [max_values[:]] * space.dimension 
+    for i,key in enumerate(skey):
+       key[i] = slice(None)
+    gamma = tuple((ydata[key].compressed() > intensity/2).sum() * space.axes[i].res / 2 for i,key in enumerate(skey))
+    return offset, max_values, gamma, intensity
+
 
 def fitlorentzian2D(space,guess):
     xdata = space.get_grid()
     ydata = space.get_masked()
+    cxdata = tuple(numpy.ma.array(array, mask = ydata.mask).compressed() for array in xdata)
     if len(guess) == 0:
-        offset = numpy.mean(ydata[ydata < numpy.median(ydata)])
-        gydata = ydata - offset
-        argloc0,argloc1 = numpy.unravel_index(numpy.argmax(gydata), gydata.shape)
-        loc0 = xdata[0][argloc0,argloc1]
-        loc1 = xdata[1][argloc0,argloc1]
-        I = ydata[argloc0,argloc1]
+        offset, max_values, gamma, intensity =  get_lorentzparams(space)
         th = 0
-        gamma0 = (gydata[:,argloc1].compressed() > I/2).sum() * space.axes[0].res /2
-        gamma1 = (gydata[argloc0,:].compressed() > I/2).sum() * space.axes[1].res /2
-        cxdata = tuple(array.compressed() for array in xdata)
-        params, variance, msg, summary = simplefit(lorentzian2Dcart, cxdata, ydata.compressed(), (loc0, loc1, I, gamma0, gamma1, th , offset))
-    else:
-        xdata = tuple(array.compressed for array in xdata)
-        params, variance, msg, summary = simplefit(lorentzian2Dcart, xdata, ydata.compressed(), guess)
-    fit = lorentzian2Dcart(xdata,params)
-    return params, summary , fit
+        guess = []
+        for n in [max_values,intensity,gamma,offset,th]:
+            if numpy.iterable(n):
+                guess.extend(n)
+            else:
+                guess.append(n)
+        print guess
+    params, variance, paramnames, summary = simplefit(lorentzian2Dcart, cxdata, ydata.compressed(), guess)
+    fit = numpy.ma.array(lorentzian2Dcart(xdata,params),mask = ydata.mask)
+   
+    return params, variance,fit, paramnames
 
-def lorentzian2Dpolar((x,y), (x0, y0, A, gammax, gammay, th , B)):
+def lorentzian2Dpolar((x,y), (x0, y0,I,gammax, gammay, offset ,th)):
     a,b = rot2d(x,y,th)
     a0,b0 = rot2d(x0,y0,th)
     return (A  / (1 + gammax * (a-a0)**2 + gammay * (b-b0)**2) + B)
 
-def lorentzian2Dcart((x,y), (x0, y0, A, gammax, gammay, th , B)):
+def lorentzian2Dcart((x,y), (x0, y0, I, gammax, gammay, th , B)):
     a,b = rot2d(x,y,th)
     a0,b0 = rot2d(x0,y0,th)
-    return (A  / (1 + ((a-a0)/gammax)**2) * 1 / (1 + ((b-b0)/gammay)**2) + B)
+    return (I  / (1 + ((a-a0)/gammax)**2) * 1 / (1 + ((b-b0)/gammay)**2) + B)
 
 def rot2d(x,y,th):
     xrot = x * numpy.cos(th) + y * numpy.sin(th) 
@@ -214,7 +222,7 @@ def noblorentz3dfit(xdata,ydata, guess):
     return params, summary
 
   
-def fit(space, func, guess):
+def fit(space, func, guess = []):
     if space.dimension == 1:
         if func == 'gaussian':
             fitfunc = fitgaussian
@@ -224,11 +232,7 @@ def fit(space, func, guess):
             fitfunc = fitvoigt
         else:
             raise ValueError('Unknown fit function')
-        try:
-            return fitfunc(space,guess)
-        except:
-            print 'Fit fail for:\n{0}'.format(space)
-            return None
+        return fitfunc(space,guess)
 
     elif space.dimension == 2:
         if func == 'gaussian':
@@ -239,14 +243,7 @@ def fit(space, func, guess):
             fitfunc = fitvoigt
         else:
             raise ValueError('Unknown fit function')
-        try:
-            return fitfunc(space,guess)
-        except:
-            print 'Fit fail for:\n{0}'.format(space)
-            return None
-
-        
- 
+        return fitfunc(space,guess)
 
     elif space.dimension > 2:
         raise ValueError("Cannot plot 3 or higher dimensional spaces, use projections or slices to decrease dimensionality.")
