@@ -209,6 +209,11 @@ class Space(object):
     def get_masked(self):
         return numpy.ma.array(data=self.get(), mask=(self.contributions == 0))
         
+    def get_grid(self):
+        igrid = numpy.mgrid[tuple(slice(0, len(ax)) for ax in self.axes)]
+        grid = tuple(numpy.array(grid * ax.res + ax.min) for grid, ax in zip(igrid, self.axes))
+        return grid
+
     def __add__(self, other):
         if not isinstance(other, Space):
             return NotImplemented

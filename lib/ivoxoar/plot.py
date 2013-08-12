@@ -1,13 +1,21 @@
 import matplotlib.colors
 
-def plot(space, fig, ax, log=True, clipping=0.0, **plotopts):
+def plot(space, fig, ax, log=True, clipping=0.0, fit=None, **plotopts):
     if space.dimension == 1:
         data = space.get_masked()
         xrange = space.axes[0][:]
-        if log:
-            ax.semilogy(xrange, data, **plotopts)
+        if fit:   
+            if log:
+                ax.semilogy(xrange, data, 'wo', **plotopts)
+                ax.semilogy(xrange, fit[2], 'r', linewidth=2, **plotopts)
+            else:
+                ax.plot(xrange, data, 'wo', **plotopts)
+                ax.plot(xrange, fit[2], 'r', linewidth=2, **plotopts)
         else:
-            ax.plot(xrange, data, **plotopts)
+            if log:
+                ax.semilogy(xrange, data, **plotopts)
+            else:
+                ax.plot(xrange, data, **plotopts)
         
         ax.set_xlabel(space.axes[0].label)
         ax.set_ylabel('Intensity (a.u.)')
@@ -26,7 +34,7 @@ def plot(space, fig, ax, log=True, clipping=0.0, **plotopts):
             vmin, vmax = clip[0], clip[-1]
             del clip
         else:
-            vmin, vmax = colordata.min(),colordata.max()
+            vmin, vmax = colordata.min(), colordata.max()
         del colordata
 
         # 2D IMSHOW PLOT

@@ -1,7 +1,4 @@
 #!/usr/bin/python
-# Written by Willem Onderwaater and Sander Roobol as part of a collaboration
-# between the ID03 beamline at the European Synchrotron Radiation Facility and
-# the Interface Physics group at Leiden University.
 
 import sys
 import os
@@ -11,51 +8,7 @@ import numpy
 import matplotlib.pyplot as pyplot
 import matplotlib.colors
 
-import ivoxoar.space, ivoxoar.plot
-
-
-def project_and_slice(space, args):
-    info = []
-
-    # SLICING
-    for sl in args.slice:
-        ax, key = sl
-        axindex = space.get_axindex_by_label(ax)
-        axlabel = space.axes[axindex].label
-        if ':' in key:
-            start, stop = key.split(':')
-            if start:
-                start = float(start.replace('m', '-'))
-            else:
-                start = space.axes[axindex].min
-            if stop:
-                stop = float(stop.replace('m', '-'))
-            else:
-                stop = space.axes[axindex].max
-            key = slice(start, stop)
-
-            info.append('sliced in {0} from {1} to {2}'.format(axlabel, start, stop))
-        else:
-            key = float(key.replace('m', '-'))
-            info.append('sliced in {0} at {1}'.format(axlabel, key))
-        olddim = space.dimension
-        space = space.slice(axindex, key)
-        if space.dimension == olddim:
-            space = space.project(axindex)
-
-    # PROJECTION
-    for proj in args.project:
-        projectaxis = space.get_axindex_by_label(proj)
-        info.append('projected on {0}'.format(space.axes[projectaxis].label))
-        space = space.project(projectaxis)
-
-    if space.dimension == 3: # automatic projection on smallest axis
-        projectaxis = numpy.argmin(space.photons.shape)
-        info.append('projected on {0}'.format(space.axes[projectaxis].label))
-        space = space.project(projectaxis)
-
-    return space, info
-
+import ivoxoar.space, ivoxoar.plot, ivoxoar.fit, ivoxoar.util
 
 if __name__ == "__main__":
     numpy.seterr(divide='ignore', invalid='ignore')
@@ -70,15 +23,23 @@ if __name__ == "__main__":
     parser.add_argument('--savefile')
     parser.add_argument('--subtract')
     parser.add_argument('--multi', default=None, choices=('grid', 'stack'))
-    
+    parser.add_argument('--fit', default = None)
+    parser.add_argument('--guess',default = None)
     args = parser.parse_args()
 
     if args.subtract:
         subtrspace = ivoxoar.space.Space.fromfile(args.subtract)
-        subtrspace, subtrinfo = project_and_sice(subtrspace, args)
+        subtrspace, subtrinfo = ivoxoar.util.project_and_slice(subtrspace, args, auto3to2=True)
         args.nolog = True
 
-    # PLOTTING
+    # FITTING
+    guess = []
+    if args.guess is not None:
+        for n in args.guess.split(','):
+            guess.append(float(n.replace('m', '-')))
+
+
+    # PLOTTING AND FITTING
     pyplot.figure(figsize=(12,9))
     plotcount = len(args.infile)
     plotcolumns = int(numpy.ceil(numpy.sqrt(plotcount)))
@@ -86,7 +47,12 @@ if __name__ == "__main__":
 
     for i, filename in enumerate(args.infile):
         space = ivoxoar.space.Space.fromfile(filename)
-        space, info = project_and_slice(space, args)
+        space, info = ivoxoar.util.project_and_slice(space, args, auto3to2=True)
+
+        if args.fit:
+            fit = ivoxoar.fit.fit(space,args.fit,guess)
+        else:
+            fit = None
 
         if plotcount > 1:
             if space.dimension == 1 and args.multi is None:
@@ -108,7 +74,7 @@ if __name__ == "__main__":
 
         if args.multi == 'grid':
             pyplot.subplot(plotrows, plotcolumns, i+1)
-        ivoxoar.plot.plot(space, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip))
+        ivoxoar.plot.plot(space, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip),fit = fit)
 
         if plotcount == 1:
             pyplot.suptitle('{0} {1}'.format(basename, ' '.join(info)))
