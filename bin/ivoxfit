@@ -10,7 +10,7 @@ import numbers
 import numpy
 import matplotlib.pyplot as pyplot
 import matplotlib.colors
-
+import pdb
 import ivoxoar.space, ivoxoar.plot, ivoxoar.fit, ivoxoar.util
 
 if __name__ == "__main__":
@@ -37,6 +37,9 @@ if __name__ == "__main__":
 
     space = ivoxoar.space.Space.fromfile(args.infile)
     space, info = ivoxoar.util.project_and_slice(space, args)
+
+    if float(args.resolution) < space.axes[space.get_axindex_by_label(args.axis)].res:
+        raise ValueError('interval {0} to low, minimum interval is {1}'.format(args.resolution,space.axes[space.get_axindex_by_label(args.axis)].res))
 
     axindex = space.get_axindex_by_label(args.axis)
     axlabel = space.axes[axindex].label
@@ -67,25 +70,30 @@ if __name__ == "__main__":
             print e.message
             fit = None
 
-        pyplot.figure(figsize=(12,9))
-        pyplot.subplot(121)
-        ivoxoar.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip),fit = None)
-        pyplot.subplot(122)
-        ivoxoar.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip),fit = fit)
+        if len(newspace.get_masked().compressed()):
+            if newspace.dimension == 1:
+                pyplot.figure(figsize=(12,9))
+                pyplot.subplot(111)
+                ivoxoar.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip),fit = fit)
+            elif newspace.dimension == 2:
+                pyplot.figure(figsize=(12,9))
+                pyplot.subplot(121)
+                ivoxoar.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip),fit = None)
+                pyplot.subplot(122)
+                ivoxoar.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip),fit = fit)
 
-        info.append('sliced in {0} from {1} to {2}'.format(axlabel, start, stop))
-        pyplot.suptitle('{0}'.format(' '.join(info)))
+            info.append('sliced in {0} from {1} to {2}'.format(axlabel, start, stop))
+            pyplot.suptitle('{0}'.format(' '.join(info)))
 
-        if args.savepdf or args.savefile:
-            if args.savefile:
-                root,ext = os.path.split(args.savefile) 
-                pyplot.savefig('{0}_{1}{2}'.format(root,i,ext))
-                print 'saved at {0}_{1}{2}'.format(root,i,ext)
-            else:
-                pyplot.savefig('{0}_{1}.pdf'.format(os.path.splitext(args.infile)[0],i))
-                print 'saved at {0}_{1}.pdf'.format(os.path.splitext(args.infile)[0],i)
-
-        pyplot.close()
+            if args.savepdf or args.savefile:
+                if args.savefile:
+                    root,ext = os.path.split(args.savefile) 
+                    pyplot.savefig('{0}_{1}{2}'.format(root,i,ext))
+                    print 'saved at {0}_{1}{2}'.format(root,i,ext)
+                else:
+                    pyplot.savefig('{0}_{1}.pdf'.format(os.path.splitext(args.infile)[0],i))
+                    print 'saved at {0}_{1}.pdf'.format(os.path.splitext(args.infile)[0],i)
+            pyplot.close()
   
     parameters = numpy.vstack(n for n in parameters).T
     variance = numpy.vstack(n for n in variance).T
@@ -105,9 +113,19 @@ if __name__ == "__main__":
             root,ext = os.path.split(args.savefile) 
             pyplot.savefig('{0}_summary{1}'.format(root,ext))
             print 'saved at {0}_summary{1}'.format(root,ext)
+            filename = '{0}_summary{1}'.format(root,'.txt')
         else:
             pyplot.savefig('{0}_summary.pdf'.format(os.path.splitext(args.infile)[0]))
             print 'saved at {0}_summary.pdf'.format(os.path.splitext(args.infile)[0])
+            filename = '{0}_summary.txt'.format(os.path.splitext(args.infile)[0])
+          
 
-    
-     
+        file = open(filename,'w')
+        file.write('L\t')
+        file.write('\t'.join(paramnames))
+        file.write('\n')
+        for n in range(parameters.shape[1]):
+            file.write('{0}\t'.format(fitlabel[n]))
+            file.write('\t'.join(numpy.array(parameters[:,n],dtype = numpy.str)))
+            file.write('\n')
+        file.close()

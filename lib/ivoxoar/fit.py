@@ -78,13 +78,20 @@ def nonlinfit(func, guess, paramnames=None):
     summary = '\n'.join('%s: %.4e +/- %.4e' % (n, p,v) for (n, p,v) in zip(paramnames, params, variance))
     return params, variance, paramnames, summary
 
-def lorentzian(x, (I, loc ,gamma, offset, slope)):
+def gaussian((x,), (loc, I, sigma, offset, slope)):
+	return I * numpy.exp(-((x-loc)/sigma)**2/2) + offset + x * slope
+
+def voigt((x,), (loc, I, sigma, gamma, offset, slope)):
+    z = (x - loc + numpy.complex(0, gamma)) / (sigma * numpy.sqrt(2))
+    return I * numpy.real(wofz(z))/(sigma * numpy.sqrt(2 *  numpy.pi)) + offset + x * slope
+
+def lorentzian((x,), (I, loc ,gamma, offset, slope)):
     return I * gamma**2 / ((x - loc)**2 + gamma**2)+ offset + x * slope
 
 def lorentzian2Dpolar((x,y), (I, loc0, loc1,gamma0, gamma1, offset ,th)):
     a,b = rot2d(x,y,th)
     a0,b0 = rot2d(loc0,loc1,th)
-    return (A  / (1 + gamma0 * (a-a0)**2 + gamma1 * (b-b0)**2) + offset)
+    return (I  / (1 + gamma0 * (a-a0)**2 + gamma1 * (b-b0)**2) + offset)
 
 def lorentzian2Dcart((x,y), (I, loc0, loc1, gamma0, gamma1, offset, th )):
     a,b = rot2d(x,y,th)
@@ -110,7 +117,7 @@ def noblorentz3d((x,y,z), (x0, y0,z0, A, gammax, gammay ,gammaz, th , ph, B)):
     return sim
 
 
-class LorentzianFit(object):
+class PeakFit(object):
     def __init__(self,space,func = lorentzian2Dcart):
         self.space  = space
         self.func = func
@@ -127,28 +134,25 @@ class LorentzianFit(object):
         return params, variance,fit, paramnames
 
     def _get_guess(self):
-        if self.space.dimension == 1:
-            return self._get_1Dguess(self.space)
-        else:
-            iguess = []
-            guess = []
-            x0= list(self.space.argmax())
-            skey = []
-            for i in range(self.space.dimension):
-                skey.append(x0[:])
-                skey[i][i] = slice(None)
-            for s in skey:
-                iguess.append(self._get_1Dguess(self.space[tuple(s)]))
-            for arg in self.args:
-                if not arg.isalpha():
-                    argname = arg.rstrip('0123456789')
-                    index = int(arg.split(argname)[-1])
-                    guess.append(iguess[index][argname])
-                elif arg in iguess[0].keys():
-                    guess.append(iguess[0][arg])
-                else:
-                    guess.append(0)
-            return guess
+       iguess = []
+       guess = []
+       x0= list(self.space.argmax())
+       skey = []
+       for i in range(self.space.dimension):
+           skey.append(x0[:])
+           skey[i][i] = slice(None)
+       for s in skey:
+           iguess.append(self._get_1Dguess(self.space[tuple(s)]))
+       for arg in self.args:
+           if not arg.isalpha():
+               argname = arg.rstrip('0123456789')
+               index = int(arg.split(argname)[-1])
+               guess.append(iguess[index][argname])
+           elif arg in iguess[0].keys():
+               guess.append(iguess[0][arg])
+           else:
+               guess.append(0)
+       return guess
  
     @staticmethod
     def _get_1Dguess(space):
@@ -166,23 +170,19 @@ class LorentzianFit(object):
   
 def fit(space, func, guess = []):
     if space.dimension == 1:
-        if func == 'gaussian':
-            fitfunc = fitgaussian
-        elif func == 'lorentzian':
-            fitfunc = fitlorentzian
+        if func == 'lorentzian':
+            fit = PeakFit(space,lorentzian)
+        elif func == 'gaussian':
+            fit = PeakFit(space,gaussian)
         elif func == 'voigt':
-            fitfunc = fitvoigt
+            fit = PeakFit(space,voigt)
         else:
             raise ValueError('Unknown fit function')
-        return fitfunc(space,guess)
+        return fit.fit(guess)
 
     elif space.dimension == 2:
-        if func == 'gaussian':
-            fitfunc = fitgaussian
-        elif func == 'lorentzian':
-            fit = LorentzianFit(space)
-        elif func == 'voigt':
-            fitfunc = fitvoigt
+        if func == 'lorentzian':
+            fit = PeakFit(space)
         else:
             raise ValueError('Unknown fit function')
         return fit.fit(guess)
