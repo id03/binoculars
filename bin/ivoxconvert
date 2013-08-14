@@ -8,7 +8,7 @@ import numpy
 import ivoxoar.space, ivoxoar.util
 
 
-if __name__ == "__main__":    
+if __name__ == "__main__":
     numpy.seterr(divide='ignore', invalid='ignore')
 
     parser = argparse.ArgumentParser(prog='ivoxconvert')
