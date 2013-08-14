@@ -251,7 +251,7 @@ class Space(object):
         if not isinstance(other, Space):
             return NotImplemented
         if self.axes != other.axes or not (self.contributions == other.contributions).all():
-            # FIXME: be a bit more helpful if all axes are compatible
+            # TODO: we could be a bit more helpful if all axes are compatible
             raise ValueError('cannot subtract spaces that are not identical (axes + contributions)')
         new = self.copy()
         new.photons -= other.photons # don't call __isub__ here because the compatibility check is labourous

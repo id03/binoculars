@@ -30,7 +30,7 @@ class HKLProjection(backend.ProjectionBase):
 class TwoThetaProjection(HKLProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         h,k,l = super(TwoThetaProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
-        return 2 * numpy.arcsin(wavelength * numpy.sqrt(h**2+k**2+l**2) / 4 / numpy.pi) # TODO: shouldn't this be a 1-tuple?
+        return 2 * numpy.arcsin(wavelength * numpy.sqrt(h**2+k**2+l**2) / 4 / numpy.pi), # note: we need to return a 1-tuple?
 
     def get_axis_labels(self):
         return 'TwoTheta'
