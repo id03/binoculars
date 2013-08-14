@@ -8,20 +8,8 @@ import multiprocessing
 from . import util, errors, space, oar
 
 
-def get(main, config):
-    if isinstance(config, util.Config):
-        return config.class_(main, config)
-
-    type = config.pop('type', 'Local').lower()
-    choices = dict((id.lower(), obj) for (id, obj) in globals().iteritems() if inspect.isclass(obj) and issubclass(obj, DispatcherBase))
-    if type in choices:
-        return choices[type](main, config)
-    else:
-        raise errors.ConfigError("invalid type '{0}' for section 'dispatcher'".format(type))
-
-
 class DispatcherBase(util.ConfigurableObject):
-    def __init__(self, main, config):
+    def __init__(self, config, main):
         self.main = main
         super(DispatcherBase, self).__init__(config)
 

@@ -1,7 +1,4 @@
 #!/usr/bin/python
-# Written by Willem Onderwaater and Sander Roobol as part of a collaboration
-# between the ID03 beamline at the European Synchrotron Radiation Facility and
-# the Interface Physics group at Leiden University.
 
 import sys
 import os
@@ -16,7 +13,7 @@ import ivoxoar.space, ivoxoar.plot, ivoxoar.fit, ivoxoar.util
 if __name__ == "__main__":
     numpy.seterr(divide='ignore', invalid='ignore')
 
-    parser = argparse.ArgumentParser(prog='ivoxplot')
+    parser = argparse.ArgumentParser(prog='ivoxfit')
     parser.add_argument('infile')
     parser.add_argument('axis')
     parser.add_argument('resolution')

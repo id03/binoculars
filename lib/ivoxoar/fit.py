@@ -88,7 +88,7 @@ def voigt((x,), (loc, I, sigma, gamma, offset, slope)):
 def lorentzian((x,), (I, loc ,gamma, offset, slope)):
     return I * gamma**2 / ((x - loc)**2 + gamma**2)+ offset + x * slope
 
-def lorentzian2Dellipse((x,y), (I, loc0, loc1,gamma0, gamma1, offset ,th)):
+def lorentzian2Dpolar((x,y), (I, loc0, loc1,gamma0, gamma1, offset ,th)):
     a,b = rot2d(x,y,th)
     a0,b0 = rot2d(loc0,loc1,th)
     return (I  / (1 + gamma0 * (a-a0)**2 + gamma1 * (b-b0)**2) + offset)
@@ -151,7 +151,7 @@ class PeakFit(object):
            elif arg in iguess[0].keys():
                guess.append(iguess[0][arg])
            else:
-               guess.append(1)
+               guess.append(0)
        return guess
  
     @staticmethod
@@ -187,4 +187,5 @@ def fit(space, func, guess = []):
             raise ValueError('Unknown fit function')
         return fit.fit(guess)
     elif space.dimension > 2:
-        raise ValueError("Cannot plot 3 or higher dimensional spaces, use projections or slices to decrease dimensionality.")
+        raise ValueError("Cannot fit 3 or higher dimensional spaces, use projections or slices to decrease dimensionality.")
+>>>>>>> other

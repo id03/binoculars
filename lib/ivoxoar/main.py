@@ -2,7 +2,7 @@ import sys
 import argparse
 import ConfigParser
 
-from ivoxoar import dispatcher, space, backend, util
+from ivoxoar import space, backend, util
 
 def parse_args():
     parser = argparse.ArgumentParser(prog='ivoxoar')
@@ -30,7 +30,7 @@ def multiprocessing_main((config, command)): # note the double parenthesis for m
 class Main(object):
     def __init__(self, config, command):
         self.config = config
-        self.dispatcher = dispatcher.get(self, self.config.dispatcher)
+        self.dispatcher = backend.get_dispatcher(self.config.dispatcher, self, default='local')
         self.projection = backend.get_projection(self.config.projection)
         self.input = backend.get_input(self.config.input)
         self.run(command)
@@ -73,7 +73,6 @@ class Main(object):
             else:
                 result.tofile(self.dispatcher.config.destination)
             
-        
     def process_job(self, job):
         def generator():
             res = self.projection.config.resolution

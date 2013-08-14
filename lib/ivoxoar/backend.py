@@ -1,6 +1,6 @@
 import itertools
 
-from . import space, util, errors
+from . import space, util, errors, dispatcher
 
 
 class ProjectionBase(util.ConfigurableObject):
@@ -50,30 +50,46 @@ class InputBase(util.ConfigurableObject):
         raise NotImplementedError
 
 
-def get_input(config):
-    return _get_backend(config, 'input', InputBase)
+def get_dispatcher(config, main, default=None):
+    return _get_backend(config, 'dispatcher', dispatcher.DispatcherBase, default=default, args=[main])
 
-def get_projection(config):
-    return _get_backend(config, 'projection', ProjectionBase)
+def get_input(config, default=None):
+    return _get_backend(config, 'input', InputBase, default=default)
 
-def _get_backend(config, section, basecls, default=None):
+def get_projection(config, default=None):
+    return _get_backend(config, 'projection', ProjectionBase, default=default)
+
+def _get_backend(config, section, basecls, default=None, args=[], kwargs={}):
     if isinstance(config, util.Config):
-        return config.class_(config)
+        return config.class_(config, *args, **kwargs)
 
     type = config.pop('type', default)
     if type is None:
         raise errors.ConfigError("required option 'type' not given in section '{0}'".format(section))
 
-    # TODO: handle errors
     if ':' in type:
-        module, clsname = type.split(':')
-        backend = __import__('backends.{0}'.format(module), globals(), locals(), [], 1)
-        mod = getattr(backend, module)
-        names = dict((name.lower(), name) for name in dir(mod))
-        if clsname in names:
-            cls = getattr(mod, names[clsname])
-            
-            if issubclass(cls, basecls):
-                return cls(config)
+        try:
+            modname, clsname = type.split(':')
+        except ValueError:
+            raise errors.ConfigError("invalid type '{0}' in section '{1}'".format(type, section))
+        try:
+            backend = __import__('backends.{0}'.format(modname), globals(), locals(), [], 1)
+        except ImportError as e:
+            raise errors.ConfigError("unable to import module backends.{0}: {1}".format(modname, e))
+        module = getattr(backend, modname)
+    elif section == 'dispatcher':
+        module = dispatcher
+        clsname = type
+    else:
+        raise errors.ConfigError("invalid type '{0}' in section '{1}'".format(type, section))
 
-    raise errors.ConfigError("invalid type '{0}' in section '{1}'".format(type, section))
+    names = dict((name.lower(), name) for name in dir(module))
+    if clsname in names:
+        cls = getattr(module, names[clsname])
+        
+        if issubclass(cls, basecls):
+            return cls(config, *args, **kwargs)
+        else:
+            raise errors.ConfigError("type '{0}' not compatible in section '{1}': expected class derived from '{2}', got '{3}'".format(type, section, basecls.__name__, cls.__name__))
+    else:
+        raise errors.ConfigError("invalid type '{0}' in section '{1}'".format(type, section))
