@@ -48,6 +48,8 @@ class ID03Input(backend.InputBase):
                 pointcount = scan.lines()
             except specfile.error: # no points
                 continue
+	        self.get_images(scan, job.firstpoint, job.lastpoint, dry_run=True).next()
+
             if self.config.target_weight and pointcount > self.config.target_weight * 1.4:
                 for s in util.chunk_slicer(pointcount, self.config.target_weight):
                     yield backend.Job(scan=scanno, firstpoint=s.start, lastpoint=s.stop-1, weight=s.stop-s.start)
@@ -152,7 +154,7 @@ class ID03Input(backend.InputBase):
 
         return params
 
-    def get_images(self, scan, first, last):
+    def get_images(self, scan, first, last, dry_run=False):
         if self.is_zap(scan):
             scanheaderC = scan.header('C')
             folder = os.path.split(scanheaderC[0].split(' ')[-1])[-1]
@@ -164,9 +166,11 @@ class ID03Input(backend.InputBase):
             if 0 not in matches:
                 raise errors.FileError('could not find matching edf for zapscannumber {0}'.format(zapscannumber))
             edf = EdfFile.EdfFile(matches[0])
-        
-            for i in range(first, last+1):
-                yield edf.GetData(i)
+        	if dry_run:
+				yield
+			else:
+				for i in range(first, last+1):
+					yield edf.GetData(i)
 
         else:
             uccdtagline = scan.header('UCCD')[0]
@@ -184,11 +188,14 @@ class ID03Input(backend.InputBase):
                 raise ValueError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))
             pattern = os.path.join(imagefolder, '*')
             matches = self.find_edfs(pattern, scan.number())
-            if not matches:
-                print "error: no matches for scan {0} using pattern {1}".format(scan.number(), pattern)
-            for i in range(first, last+1):
-                edf = EdfFile.EdfFile(matches[i])
-                yield edf.GetData(0)
+            if len(matches) != last - first + 1:
+                raise errors.FileError("incorrect number of matches for scan {0} using pattern {1}".format(scan.number(), pattern))
+			if dry_run:
+				yield
+			else:
+				for i in range(first, last+1):
+					edf = EdfFile.EdfFile(matches[i])
+					yield edf.GetData(0)
 
 
 class EH1(ID03Input):
