@@ -59,7 +59,7 @@ def get_input(config, default=None):
 def get_projection(config, default=None):
     return _get_backend(config, 'projection', ProjectionBase, default=default)
 
-def _get_backend(config, section, basecls, default=None, args=None, kwargs=None):
+def _get_backend(config, section, basecls, default=None, args=[], kwargs={}):
     if isinstance(config, util.Config):
         return config.class_(config, *args, **kwargs)
 
@@ -85,7 +85,7 @@ def _get_backend(config, section, basecls, default=None, args=None, kwargs=None)
 
     names = dict((name.lower(), name) for name in dir(module))
     if clsname in names:
-        cls = getattr(mod, names[clsname])
+        cls = getattr(module, names[clsname])
         
         if issubclass(cls, basecls):
             return cls(config, *args, **kwargs)
