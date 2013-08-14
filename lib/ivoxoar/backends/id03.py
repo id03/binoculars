@@ -48,7 +48,7 @@ class ID03Input(backend.InputBase):
                 pointcount = scan.lines()
             except specfile.error: # no points
                 continue
-	        self.get_images(scan, job.firstpoint, job.lastpoint, dry_run=True).next()
+            next(self.get_images(scan, 0, pointcount-1, dry_run=True))# dryrun
 
             if self.config.target_weight and pointcount > self.config.target_weight * 1.4:
                 for s in util.chunk_slicer(pointcount, self.config.target_weight):
@@ -94,11 +94,14 @@ class ID03Input(backend.InputBase):
         files = glob.glob(pattern)
         ret = {}
         for file in files:
-            filename = os.path.basename(file).split('.')[0]
-            scan, point, image = filename.split('_')[-3:]
-            scan, point, image = int(scan), int(point), int(image)
-            if scan == scanno:
-                ret[point] = file
+            try:
+                filename = os.path.basename(file).split('.')[0]
+                scan, point, image = filename.split('_')[-3:]
+                scan, point, image = int(scan), int(point), int(image)
+                if scan == scanno and point not in ret.keys():
+                    ret[point] = file
+            except:
+                print 'skipping file: {0}'.format(file)
         return ret
 
     @staticmethod 
@@ -166,15 +169,19 @@ class ID03Input(backend.InputBase):
             if 0 not in matches:
                 raise errors.FileError('could not find matching edf for zapscannumber {0}'.format(zapscannumber))
             edf = EdfFile.EdfFile(matches[0])
-        	if dry_run:
-				yield
-			else:
-				for i in range(first, last+1):
-					yield edf.GetData(i)
+            if dry_run:
+                yield
+            else:
+                for i in range(first, last+1):
+                    yield edf.GetData(i)
 
         else:
-            uccdtagline = scan.header('UCCD')[0]
-            UCCD = os.path.dirname(uccdtagline[6:]).split(os.sep)
+            try:
+                uccdtagline = scan.header('UCCD')[0]
+                UCCD = os.path.dirname(uccdtagline[6:]).split(os.sep)
+            except:
+                print 'warning: UCCD tag not found, use imagefolder for proper file specification'
+                UCCD = []
             imagefolder = self.config.imagefolder
             if imagefolder:
                 try:
@@ -188,14 +195,14 @@ class ID03Input(backend.InputBase):
                 raise ValueError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))
             pattern = os.path.join(imagefolder, '*')
             matches = self.find_edfs(pattern, scan.number())
-            if len(matches) != last - first + 1:
+            if set(range(first, last + 1)) >= set(matches.keys()):
                 raise errors.FileError("incorrect number of matches for scan {0} using pattern {1}".format(scan.number(), pattern))
-			if dry_run:
-				yield
-			else:
-				for i in range(first, last+1):
-					edf = EdfFile.EdfFile(matches[i])
-					yield edf.GetData(0)
+            if dry_run:
+                yield
+            else:
+                for i in range(first, last+1):
+                    edf = EdfFile.EdfFile(matches[i])
+                    yield edf.GetData(0)
 
 
 class EH1(ID03Input):
@@ -247,6 +254,6 @@ class EH2(ID03Input):
         gamma_range = gamma_range[self.config.xmask]
         delta_range = delta_range[self.config.ymask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
-        intensity = numpy.roi90(intensity)
+        intensity = numpy.rot90(intensity)
 
         return intensity.flatten(), (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)

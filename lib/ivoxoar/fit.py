@@ -188,4 +188,3 @@ def fit(space, func, guess = []):
         return fit.fit(guess)
     elif space.dimension > 2:
         raise ValueError("Cannot fit 3 or higher dimensional spaces, use projections or slices to decrease dimensionality.")
->>>>>>> other
