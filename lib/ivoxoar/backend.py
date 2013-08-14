@@ -66,6 +66,7 @@ def _get_backend(config, section, basecls, default=None, args=[], kwargs={}):
     type = config.pop('type', default)
     if type is None:
         raise errors.ConfigError("required option 'type' not given in section '{0}'".format(section))
+    type = type.strip()
 
     if ':' in type:
         try:
