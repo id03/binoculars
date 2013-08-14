@@ -217,15 +217,13 @@ class Oar(ReentrantBase):
         else:
             return
      
-        polltime = 0
-        while 1:
+        delay = util.loop_delayer(30)
+        while len(jobs) > remaining:
+			next(delay)
             i = 0
             R = 0
             W = 0
             U = 0
-            if time.time() - polltime < 30:
-                time.sleep(time.time() - polltime)
-            polltime = time.time()
 
             while i < len(jobs):
                 state = self.oarstat(jobs[i])
@@ -240,6 +238,4 @@ class Oar(ReentrantBase):
                     i -= 1 # otherwise it skips a job
                 i += 1
             util.status('{0}: {1} jobs to go. {2} waiting, {3} running, {4} unknown.'.format(time.ctime(),len(jobs),W,R,U))
-            if len(jobs) <= remaining:
-                break
         util.statuseol()
