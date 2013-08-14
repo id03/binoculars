@@ -37,12 +37,16 @@ class Main(object):
     @classmethod
     def from_args(cls):
         args = parse_args()
-        config = False
+        if not os.path.exists(args.configfile):
+            # wait up to 10 seconds if it is a zpi, it might take a while for the file to appear accross the network
+            if not args.configfile.endswith('.zpi') or not util.wait_for_file(args.configfile, 10):
+                raise errors.FileError("configuration file '{0}' does not exists".format(args.configfile))
+        configobj = False
         with open(args.configfile, 'rb') as fp:
             if fp.read(2) == '\x1f\x8b': # gzip marker
                 fp.seek(0)
-                config = util.load_zpi(fp)
-        if not config:
+                configobj = util.zpi_load(fp)
+        if not configobj:
             # reopen args.configfile as text
             config = ConfigParser.RawConfigParser()
             config.read(args.configfile)
@@ -52,7 +56,7 @@ class Main(object):
 
             configobj = util.Config()
             for section in 'dispatcher', 'projection', 'input':
-                setattr(configobj, section, dict((k, v.split('#')[0]) for (k, v) in config.items(section)))
+                setattr(configobj, section, dict((k, v.split('#')[0].strip()) for (k, v) in config.items(section)))
 
         return cls(configobj, args.command)
 
@@ -67,7 +71,9 @@ class Main(object):
             jobs = self.input.generate_jobs(command)
             tokens = self.dispatcher.process_jobs(jobs)
             result = self.dispatcher.sum(tokens)
-            if isinstance(result, space.EmptySpace):
+            if result is True:
+                pass
+            elif isinstance(result, space.EmptySpace):
                 sys.stderr.write('error: output is an empty dataset\n')
             else:
                 result.tofile(self.dispatcher.config.destination)

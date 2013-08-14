@@ -5,22 +5,55 @@ import itertools
 import random
 import cPickle as pickle
 import inspect
+import time
 import numpy
 
 
-def wait_for_files(filelist):
-    filelist = filelist[:] # make copy
-    i = 0
-    while filelist:
-        i = i % len(filelist)
-        if os.path.exists(filelist[i]):
-            yield filelist.pop(i)
-        else:
-            time.sleep(5)
-            i == 1
+def loop_delayer(delay):
+    """Delay a loop such that it runs at most once every 'delay' seconds. Usage example:
+    delay = loop_delayer(5)
+    while some_condition:
+        next(delay)
+        do_other_tasks
+    """
+    def generator():
+        polltime = 0
+        while 1:
+            diff = time.time() - polltime
+            if diff < delay:
+                time.sleep(delay - diff)
+            polltime = time.time()
+            yield
+    return generator()
 
-def wait_for_file(filename):
-    return bool(list(wait_for_files([filename])))
+def yield_when_exists(filelist, timeout=None):
+    """Wait for files in 'filelist' to appear, for a maximum of 'timeout' seconds,
+    yielding them in arbitrary order as soon as they appear.
+    If 'filelist' is a set, it will be modified in place, and on timeout it will
+    contain the files that have not appeared yet."""
+    if not isinstance(filelist, set):
+        filelist = set(filelist)
+    delay = loop_delayer(5)
+    start = time.time()
+    while filelist:
+        next(delay)
+        exists = set(f for f in filelist if os.path.exists(f))
+        for e in exists:
+            yield e
+        filelist -= exists
+        if timeout is not None and time.time() - start > timeout:
+            break
+
+def wait_for_files(filelist, timeout=None):
+    """Wait until the files in 'filelist' have appeared, for a maximum of 'timeout' seconds.
+    Returns True on success, False on timeout."""
+    filelist = set(filelist)
+    for i in yield_when_exists(filelist, timeout):
+        pass
+    return not filelist
+
+def wait_for_file(file, timeout=None):
+    return wait_for_files([file], timeout=timeout)
 
 
 def project_and_slice(space, args, auto3to2=False):
