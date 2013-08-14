@@ -20,7 +20,7 @@ specfile = /path/to/data/file.spec
 imagefolder = /path/to/data/images
 
 ## approximate number of images per job, only useful when running on the oar cluster
-target_weigth = 4000 
+target_weight = 4000 
 
 # technical yadayada for this particular input class
 centralpixel = 40, 255
