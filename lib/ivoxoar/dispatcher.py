@@ -111,14 +111,15 @@ class Oar(ReentrantBase):
     actions = 'user', 'process'
 
     def parse_config(self, config):
+        super(Oar, self).parse_config(config)
         self.config.tmpdir = config.pop('tmpdir', os.getcwd())
         self.config.oarsub_options = config.pop('oarsub_options', 'walltime=0:15')
         self.config.executable = config.pop('executable', ' '.join(util.get_python_executable()))
 
-    def process_jobs(jobs):
+    def process_jobs(self, jobs):
         self.configfiles = []
         self.intermediates = []
-        clusters = list(util.cluster_jobs(jobs, self.main.input.target_weight))
+        clusters = list(util.cluster_jobs(jobs, self.main.input.config.target_weight))
         for i, jobscluster in enumerate(clusters, start=1):
             uniq = util.uniqid()
             jobconfig = os.path.join(self.config.tmpdir, 'ivoxoar-{0}-jobcfg.zpi'.format(uniq))
@@ -126,19 +127,20 @@ class Oar(ReentrantBase):
 
             config = self.main.clone_config()
             if i == len(clusters):
-                config.dispatcher.sum = intermediates
+                config.dispatcher.sum = self.intermediates
             else:
                 interm = os.path.join(self.config.tmpdir, 'ivoxoar-{0}-jobout.zpi'.format(uniq))
                 self.intermediates.append(interm)
                 config.dispatcher.destination = interm
+                config.dispatcher.sum = ()
 
             config.dispatcher.action = 'process'
-            config.dispatcher.jobs = [jobscluster]
+            config.dispatcher.jobs = jobscluster
             util.zpi_save(config, jobconfig)
             
             yield self.oarsub(jobconfig)
 
-    def sum(results):
+    def sum(self, results):
         jobs = list(results)
         self.oarwait(jobs)
 
@@ -148,6 +150,7 @@ class Oar(ReentrantBase):
                 os.remove(f)
             except Exception as e:
                 print "unable to remove {0}: {1}".format(f, e)
+        return True
 
     def run_specific_task(self, command):
         if self.config.action != 'process' or (not self.config.jobs and not self.config.sum) or command:
@@ -155,9 +158,9 @@ class Oar(ReentrantBase):
 
         jobs = sum = space.EmptySpace()
         if self.config.jobs:
-            jobs = space.sum(self.main.process_job(job) for job in self.config.job)
+            jobs = space.sum(self.main.process_job(job) for job in self.config.jobs)
         if self.config.sum:
-            sum = space.chunked_sum(space.fromfile(src) for src in self.yield_when_exists(sources))
+            sum = space.chunked_sum(space.Space.fromfile(src) for src in self.yield_when_exists(self.config.sum))
         self.space_to_dest(jobs + sum)
 
     ### UTILITY
@@ -174,6 +177,7 @@ class Oar(ReentrantBase):
                 yield e
             files -= exists
 
+    @staticmethod
     def subprocess_run(*command):
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         output, unused_err = process.communicate()
@@ -192,8 +196,7 @@ class Oar(ReentrantBase):
                     return jobid
         return False
 
-    @staticmethod
-    def oarstat(jobid):
+    def oarstat(self, jobid):
         # % oarstat -s -j 5651374
         # 5651374: Running
         # % oarstat -s -j 5651374
@@ -207,8 +210,7 @@ class Oar(ReentrantBase):
         else:
             return 'Unknown'
 
-    @staticmethod
-    def wait(jobs, remaining=0):
+    def oarwait(self, jobs, remaining=0):
         linelen = 0
         if len(jobs) > remaining:
             util.status('{0}: getting status of {1} jobs...'.format(time.ctime(), len(jobs)))
@@ -226,10 +228,10 @@ class Oar(ReentrantBase):
             polltime = time.time()
 
             while i < len(jobs):
-                state = oarstat(jobs[i])
+                state = self.oarstat(jobs[i])
                 if state == 'Running':
                     R += 1
-                elif state == 'Waiting':
+                elif state in ('Waiting', 'toLaunch', 'Launching'):
                     W += 1
                 elif state == 'Unknown':
                     U += 1

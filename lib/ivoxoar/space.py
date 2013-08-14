@@ -101,6 +101,16 @@ class Axis(object):
 
 
 class EmptySpace(object):
+    def __add__(self, other):
+        if not isinstance(other, Space):
+            return NotImplemented
+        return other
+
+    def __radd__(self, other):
+        if not isinstance(other, Space):
+            return NotImplemented
+        return other
+
     def __iadd__(self, other):
         if not isinstance(other, Space):
             return NotImplemented

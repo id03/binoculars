@@ -8,7 +8,8 @@ import inspect
 import numpy
 
 
-def wait_for_files(filelist):
+def wait_for_files(filelist, timeout=None):
+    # TODO: merge with dispatcher.Oar.yield_when_exists and implement timeout; reorganize delayed-poll-loops with a nice iterator
     filelist = filelist[:] # make copy
     i = 0
     while filelist:
@@ -19,8 +20,8 @@ def wait_for_files(filelist):
             time.sleep(5)
             i == 1
 
-def wait_for_file(filename):
-    return bool(list(wait_for_files([filename])))
+def wait_for_file(filename, timeout=None):
+    return bool(list(wait_for_files([filename], timeout=timeout)))
 
 
 def project_and_slice(space, args, auto3to2=False):

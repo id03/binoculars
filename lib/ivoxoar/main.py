@@ -38,12 +38,13 @@ class Main(object):
     @classmethod
     def from_args(cls):
         args = parse_args()
-        config = False
+        util.wait_for_file(args.configfile, 10)
+        configobj = False
         with open(args.configfile, 'rb') as fp:
             if fp.read(2) == '\x1f\x8b': # gzip marker
                 fp.seek(0)
-                config = util.load_zpi(fp)
-        if not config:
+                configobj = util.zpi_load(fp)
+        if not configobj:
             # reopen args.configfile as text
             config = ConfigParser.RawConfigParser()
             config.read(args.configfile)
@@ -68,7 +69,9 @@ class Main(object):
             jobs = self.input.generate_jobs(command)
             tokens = self.dispatcher.process_jobs(jobs)
             result = self.dispatcher.sum(tokens)
-            if isinstance(result, space.EmptySpace):
+            if result is True:
+                pass
+            elif isinstance(result, space.EmptySpace):
                 sys.stderr.write('error: output is an empty dataset\n')
             else:
                 result.tofile(self.dispatcher.config.destination)
