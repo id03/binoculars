@@ -7,7 +7,6 @@ from ivoxoar import space, backend, util
 def parse_args():
     parser = argparse.ArgumentParser(prog='ivoxoar')
     parser.add_argument('-c', metavar='SECTION:OPTION=VALUE', action='append', type=parse_commandline_config_option, default=[], help='additional configuration option in the form section:option=value')
-#    parser.add_argument('-n', '--dry-run', action='store_true', default=False, help='check files but don\'t perform binning') # TODO: implement
     parser.add_argument('configfile', help='configuration file')
     parser.add_argument('command', nargs='*', default=[])
     return parser.parse_args()

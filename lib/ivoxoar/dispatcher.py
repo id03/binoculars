@@ -105,12 +105,10 @@ class Local(ReentrantBase):
         return config, ()
 
 
-
-
 # Dispatch many worker processes on an Oar cluster.
 class Oar(ReentrantBase):
     ### OFFICIAL API
-    actions = 'user', 'jobs', 'sum'
+    actions = 'user', 'process'
 
     def parse_config(self, config):
         self.config.tmpdir = config.pop('tmpdir', os.getcwd())
@@ -120,51 +118,47 @@ class Oar(ReentrantBase):
     def process_jobs(jobs):
         self.configfiles = []
         self.intermediates = []
-        for jobscluster in util.cluster_jobs(jobs, self.main.input.target_weight):
+        clusters = list(util.cluster_jobs(jobs, self.main.input.target_weight))
+        for i, jobscluster in enumerate(clusters, start=1):
             uniq = util.uniqid()
-            interm = os.path.join(self.config.tmpdir, 'ivoxoar-{0}-jobout.zpi'.format(uniq))
-            self.intermediates.append(interm)
             jobconfig = os.path.join(self.config.tmpdir, 'ivoxoar-{0}-jobcfg.zpi'.format(uniq))
             self.configfiles.append(jobconfig)
 
             config = self.main.clone_config()
-            config.dispatcher.destination = interm
-            config.dispatcher.action = 'jobs'
-            config.dispatcher.jobs = [jobscluster]
+            if i == len(clusters):
+                config.dispatcher.sum = intermediates
+            else:
+                interm = os.path.join(self.config.tmpdir, 'ivoxoar-{0}-jobout.zpi'.format(uniq))
+                self.intermediates.append(interm)
+                config.dispatcher.destination = interm
 
+            config.dispatcher.action = 'process'
+            config.dispatcher.jobs = [jobscluster]
             util.zpi_save(config, jobconfig)
+            
             yield self.oarsub(jobconfig)
 
     def sum(results):
         jobs = list(results)
-        if len(jobs) == 1:
-            self.oarwait(jobs)
-            
-        self.oarwait(jobs, 25)
-
-        sumconfig = os.path.join(self.config.tmpdir, 'ivoxoar-{0}-sumcfg.zpi'.format(util.uniqid()))
-        config = self.main.clone_config()
-        config.dispatcher.action = 'sum'
-        config.dispatcher.sources = self.intermediates
-        util.zpi_save(config, sumconfig)
-
-        jobs.append(self.oarsub(sumconfig))
         self.oarwait(jobs)
 
         # cleanup:
-        for f in itertools.chain(self.configfiles, self.intermediates, [sumconfig]):
+        for f in itertools.chain(self.configfiles, self.intermediates):
             try:
                 os.remove(f)
             except Exception as e:
                 print "unable to remove {0}: {1}".format(f, e)
 
     def run_specific_task(self, command):
-        if self.config.action == 'sum':
-            result = space.chunked_sum(space.fromfile(src) for src in self.yield_when_exists(sources))
-            self.space_to_dest(result)
-        elif self.config.action == 'jobs':
-            result = space.sum(self.main.process_job(job) for job in self.config.job)
-            self.space_to_dest(result)
+        if self.config.action != 'process' or (not self.config.jobs and not self.config.sum) or command:
+            raise errors.SubprocessError("invalid command, too many parameters or no jobs/sum given")
+
+        jobs = sum = space.EmptySpace()
+        if self.config.jobs:
+            jobs = space.sum(self.main.process_job(job) for job in self.config.job)
+        if self.config.sum:
+            sum = space.chunked_sum(space.fromfile(src) for src in self.yield_when_exists(sources))
+        self.space_to_dest(jobs + sum)
 
     ### UTILITY
     @staticmethod
