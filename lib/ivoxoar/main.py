@@ -14,10 +14,10 @@ def parse_args():
 
 def parse_commandline_config_option(s):
     try:
-        section, rest = s.split(':')
-        option, value = rest.split('=')
+        key, value = s.split('=', 1)
+        section, option = key.split(':')
     except ValueError:
-        raise argparseArgumentTypeError("configuration specification '{0}' not in the form section:option=value".format(s))
+        raise argparse.ArgumentTypeError("configuration specification '{0}' not in the form section:option=value".format(s))
     return section, option, value
 
 
