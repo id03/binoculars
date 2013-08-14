@@ -48,9 +48,11 @@ class ID03Input(backend.InputBase):
                 pointcount = scan.lines()
             except specfile.error: # no points
                 continue
-            if self.config.target_weight and pointcount > target_weight * 1.4:
-                for s in util.chunk_slicer(pointcount, target_weight):
+            if self.config.target_weight and pointcount > self.config.target_weight * 1.4:
+                for s in util.chunk_slicer(pointcount, self.config.target_weight):
                     yield backend.Job(scan=scanno, firstpoint=s.start, lastpoint=s.stop-1, weight=s.stop-s.start)
+            else:
+                yield backend.Job(scan=scanno, firstpoint=0, lastpoint=pointcount-1, weight=pointcount)
 
     def process_job(self, job):
         scan = self.get_scan(job.scan)
@@ -218,7 +220,7 @@ class EH2(ID03Input):
     monitor_counter = 'Monitor'
 
     def parse_config(self, config):
-        super(ID03EH2Input, self).parse_config(config)
+        super(EH2, self).parse_config(config)
         self.config.sdd = float(config.pop('sdd'))
 
     def process_image(self, scanparams, pointparams, image):

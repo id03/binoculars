@@ -73,7 +73,6 @@ class Main(object):
             else:
                 result.tofile(self.dispatcher.config.destination)
             
-        
     def process_job(self, job):
         def generator():
             res = self.projection.config.resolution
