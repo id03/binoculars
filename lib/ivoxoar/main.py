@@ -52,7 +52,7 @@ class Main(object):
 
             configobj = util.Config()
             for section in 'dispatcher', 'projection', 'input':
-                setattr(configobj, section, dict((k, v.split('#')[0]) for (k, v) in config.items(section)))
+                setattr(configobj, section, dict((k, v.split('#')[0].strip()) for (k, v) in config.items(section)))
 
         return cls(configobj, args.command)
 
