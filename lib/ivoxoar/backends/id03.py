@@ -169,23 +169,20 @@ class ID03Input(backend.InputBase):
                 yield edf.GetData(i)
 
         else:
-            try:
-                UCCD = os.path.split(scan.header('UCCD')[0].split(' ')[-1])
-            except: # FIXME: catch-all except is evil
-                if not self.config.imagefolder:
-                    raise errors.ConfigError('UCCD tag not found AND imagefolder not specified in configuration file')
-                print 'Warning: No UCCD tag was found. Searching folder {0} for all images'.format(self.config.imagefolder)
-                pattern = os.path.join(config.imagefolder, '*', '*')
+            uccdtagline = scan.header('UCCD')[0]
+            UCCD = os.path.dirname(uccdtagline[6:]).split(os.sep)
+            imagefolder = self.config.imagefolder
+            if imagefolder:
+                try:
+                    imagefolder = imagefolder.format(UCCD=UCCD, rUCCD=list(reversed(UCCD)))
+                except Exception as e:
+                    raise errors.ConfigError("invalid 'imagefolder' specification '{0}': {1}".format(self.config.imagefolder, e))
             else:
-                scanname = UCCD[-1].split('_')[0]
-                filepattern = '*{0}*'.format(scanname)
+                imagefolder = os.path.join(UCCD[:-1])
 
-                if self.config.imagefolder:
-                    subfolder = os.path.split(UCCD[0])[-1]
-                    pattern = os.path.join(self.config.imagefolder, subfolder, filepattern)
-                else:
-                    pattern = os.path.join(UCCD, filepattern)
-
+            if not os.path.exists(imagefolder):
+                raise ValueError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))
+            pattern = os.path.join(imagefolder, '*')
             matches = self.find_edfs(pattern, scan.number())
             if not matches:
                 print "error: no matches for scan {0} using pattern {1}".format(scan.number(), pattern)
