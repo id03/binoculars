@@ -5,7 +5,7 @@ import itertools
 import subprocess
 import multiprocessing
 
-from . import util, errors, space, oar
+from . import util, errors, space
 
 
 class DispatcherBase(util.ConfigurableObject):
@@ -133,14 +133,14 @@ class Oar(ReentrantBase):
             config.dispatcher.jobs = [jobscluster]
 
             util.zpi_save(config, jobconfig)
-            yield oar.sub(jobconfig)
+            yield self.oarsub(jobconfig)
 
     def sum(results):
         jobs = list(results)
         if len(jobs) == 1:
-            oar.wait(jobs)
+            self.oarwait(jobs)
             
-        oar.wait(jobs, 25)
+        self.oarwait(jobs, 25)
 
         sumconfig = os.path.join(self.config.tmpdir, 'ivoxoar-{0}-sumcfg.zpi'.format(util.uniqid()))
         config = self.main.clone_config()
@@ -148,8 +148,8 @@ class Oar(ReentrantBase):
         config.dispatcher.sources = self.intermediates
         util.zpi_save(config, sumconfig)
 
-        jobs.append(oar.sub(sumconfig))
-        oar.wait(jobs)
+        jobs.append(self.oarsub(sumconfig))
+        self.oarwait(jobs)
 
         # cleanup:
         for f in itertools.chain(self.configfiles, self.intermediates, [sumconfig]):
