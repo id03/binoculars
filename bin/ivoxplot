@@ -24,7 +24,7 @@ if __name__ == "__main__":
     parser.add_argument('--subtract')
     parser.add_argument('--multi', default=None, choices=('grid', 'stack'))
     parser.add_argument('--fit', default = None)
-    parser.add_argument('--guess',default = None)
+    parser.add_argument('--guess', default = None)
     args = parser.parse_args()
 
     if args.subtract:
@@ -38,7 +38,7 @@ if __name__ == "__main__":
             guess.append(float(n.replace('m', '-')))
 
     # PLOTTING AND SIMPLEFITTING
-    pyplot.figure(figsize=(12,9))
+    pyplot.figure(figsize=(12, 9))
     plotcount = len(args.infile)
     plotcolumns = int(numpy.ceil(numpy.sqrt(plotcount)))
     plotrows = int(numpy.ceil(float(plotcount) / plotcolumns))
@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
         if args.fit:
             try:
-                fit = ivoxoar.fit.fit(space,args.fit,guess)[2]
+                fit = ivoxoar.fit.fit(space, args.fit, guess)[2]
             except:
                 fit = None
         else:
@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
         if args.multi == 'grid':
             pyplot.subplot(plotrows, plotcolumns, i+1)
-        ivoxoar.plot.plot(space, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip),fit = fit)
+        ivoxoar.plot.plot(space, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
 
         if plotcount == 1:
             pyplot.suptitle('{0} {1}'.format(basename, ' '.join(info)))
@@ -87,13 +87,17 @@ if __name__ == "__main__":
         pyplot.suptitle('{0} files, {1}'.format(plotcount, ' '.join(info)))
         if args.multi == 'stack':
             pyplot.legend()
-    
+
     if args.savepdf or args.savefile:
         if args.savefile:
             pyplot.savefig(args.savefile)
             print 'saved at {0}'.format(args.savefile)
         else:
-            pyplot.savefig('{0}.pdf'.format(os.path.splitext(args.infile)[0]))
-            print 'saved at {0}.pdf'.format(os.path.splitext(args.infile)[0])
+            filename = '{0}_plot.pdf'.format(os.path.splitext(args.infile[0])[0])
+            fileiter = ivoxoar.util.filenameiter(filename)
+            while os.path.exists(filename):
+                filename = fileiter.next()
+            pyplot.savefig(filename)
+            print 'saved at {0}'.format(filename)
     else:
         pyplot.show()

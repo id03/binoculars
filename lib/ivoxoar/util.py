@@ -98,6 +98,11 @@ def project_and_slice(space, args, auto3to2=False):
 
     return space, info
 
+def filenameiter(filename):
+    i = itertools.count()
+    base,ext = os.path.splitext(filename)
+    for count in i:    
+        yield '{0}_{2}{1}'.format(base,ext,count)
 
 def space_to_edf(space, filename):
     from PyMca import EdfFile
