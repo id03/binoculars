@@ -219,7 +219,7 @@ class Oar(ReentrantBase):
      
         delay = util.loop_delayer(30)
         while len(jobs) > remaining:
-			next(delay)
+            next(delay)
             i = 0
             R = 0
             W = 0
