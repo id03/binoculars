@@ -161,10 +161,26 @@ class ID03Input(backend.InputBase):
     def get_images(self, scan, first, last, dry_run=False):
         if self.is_zap(scan):
             scanheaderC = scan.header('C')
-            folder = os.path.split(scanheaderC[0].split(' ')[-1])[-1]
-            scanname = scanheaderC[1].split(' ')[-1]
-            pattern = os.path.join(self.config.imagefolder, folder, '*{0}*mpx*'.format(scanname))
             zapscanno = int(scanheaderC[2].split(' ')[-1]) # is different from scanno should be changed in spec!
+            try:
+                uccdtagline = scanheaderC[0]
+                UCCD = uccdtagline[22:].split(os.sep)
+            except:
+                print 'warning: UCCD tag not found, use imagefolder for proper file specification'
+                UCCD = []
+            imagefolder = self.config.imagefolder
+            if imagefolder:
+                try:
+                    imagefolder = imagefolder.format(UCCD=UCCD, rUCCD=list(reversed(UCCD)))
+                except Exception as e:
+                    raise errors.ConfigError("invalid 'imagefolder' specification '{0}': {1}".format(self.config.imagefolder, e))
+            else:
+                imagefolder = os.path.join(UCCD[:-1])
+
+            if not os.path.exists(imagefolder):
+                raise ValueError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))
+            pattern = os.path.join(imagefolder, '*')
+
 
             matches = self.find_edfs(pattern, zapscanno)
             if 0 not in matches:
