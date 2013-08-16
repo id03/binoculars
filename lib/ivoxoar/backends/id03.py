@@ -155,7 +155,7 @@ class ID03Input(backend.InputBase):
             params[:, DEL] = scan.datacol('delcnt')[sl]
             params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
             params[:, TRANSM] = scan.datacol('transm')[sl]
-
+        
         return params
 
     def get_images(self, scan, first, last, dry_run=False):
@@ -180,8 +180,6 @@ class ID03Input(backend.InputBase):
             if not os.path.exists(imagefolder):
                 raise ValueError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))
             pattern = os.path.join(imagefolder, '*')
-
-
             matches = self.find_edfs(pattern, zapscanno)
             if 0 not in matches:
                 raise errors.FileError('could not find matching edf for zapscannumber {0}'.format(zapscannumber))
@@ -212,7 +210,7 @@ class ID03Input(backend.InputBase):
                 raise ValueError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))
             pattern = os.path.join(imagefolder, '*')
             matches = self.find_edfs(pattern, scan.number())
-            if set(range(first, last + 1)) >= set(matches.keys()):
+            if set(range(first, last + 1)) > set(matches.keys()):
                 raise errors.FileError("incorrect number of matches for scan {0} using pattern {1}".format(scan.number(), pattern))
             if dry_run:
                 yield
