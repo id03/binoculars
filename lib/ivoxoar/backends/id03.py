@@ -4,12 +4,7 @@ import itertools
 import glob
 import numpy
 
-from PyMca import SixCircle, specfilewrapper, specfile
-try:
-    #TODO lib was not included in my sys.path, bin was. put lib in sys.path
-    import EdfFile # allow user to provide a local version of EdfFile if the PyMca one is too old
-except:
-    from PyMca import EdfFile
+from PyMca import SixCircle, specfilewrapper, specfile, EdfFile
 
 from .. import space, backend, errors, util
 
