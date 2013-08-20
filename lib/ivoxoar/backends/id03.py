@@ -31,6 +31,16 @@ class TwoThetaProjection(HKLProjection):
     def get_axis_labels(self):
         return 'TwoTheta'
 
+class GammaDeltaTheta(HKLProjection):#just passing on the coordinates, makes it easy to accurately test the theta correction
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        delta,gamma = numpy.meshgrid(delta,gamma)
+        delta = delta.flatten()
+        gamma = gamma.flatten()
+        theta = numpy.array([theta] * gamma.shape[0])
+        return (gamma,delta,theta)        
+
+    def get_axis_labels(self):
+        return 'Gamma','Delta','Theta'
 
 class ID03Input(backend.InputBase):
     # OFFICIAL API
@@ -133,7 +143,7 @@ class ID03Input(backend.InputBase):
         if self.is_zap(scan):
             th = scan.datacol('th')
             # correction for difference between back and forth in th motor
-            th -= (th[1] - th[0]) / (len(th) * 1.0) / 2 # FIXME is this right?
+            th -= (th[1] - th[0]) / 2 # FIXME is this right?
             params[:, TH] = th[sl]
 
             params[:, GAM] = gamma
