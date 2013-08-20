@@ -8,6 +8,42 @@ import multiprocessing
 from . import util, errors, space
 
 
+class Destination(object):
+    type = filename = overwrite = value = None
+    opts = {}
+    
+    def set_final_filename(self, filename, overwrite):
+        self.type = 'final'
+        self.filename = filename
+        self.overwrite = overwrite
+
+    def set_final_options(self, opts):
+        self.opts = opts
+
+    def set_tmp_filename(self, filename):
+        self.type = 'tmp'
+        self.filename = filename
+
+    def set_memory(self):
+        self.type = 'memory'
+
+    def store(self, space):
+        self.value = None
+        if self.type == 'memory':
+            self.value = space
+        elif self.type == 'tmp':
+            space.tofile(self.filename)
+        elif self.type == 'final':
+            fn = self.filename.format(**self.opts)
+            if not self.overwrite:
+                fn = util.find_unused_filename(fn)
+            space.tofile(fn)
+
+    def retrieve(self):
+        if self.type == 'memory':
+            return self.value
+
+
 class DispatcherBase(util.ConfigurableObject):
     def __init__(self, config, main):
         self.main = main
@@ -15,16 +51,11 @@ class DispatcherBase(util.ConfigurableObject):
 
     def parse_config(self, config):
         super(DispatcherBase, self).parse_config(config)
-        self.config.destination = config.pop('destination') # TODO: default value + parameter substitution
+        self.config.destination = Destination()
+        self.config.destination.set_final_filename(config.pop('destination', 'output.zpi'), util.parse_bool(config.pop('overwrite', 'false')))
 
     def has_specific_task(self):
         return False
-
-    def space_to_dest(self, space):
-        if isinstance(self.config.destination, util.Container):
-            self.config.destination.put(space)
-        else:
-            space.tofile(self.config.destination)
 
     def process_jobs(self, jobs):
         raise NotImplementedError
@@ -94,12 +125,12 @@ class Local(ReentrantBase):
             raise errors.SubprocessError("invalid command, too many parameters: '{0}'".format(command))
         if self.config.action == 'job':
             result = self.main.process_job(self.config.job)
-            self.space_to_dest(result)
+            self.config.destination.store(result)
 
     ### UTILITY
     def prepare_config(self, job):
         config = self.main.clone_config()
-        config.dispatcher.destination = util.Container()
+        config.dispatcher.destination.set_memory()
         config.dispatcher.action = 'job'
         config.dispatcher.job = job
         return config, ()
@@ -131,7 +162,7 @@ class Oar(ReentrantBase):
             else:
                 interm = os.path.join(self.config.tmpdir, 'ivoxoar-{0}-jobout.zpi'.format(uniq))
                 self.intermediates.append(interm)
-                config.dispatcher.destination = interm
+                config.dispatcher.destination.set_tmp_filename(interm)
                 config.dispatcher.sum = ()
 
             config.dispatcher.action = 'process'
@@ -161,7 +192,7 @@ class Oar(ReentrantBase):
             jobs = space.sum(self.main.process_job(job) for job in self.config.jobs)
         if self.config.sum:
             sum = space.chunked_sum(space.Space.fromfile(src) for src in self.yield_when_exists(self.config.sum))
-        self.space_to_dest(jobs + sum)
+        self.config.destination.store(jobs + sum)
 
     ### UTILITY
     @staticmethod

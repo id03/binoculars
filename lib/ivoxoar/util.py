@@ -6,6 +6,7 @@ import random
 import cPickle as pickle
 import inspect
 import time
+import copy
 import numpy
 
 
@@ -98,14 +99,15 @@ def project_and_slice(space, args, auto3to2=False):
 
     return space, info
 
-def filename_enumerator(filename):
-    i = itertools.count()
+def filename_enumerator(filename, start=0):
     base,ext = os.path.splitext(filename)
-    for count in i:    
+    for count in itertools.count(start):    
         yield '{0}_{2}{1}'.format(base,ext,count)
 
 def find_unused_filename(filename):
-    for f in filename_enumerator(filename):
+    if not os.path.exists(filename):
+        return filename
+    for f in filename_enumerator(filename, 2):
         if not os.path.exists(f):
             return f
 
@@ -187,13 +189,21 @@ def parse_tuple(s, length=None, type=str):
         raise ValueError('invalid tuple length: expected {0} got {0}'.format(length, len(t)))
     return t
 
+def parse_bool(s):
+    l = s.lower()
+    if l in ('1', 'true', 'yes', 'on'):
+        return True
+    elif l in ('0', 'false', 'no', 'off'):
+        return False
+    raise ValueError("invalid input for boolean: '{0}'".format(s))
+
 
 class Config(object):
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
     def copy(self):
-        return self.__class__(**self.__dict__)
+        return copy.deepcopy(self)
 
 
 class ConfigurableObject(object):
@@ -212,18 +222,6 @@ class ConfigurableObject(object):
         # proper type and stored as property in self.config, for example:
         # self.config.foo = int(config.pop('foo', 1))
         pass
-
-
-class Container(object):
-    def __init__(self, value=None):
-        self.value = value
-
-    def put(self, value):
-        self.value = value
-
-    def get(self):
-        return self.value
-
 
 
 ### VARIOUS

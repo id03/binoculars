@@ -23,8 +23,7 @@ def parse_commandline_config_option(s):
 
 def multiprocessing_main((config, command)): # note the double parenthesis for map() convenience
     Main.from_object(config, command)
-    if isinstance(config.dispatcher.destination, util.Container):
-        return config.dispatcher.destination.get()
+    return config.dispatcher.destination.retrieve()
 
 
 class Main(object):
@@ -33,6 +32,7 @@ class Main(object):
         self.dispatcher = backend.get_dispatcher(self.config.dispatcher, self, default='local')
         self.projection = backend.get_projection(self.config.projection)
         self.input = backend.get_input(self.config.input)
+        self.dispatcher.config.destination.set_final_options(self.input.get_destination_options(command))
         self.run(command)
 
     @classmethod
@@ -77,7 +77,7 @@ class Main(object):
             elif isinstance(result, space.EmptySpace):
                 sys.stderr.write('error: output is an empty dataset\n')
             else:
-                result.tofile(self.dispatcher.config.destination)
+                self.dispatcher.config.destination.store(result)
             
     def process_job(self, job):
         def generator():

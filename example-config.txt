@@ -9,9 +9,12 @@ type = local # run locally
 #oarsub_options = walltime=0:15 # optionally, tweak oarsub parameters
 #executable = /path/to/custom/python /path/to/bin/ivoxoar # optionally, override default location of python and/or ivoxoar installation
 
-# specificy destination file
-destination = test.zpi # TODO: to be improved
-
+# specificy destination file using scan numbers
+destination = demo_{first}-{last}.zpi
+overwrite = true
+# or, by default: numbered files in the form output_###.zpi:
+# destination = output.zpi
+# overwrite = false
 
 ### choose an appropriate INPUT class and specify custom options
 [input]

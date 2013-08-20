@@ -49,6 +49,12 @@ class InputBase(util.ConfigurableObject):
         Job()s could have been pickle'd and distributed over a cluster"""
         raise NotImplementedError
 
+    def get_destination_options(self, command):
+        """Receives the same command as generate_jobs(), but returns
+        dictionary that will be used to .format() the dispatcher:destination
+        configuration value."""
+        return {}
+
 
 def get_dispatcher(config, main, default=None):
     return _get_backend(config, 'dispatcher', dispatcher.DispatcherBase, default=default, args=[main])

@@ -40,7 +40,7 @@ class TwoThetaProjection(HKLProjection):
 class ID03Input(backend.InputBase):
     # OFFICIAL API
     def generate_jobs(self, command):
-        scans = util.parse_multi_range(' '.join(command))
+        scans = util.parse_multi_range(','.join(command).replace(' ', ','))
         if not len(scans):
             sys.stderr.write('error: no scans selected, nothing to do\n')
         for scanno in scans:
@@ -79,6 +79,12 @@ class ID03Input(backend.InputBase):
         self.config.app = util.parse_tuple(config.pop('app'), length=2, type=float)
         self.config.centralpixel = util.parse_tuple(config.pop('centralpixel'), length=2, type=int)
 
+    def get_destination_options(self, command):
+        if not command:
+            return {}
+        command = ','.join(command).replace(' ', ',')
+        scans = util.parse_multi_range(command)
+        return dict(first=min(scans), last=max(scans), range=','.join(command))
 
     # CONVENIENCE FUNCTIONS
     _spec = None
@@ -184,7 +190,7 @@ class ID03Input(backend.InputBase):
 
             matches = self.find_edfs(pattern, zapscanno)
             if 0 not in matches:
-                raise errors.FileError('could not find matching edf for zapscannumber {0}'.format(zapscannumber))
+                raise errors.FileError('could not find matching edf for zapscannumber {0}'.format(zapscanno))
             edf = EdfFile.EdfFile(matches[0])
             if dry_run:
                 yield
