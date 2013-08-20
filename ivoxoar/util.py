@@ -45,29 +45,28 @@ def project_and_slice(space, args, auto3to2=False):
     info = []
 
     # SLICING
-    for arg in [args.slice,args.pslice]:
-        for sl in arg:
-            ax, key = sl
-            axindex = space.get_axindex_by_label(ax)
-            axlabel = space.axes[axindex].label
-            if ':' in key:
-                start, stop = key.split(':')
-                if start:
-                    start = float(start.replace('m', '-'))
-                else:
-                    start = space.axes[axindex].min
-                if stop:
-                    stop = float(stop.replace('m', '-'))
-                else:
-                    stop = space.axes[axindex].max
-                key = slice(start, stop)
-
-                info.append('sliced in {0} from {1} to {2}'.format(axlabel, start, stop))
+    for sl in itertools.chain(args.slice, args.pslice):
+        ax, key = sl
+        axindex = space.get_axindex_by_label(ax)
+        axlabel = space.axes[axindex].label
+        if ':' in key:
+            start, stop = key.split(':')
+            if start:
+                start = float(start.replace('m', '-'))
             else:
-                key = float(key.replace('m', '-'))
-                info.append('sliced in {0} at {1}'.format(axlabel, key))
-            olddim = space.dimension
-            space = space.slice(axindex, key)
+                start = space.axes[axindex].min
+            if stop:
+                stop = float(stop.replace('m', '-'))
+            else:
+                stop = space.axes[axindex].max
+            key = slice(start, stop)
+
+            info.append('sliced in {0} from {1} to {2}'.format(axlabel, start, stop))
+        else:
+            key = float(key.replace('m', '-'))
+            info.append('sliced in {0} at {1}'.format(axlabel, key))
+        olddim = space.dimension
+        space = space.slice(axindex, key)
 
     # PROJECTION
     for proj in args.project:
@@ -77,8 +76,11 @@ def project_and_slice(space, args, auto3to2=False):
 
     for sl in args.pslice:
         ax,key = sl
-        if ax.lower() in space.axeslabels:
+		try:
             projectaxis = space.get_axindex_by_label(ax)
+		except ValueError:
+			pass
+		else:
             info.append('projected on {0}'.format(space.axes[projectaxis].label))
             space = space.project(projectaxis)
 

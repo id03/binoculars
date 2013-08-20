@@ -130,10 +130,6 @@ class Space(object):
     def dimension(self):
         return len(self.axes)
 
-    @property
-    def axeslabels(self):
-        return list(ax.label.lower() for ax in self.axes)
-
     def copy(self):
         new = self.__class__(self.axes)
         new.photons[:] = self.photons
