@@ -18,7 +18,7 @@ if __name__ == "__main__":
     parser.add_argument('axis')
     parser.add_argument('resolution')
     parser.add_argument('func')
-    ivoxoar.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'subtract')
+    ivoxoar.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'pslice', 'subtract')
     args = parser.parse_args()
 
     if args.subtract:

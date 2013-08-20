@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog='ivoxplot')
     parser.add_argument('infile', nargs='+')
-    ivoxoar.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'subtract')
+    ivoxoar.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'pslice', 'subtract')
     parser.add_argument('--multi', default=None, choices=('grid', 'stack'))
     parser.add_argument('--fit', default = None)
     parser.add_argument('--guess', default = None)
@@ -43,7 +43,9 @@ if __name__ == "__main__":
 
         if args.fit:
             try:
-                fit = ivoxoar.fit.fit(space, args.fit, guess)[2]
+                params, variance,fit, paramnames = ivoxoar.fit.fit(space, args.fit, guess)
+                print ' '.join(numpy.array(params, dtype = numpy.str))
+
             except:
                 fit = None
         else:
@@ -85,11 +87,11 @@ if __name__ == "__main__":
     if args.savepdf or args.savefile:
         if args.savefile:
             pyplot.savefig(args.savefile)
-            print 'saved at {0}'.format(args.savefile)
+            #print 'saved at {0}'.format(args.savefile)
         else:
             filename = '{0}_plot.pdf'.format(os.path.splitext(args.infile[0])[0])
             filename = ivoxoar.util.find_unused_filename(filename)
             pyplot.savefig(filename)
-            print 'saved at {0}'.format(filename)
+            #print 'saved at {0}'.format(filename)
     else:
         pyplot.show()
