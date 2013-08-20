@@ -102,7 +102,7 @@ class ID03Input(backend.InputBase):
                 if scan == scanno and point not in ret.keys():
                     ret[point] = file
             except:
-                print 'skipping file: {0}'.format(file)
+                continue
         return ret
 
     @staticmethod 
@@ -168,18 +168,7 @@ class ID03Input(backend.InputBase):
             except:
                 print 'warning: UCCD tag not found, use imagefolder for proper file specification'
                 UCCD = []
-            imagefolder = self.config.imagefolder
-            if imagefolder:
-                try:
-                    imagefolder = imagefolder.format(UCCD=UCCD, rUCCD=list(reversed(UCCD)))
-                except Exception as e:
-                    raise errors.ConfigError("invalid 'imagefolder' specification '{0}': {1}".format(self.config.imagefolder, e))
-            else:
-                imagefolder = os.path.join(UCCD[:-1])
-
-            if not os.path.exists(imagefolder):
-                raise ValueError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))
-            pattern = os.path.join(imagefolder, '*')
+            pattern = self._get_pattern(UCCD) 
             matches = self.find_edfs(pattern, zapscanno)
             if 0 not in matches:
                 raise errors.FileError('could not find matching edf for zapscannumber {0}'.format(zapscannumber))
@@ -197,18 +186,7 @@ class ID03Input(backend.InputBase):
             except:
                 print 'warning: UCCD tag not found, use imagefolder for proper file specification'
                 UCCD = []
-            imagefolder = self.config.imagefolder
-            if imagefolder:
-                try:
-                    imagefolder = imagefolder.format(UCCD=UCCD, rUCCD=list(reversed(UCCD)))
-                except Exception as e:
-                    raise errors.ConfigError("invalid 'imagefolder' specification '{0}': {1}".format(self.config.imagefolder, e))
-            else:
-                imagefolder = os.path.join(UCCD[:-1])
-
-            if not os.path.exists(imagefolder):
-                raise ValueError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))
-            pattern = os.path.join(imagefolder, '*')
+            pattern = self._get_pattern(UCCD) 
             matches = self.find_edfs(pattern, scan.number())
             if set(range(first, last + 1)) > set(matches.keys()):
                 raise errors.FileError("incorrect number of matches for scan {0} using pattern {1}".format(scan.number(), pattern))
@@ -218,6 +196,21 @@ class ID03Input(backend.InputBase):
                 for i in range(first, last+1):
                     edf = EdfFile.EdfFile(matches[i])
                     yield edf.GetData(0)
+
+    def _get_pattern(self,UCCD):
+       imagefolder = self.config.imagefolder
+       if imagefolder:
+           try:
+               imagefolder = imagefolder.format(UCCD=UCCD, rUCCD=list(reversed(UCCD)))
+           except Exception as e:
+               raise errors.ConfigError("invalid 'imagefolder' specification '{0}': {1}".format(self.config.imagefolder, e))
+       else:
+           imagefolder = os.path.join(UCCD[:-1])
+
+       if not os.path.exists(imagefolder):
+           raise ValueError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))
+       return os.path.join(imagefolder, '*')
+       
 
 
 class EH1(ID03Input):

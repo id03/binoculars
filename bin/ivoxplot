@@ -20,6 +20,7 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--project', action='append', default=[])
     parser.add_argument('--nolog', action='store_true')
     parser.add_argument('--slice', nargs=2, action='append', default=[])
+    parser.add_argument('--pslice', nargs=2, action='append', default=[])
     parser.add_argument('--savefile')
     parser.add_argument('--subtract')
     parser.add_argument('--multi', default=None, choices=('grid', 'stack'))
@@ -49,7 +50,9 @@ if __name__ == "__main__":
 
         if args.fit:
             try:
-                fit = ivoxoar.fit.fit(space, args.fit, guess)[2]
+                params, variance,fit, paramnames = ivoxoar.fit.fit(space, args.fit, guess)
+                print ' '.join(numpy.array(params, dtype = numpy.str))
+
             except:
                 fit = None
         else:
@@ -91,13 +94,13 @@ if __name__ == "__main__":
     if args.savepdf or args.savefile:
         if args.savefile:
             pyplot.savefig(args.savefile)
-            print 'saved at {0}'.format(args.savefile)
+            #print 'saved at {0}'.format(args.savefile)
         else:
             filename = '{0}_plot.pdf'.format(os.path.splitext(args.infile[0])[0])
             fileiter = ivoxoar.util.filenameiter(filename)
             while os.path.exists(filename):
                 filename = fileiter.next()
             pyplot.savefig(filename)
-            print 'saved at {0}'.format(filename)
+            #print 'saved at {0}'.format(filename)
     else:
         pyplot.show()
