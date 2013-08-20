@@ -7,7 +7,7 @@ type = local # run locally
 #type = oar
 #tmpdir = /some/globally/available/path
 #oarsub_options = walltime=0:15 # optionally, tweak oarsub parameters
-#executable = /path/to/custom/python /path/to/bin/ivoxoar # optionally, override default location of python and/or ivoxoar installation
+#executable = /path/to/custom/python /path/to/ivoxprocess # optionally, override default location of python and/or ivoxoar installation
 
 # specificy destination file using scan numbers
 destination = demo_{first}-{last}.zpi
