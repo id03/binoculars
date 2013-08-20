@@ -30,8 +30,6 @@ centralpixel = 40, 255
 app = 0.003125, 0.003125
 ymask = 185-253,262-400
 xmask = 50-235
-#if you are using zapline you have to add the UB matrix
-UB = 2.628602629,0.2730763688,-0.001032444885,1.202301748,2.877587966,-0.001081570571,0.002600281749,0.002198663001,1.54377945
 
 
 ### choose PROJECTION plus resolution

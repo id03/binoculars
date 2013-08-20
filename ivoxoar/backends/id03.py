@@ -125,10 +125,21 @@ class ID03Input(backend.InputBase):
     # MAIN LOGIC
     def get_scan_params(self, scan):
         if self.is_zap(scan):
-            # UB matrix will be installed in new versions of the zapline, it has to come from the configfile
-            if not self.config.UB:
-                raise errors.ConfigError('UB matrix must be specified in configuration file when processing zapscans')
-            UB = numpy.array(self.config.UB)
+            # zapscans don't contain the UB matrix, this needs to be fixed at ID03
+            i = scanno = scan.number()
+            while scanno - i < 10: # look back up to 10 scans to locate a UB matrix
+                ubscan = self.get_scan(i)
+                try:
+                    UB = numpy.array(ubscan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
+                except:
+                    i -= 1
+                else:
+                    break
+            else:
+                # fall back to UB matrix from the configfile
+                if not self.config.UB:
+                    raise errors.ConfigError('UB matrix must be specified in configuration file when processing zapscans')
+                UB = numpy.array(self.config.UB)
         else:
             UB = numpy.array(scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
         wavelength = float(scan.header('G')[1].split(' ')[-1])
