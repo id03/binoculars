@@ -76,11 +76,11 @@ def project_and_slice(space, args, auto3to2=False):
 
     for sl in args.pslice:
         ax,key = sl
-		try:
+        try:
             projectaxis = space.get_axindex_by_label(ax)
-		except ValueError:
-			pass
-		else:
+        except ValueError:
+            pass
+        else:
             info.append('projected on {0}'.format(space.axes[projectaxis].label))
             space = space.project(projectaxis)
 
