@@ -51,9 +51,9 @@ if __name__ == "__main__":
 
     if args.savepdf or args.savefile:
         if args.savefile:
-            filename = ivoxoar.util.filenameiter(args.savefile)
+            filename = ivoxoar.util.filename_enumerator(args.savefile)
         else:
-            filename = ivoxoar.util.filenameiter('{0}_fit.pdf'.format(basename))
+            filename = ivoxoar.util.filename_enumerator('{0}_fit.pdf'.format(basename))
  
     for start, stop in zip(bins[:-1], bins[1:]):
         info = []

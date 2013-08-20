@@ -94,9 +94,7 @@ if __name__ == "__main__":
             print 'saved at {0}'.format(args.savefile)
         else:
             filename = '{0}_plot.pdf'.format(os.path.splitext(args.infile[0])[0])
-            fileiter = ivoxoar.util.filenameiter(filename)
-            while os.path.exists(filename):
-                filename = fileiter.next()
+            filename = ivoxoar.util.find_unused_filename(filename)
             pyplot.savefig(filename)
             print 'saved at {0}'.format(filename)
     else:
