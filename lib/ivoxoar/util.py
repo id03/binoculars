@@ -10,52 +10,7 @@ import copy
 import numpy
 
 
-def loop_delayer(delay):
-    """Delay a loop such that it runs at most once every 'delay' seconds. Usage example:
-    delay = loop_delayer(5)
-    while some_condition:
-        next(delay)
-        do_other_tasks
-    """
-    def generator():
-        polltime = 0
-        while 1:
-            diff = time.time() - polltime
-            if diff < delay:
-                time.sleep(delay - diff)
-            polltime = time.time()
-            yield
-    return generator()
-
-def yield_when_exists(filelist, timeout=None):
-    """Wait for files in 'filelist' to appear, for a maximum of 'timeout' seconds,
-    yielding them in arbitrary order as soon as they appear.
-    If 'filelist' is a set, it will be modified in place, and on timeout it will
-    contain the files that have not appeared yet."""
-    if not isinstance(filelist, set):
-        filelist = set(filelist)
-    delay = loop_delayer(5)
-    start = time.time()
-    while filelist:
-        next(delay)
-        exists = set(f for f in filelist if os.path.exists(f))
-        for e in exists:
-            yield e
-        filelist -= exists
-        if timeout is not None and time.time() - start > timeout:
-            break
-
-def wait_for_files(filelist, timeout=None):
-    """Wait until the files in 'filelist' have appeared, for a maximum of 'timeout' seconds.
-    Returns True on success, False on timeout."""
-    filelist = set(filelist)
-    for i in yield_when_exists(filelist, timeout):
-        pass
-    return not filelist
-
-def wait_for_file(file, timeout=None):
-    return wait_for_files([file], timeout=timeout)
-
+### ARGUMENT HANDLING
 
 def argparse_common_arguments(parser, *args):
     for arg in args:
@@ -82,7 +37,6 @@ def argparse_common_arguments(parser, *args):
         # ERROR!
         else:
             raise ValueError("unsupported argument '{0}'".format(arg))
-
 
 def project_and_slice(space, args, auto3to2=False):
     info = []
@@ -125,38 +79,6 @@ def project_and_slice(space, args, auto3to2=False):
         space = space.project(projectaxis)
 
     return space, info
-
-def filename_enumerator(filename, start=0):
-    base,ext = os.path.splitext(filename)
-    for count in itertools.count(start):    
-        yield '{0}_{2}{1}'.format(base,ext,count)
-
-def find_unused_filename(filename):
-    if not os.path.exists(filename):
-        return filename
-    for f in filename_enumerator(filename, 2):
-        if not os.path.exists(f):
-            return f
-
-def space_to_edf(space, filename):
-    from PyMca import EdfFile
-
-    header = {}
-    for a in space.axes:
-        header[str(a.label)] = '{0} {1} {2}'.format(a.min, a.max, a.res)
-    edf = EdfFile.EdfFile(filename)
-    edf.WriteImage(header, space.get_masked().filled(0), DataType="Float")
-
-
-def space_to_txt(space, filename):
-    data = [coord.flatten() for coord in space.get_grid()]
-    data.append(space.get_masked().filled(0).flatten())
-    data = numpy.array(data).T
-
-    with open(filename, 'w') as fp:
-        fp.write('\t'.join(ax.label for ax in space.axes))
-        fp.write('\tintensity\n')
-        numpy.savetxt(fp, data, fmt='%.6g', delimiter='\t')
 
 
 ### STATUS LINES
@@ -251,6 +173,73 @@ class ConfigurableObject(object):
         pass
 
 
+### FILES
+def best_effort_atomic_rename(src, dest):
+    if sys.platform == 'win32' and os.path.exists(dest):
+        os.remove(dest)
+    os.rename(src, dest)
+
+def filename_enumerator(filename, start=0):
+    base,ext = os.path.splitext(filename)
+    for count in itertools.count(start):    
+        yield '{0}_{2}{1}'.format(base,ext,count)
+
+def find_unused_filename(filename):
+    if not os.path.exists(filename):
+        return filename
+    for f in filename_enumerator(filename, 2):
+        if not os.path.exists(f):
+            return f
+
+def yield_when_exists(filelist, timeout=None):
+    """Wait for files in 'filelist' to appear, for a maximum of 'timeout' seconds,
+    yielding them in arbitrary order as soon as they appear.
+    If 'filelist' is a set, it will be modified in place, and on timeout it will
+    contain the files that have not appeared yet."""
+    if not isinstance(filelist, set):
+        filelist = set(filelist)
+    delay = loop_delayer(5)
+    start = time.time()
+    while filelist:
+        next(delay)
+        exists = set(f for f in filelist if os.path.exists(f))
+        for e in exists:
+            yield e
+        filelist -= exists
+        if timeout is not None and time.time() - start > timeout:
+            break
+
+def wait_for_files(filelist, timeout=None):
+    """Wait until the files in 'filelist' have appeared, for a maximum of 'timeout' seconds.
+    Returns True on success, False on timeout."""
+    filelist = set(filelist)
+    for i in yield_when_exists(filelist, timeout):
+        pass
+    return not filelist
+
+def wait_for_file(file, timeout=None):
+    return wait_for_files([file], timeout=timeout)
+
+def space_to_edf(space, filename):
+    from PyMca import EdfFile
+
+    header = {}
+    for a in space.axes:
+        header[str(a.label)] = '{0} {1} {2}'.format(a.min, a.max, a.res)
+    edf = EdfFile.EdfFile(filename)
+    edf.WriteImage(header, space.get_masked().filled(0), DataType="Float")
+
+def space_to_txt(space, filename):
+    data = [coord.flatten() for coord in space.get_grid()]
+    data.append(space.get_masked().filled(0).flatten())
+    data = numpy.array(data).T
+
+    with open(filename, 'w') as fp:
+        fp.write('\t'.join(ax.label for ax in space.axes))
+        fp.write('\tintensity\n')
+        numpy.savetxt(fp, data, fmt='%.6g', delimiter='\t')
+
+
 ### VARIOUS
 
 def uniqid():
@@ -270,11 +259,6 @@ def register_python_executable(scriptname):
 
 def get_python_executable():
     return _python_executable
-
-def best_effort_atomic_rename(src, dest):
-    if sys.platform == 'win32' and os.path.exists(dest):
-        os.remove(dest)
-    os.rename(src, dest)
 
 def chunk_slicer(count, chunksize):
     """yields slice() objects that split an array of length 'count' into equal sized chunks of at most 'chunksize'"""
@@ -298,6 +282,23 @@ def cluster_jobs(jobs, target_weight):
                 size += jobs[i].weight
                 cluster.append(jobs.pop(i))
         yield cluster
+
+def loop_delayer(delay):
+    """Delay a loop such that it runs at most once every 'delay' seconds. Usage example:
+    delay = loop_delayer(5)
+    while some_condition:
+        next(delay)
+        do_other_tasks
+    """
+    def generator():
+        polltime = 0
+        while 1:
+            diff = time.time() - polltime
+            if diff < delay:
+                time.sleep(delay - diff)
+            polltime = time.time()
+            yield
+    return generator()
 
 
 ### GZIP PICKLING (zpi)
