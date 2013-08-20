@@ -13,9 +13,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog='ivoxconvert')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
-    parser.add_argument('--rebin', default=None)
-    parser.add_argument('-p', '--project', action='append', default=[])
-    parser.add_argument('--slice', nargs=2, action='append', default=[])
+    parser.add_argument('--rebin', metavar='N,M,...', default=None, help='reduce binsize by factor N in first dimension, M in second, etc')
+    ivoxoar.util.argparse_common_arguments(parser, 'project', 'slice')
     parser.add_argument('infile')
     parser.add_argument('outfile')
 

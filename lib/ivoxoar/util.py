@@ -57,6 +57,33 @@ def wait_for_file(file, timeout=None):
     return wait_for_files([file], timeout=timeout)
 
 
+def argparse_common_arguments(parser, *args):
+    for arg in args:
+        # OPERATIONS
+        if arg == 'project':
+            parser.add_argument('-p', '--project', metavar='AXIS', action='append', default=[], help='project space on AXIS')
+        elif arg == 'slice':
+            parser.add_argument('--slice', nargs=2, metavar=('AXIS', 'START:STOP'), action='append', default=[], help="slice AXIS from START to STOP (replace minus signs by 'm')")
+        elif arg == 'subtract':
+            parser.add_argument('--subtract', metavar='SPACE', help='subtract SPACE from input file')
+
+        # PRESENTATION
+        elif arg == 'nolog':
+            parser.add_argument('--nolog', action='store_true', help='do not use logarithmic axis')
+        elif arg == 'clip':
+            parser.add_argument('-c', '--clip', metavar='FRACTION', default=0.00, help='clip color scale to remove FRACTION datapoints')
+
+        # OUTPUT
+        elif arg == 'savepdf':
+            parser.add_argument('-s', '--savepdf', action='store_true', help='save output as pdf, automatic file naming')
+        elif arg == 'savefile':
+            parser.add_argument('--savefile', metavar='FILENAME', help='save output as FILENAME, autodetect filetype')
+
+        # ERROR!
+        else:
+            raise ValueError("unsupported argument '{0}'".format(arg))
+
+
 def project_and_slice(space, args, auto3to2=False):
     info = []
 
