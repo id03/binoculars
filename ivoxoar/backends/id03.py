@@ -86,7 +86,7 @@ class ID03Input(backend.InputBase):
 
     def get_destination_options(self, command):
         if not command:
-            return {}
+            return False
         command = ','.join(command).replace(' ', ',')
         scans = util.parse_multi_range(command)
         return dict(first=min(scans), last=max(scans), range=','.join(command))

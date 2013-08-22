@@ -18,7 +18,8 @@ class Destination(object):
         self.overwrite = overwrite
 
     def set_final_options(self, opts):
-        self.opts = opts
+        if opts is not False:
+            self.opts = opts
 
     def set_tmp_filename(self, filename):
         self.type = 'tmp'
