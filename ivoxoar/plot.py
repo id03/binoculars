@@ -1,9 +1,10 @@
+import numpy
 import matplotlib.colors
 
 def plot(space, fig, ax, log=True, clipping=0.0, fit=None, **plotopts):
     if space.dimension == 1:
         data = space.get_masked()
-        xrange = space.axes[0][:]
+        xrange = numpy.ma.array(space.axes[0][:], mask=data.mask)
         if fit is not None:   
             if log:
                 ax.semilogy(xrange, data, 'wo', **plotopts)
