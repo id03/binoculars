@@ -160,7 +160,7 @@ class ID03Input(backend.InputBase):
         if self.is_zap(scan):
             th = scan.datacol('th')
             # correction for difference between back and forth in th motor
-            th -= (th[1] - th[0]) / 2 # FIXME is this right?
+            th -= (th[1] - th[0]) / 2
             params[:, TH] = th[sl]
 
             params[:, GAM] = gamma
@@ -245,9 +245,9 @@ class EH1(ID03Input):
 
         # pixels to angles
         app = self.config.app # angle per pixel (delta, gamma)
-        centralpixel = self.config.centralpixel # (row, column) = (delta, gamma)
-        gamma_range= -app[1]*(numpy.arange(data.shape[1])-centralpixel[1])+gamma
-        delta_range= app[0]*(numpy.arange(data.shape[0])-centralpixel[0])+delta
+        centralpixel = self.config.centralpixel # (column, row) = (delta, gamma)
+        gamma_range= -app[1]*(numpy.arange(data.shape[0])-centralpixel[1])+gamma
+        delta_range= app[0]*(numpy.arange(data.shape[1])-centralpixel[0])+delta
 
         # masking
         gamma_range = gamma_range[self.config.ymask]
