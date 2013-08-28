@@ -100,7 +100,7 @@ class ID03Input(backend.InputBase):
 
     @staticmethod
     def is_zap(scan):
-        return scan.header('S')[0].split()[2].startswith('zap')
+        return scan.command().startswith('zap')
 
     def find_edfs(self, pattern, scanno):
         files = glob.glob(pattern)
@@ -147,15 +147,13 @@ class ID03Input(backend.InputBase):
         return wavelength, UB
 
     def get_point_params(self, scan, first, last):
-        delta, theta, chi, phi, mu, gamma = numpy.array(scan.header('P')[0].split(' ')[1:7],dtype=numpy.float)
-
         sl = slice(first, last+1)
 
         GAM, DEL, TH, CHI, PHI, MU, MON, TRANSM = range(8)
         params = numpy.zeros((last - first + 1, 8)) # gamma delta theta chi phi mu mon transm
-        params[:, CHI] = chi
-        params[:, PHI] = phi
-        params[:, MU] = mu
+        params[:, CHI] = scan.motorpos('Chi')
+        params[:, PHI] = scan.motorpos('Phi')
+        params[:, MU] = scan.motorpos('Mu')
 
         if self.is_zap(scan):
             th = scan.datacol('th')
@@ -163,8 +161,8 @@ class ID03Input(backend.InputBase):
             th -= (th[1] - th[0]) / 2
             params[:, TH] = th[sl]
 
-            params[:, GAM] = gamma
-            params[:, DEL] = delta
+            params[:, GAM] = scan.motorpos('Gamidd')
+            params[:, DEL] = scan.motorpos('Deltaidd')
 
             params[:, MON] = scan.datacol('zap_mon')[sl]
 
@@ -173,8 +171,8 @@ class ID03Input(backend.InputBase):
             params[:, TRANSM] = transm[sl]
         else:
             params[:, TH] = scan.datacol('thcnt')[sl]
-            params[:, GAM] = scan.datacol('gamcnt')[sl]
-            params[:, DEL] = scan.datacol('delcnt')[sl]
+            params[:, GAM] = scan.datacol('gamcnt')[sl] + scan.motorpos('Gamidd') - scan.motorpos('Gam')
+            params[:, DEL] = scan.datacol('delcnt')[sl] + scan.motorpos('Deltaidd') - scan.motorpos('Delta')
             params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
             params[:, TRANSM] = scan.datacol('transm')[sl]
         
