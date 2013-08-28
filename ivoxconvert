@@ -7,6 +7,33 @@ import numpy
 
 import ivoxoar.space, ivoxoar.util
 
+def parse_transform_args(transform):
+    for t in transform:
+        lhs, expr = t.split('=')
+        ax, res = lhs.split('@')
+        yield ax.strip(), float(res), expr.strip()
+
+def do_transform(space, transform):
+    transform = tuple(transform)
+    labels = tuple(ax for ax, res, expr in transform)
+    resolutions = tuple(res for ax, res, expr in transform)
+    exprs = tuple(expr for ax, res, expr in transform)
+
+    # get intensity & coords
+    intensity = space.get_masked()
+    coords = space.get_grid()
+
+    # prepare namespace & evaluate expressions
+    ns = dict((i, getattr(numpy, i)) for i in dir(numpy))
+    ns.update(**dict((ax.label, coord) for ax, coord in zip(space.axes, coords)))
+    transcoords = tuple(eval(expr, ns) for expr in exprs)
+
+    # get rid of invalids & masked intensities
+    valid = ~sum((~numpy.isfinite(t) for t in transcoords), intensity.mask)
+    transcoords = tuple(t[valid] for t in transcoords)
+    
+    # rebin!
+    return ivoxoar.space.Space.from_image(resolutions, labels, transcoords, intensity[valid])
 
 if __name__ == "__main__":
     numpy.seterr(divide='ignore', invalid='ignore')
@@ -14,9 +41,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='ivoxconvert')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
     parser.add_argument('--rebin', metavar='N,M,...', default=None, help='reduce binsize by factor N in first dimension, M in second, etc')
-    ivoxoar.util.argparse_common_arguments(parser, 'project', 'slice')
+    ivoxoar.util.argparse_common_arguments(parser, 'project', 'slice', 'pslice')
     parser.add_argument('infile')
     parser.add_argument('outfile')
+    parser.add_argument('transform', metavar='X@RES=EXPR', nargs='*', default=[])
 
     args = parser.parse_args()
     
@@ -27,6 +55,9 @@ if __name__ == "__main__":
 
     space = ivoxoar.space.Space.fromfile(args.infile)
     ext = os.path.splitext(args.outfile)[-1]
+
+    if args.transform:
+        space = do_transform(space, parse_transform_args(args.transform))
 
     space, info = ivoxoar.util.project_and_slice(space, args)
     
