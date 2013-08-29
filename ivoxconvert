@@ -20,9 +20,9 @@ if __name__ == "__main__":
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
     parser.add_argument('--rebin', metavar='N,M,...', default=None, help='reduce binsize by factor N in first dimension, M in second, etc')
     ivoxoar.util.argparse_common_arguments(parser, 'project', 'slice', 'pslice')
-    parser.add_argument('infile')
-    parser.add_argument('outfile')
-    parser.add_argument('transform', metavar='X@RES=EXPR', nargs='*', default=[])
+    parser.add_argument('infile', help='input file, must be a .zpi')
+    parser.add_argument('outfile', help='output file, can be .zpi or .edf or .txt')
+    parser.add_argument('transform', metavar='VAR@RES=EXPR', nargs='*', default=[], help='perform coordinate transformation, rebinning data on new axis named VAR with resolution RES defined by EXPR, example: Q@0.1=sqrt(H**2+K**2+L**2)')
 
     args = parser.parse_args()
     
