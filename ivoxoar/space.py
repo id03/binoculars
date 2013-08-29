@@ -1,5 +1,6 @@
 import itertools
 import numbers
+import __builtin__
 import numpy
 
 from . import util
@@ -307,6 +308,18 @@ class Space(object):
 
         return new
     
+    def transform_coordinates(self, resolutions, labels, transformation):
+        # gather data and transform
+        intensity = self.get_masked()
+        coords = self.get_grid()
+        transcoords = transformation(*coords)
+
+        # get rid of invalids & masked intensities
+        valid = ~__builtin__.sum((~numpy.isfinite(t) for t in transcoords), intensity.mask)
+        transcoords = tuple(t[valid] for t in transcoords)
+
+        return self.from_image(resolutions, labels, transcoords, intensity[valid])
+
     def process_image(self, coordinates, intensity):
         # note: coordinates must be tuple of arrays, not a 2D array
         if len(coordinates) != len(self.axes):

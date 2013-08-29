@@ -13,28 +13,6 @@ def parse_transform_args(transform):
         ax, res = lhs.split('@')
         yield ax.strip(), float(res), expr.strip()
 
-def do_transform(space, transform):
-    transform = tuple(transform)
-    labels = tuple(ax for ax, res, expr in transform)
-    resolutions = tuple(res for ax, res, expr in transform)
-    exprs = tuple(expr for ax, res, expr in transform)
-
-    # get intensity & coords
-    intensity = space.get_masked()
-    coords = space.get_grid()
-
-    # prepare namespace & evaluate expressions
-    ns = dict((i, getattr(numpy, i)) for i in dir(numpy))
-    ns.update(**dict((ax.label, coord) for ax, coord in zip(space.axes, coords)))
-    transcoords = tuple(eval(expr, ns) for expr in exprs)
-
-    # get rid of invalids & masked intensities
-    valid = ~sum((~numpy.isfinite(t) for t in transcoords), intensity.mask)
-    transcoords = tuple(t[valid] for t in transcoords)
-    
-    # rebin!
-    return ivoxoar.space.Space.from_image(resolutions, labels, transcoords, intensity[valid])
-
 if __name__ == "__main__":
     numpy.seterr(divide='ignore', invalid='ignore')
 
@@ -57,7 +35,9 @@ if __name__ == "__main__":
     ext = os.path.splitext(args.outfile)[-1]
 
     if args.transform:
-        space = do_transform(space, parse_transform_args(args.transform))
+        labels, resolutions, exprs = zip(*parse_transform_args(args.transform))
+        transformation = ivoxoar.util.transformation_from_expressions(space, exprs)
+        space = space.transform_coordinates(resolutions, labels, transformation)
 
     space, info = ivoxoar.util.project_and_slice(space, args)
     
