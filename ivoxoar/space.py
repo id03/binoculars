@@ -141,7 +141,7 @@ class Space(object):
         return self.photons/self.contributions
 
     def __repr__(self):
-        return '{0.__class__.__name__} \n{1}'.format(self, '\n'.join(repr(ax) for ax in self.axes))
+        return '{0.__class__.__name__} ({0.dimension} dimensions, {0.photons.size} points) {{\n    {1}\n}}'.format(self, '\n    '.join(repr(ax) for ax in self.axes))
     
     def __getitem__(self, key):
         if isinstance(key, numbers.Number) or isinstance(key, slice):
