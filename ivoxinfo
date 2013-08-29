@@ -1,12 +1,11 @@
 #!/usr/bin/python
 
 import argparse
-import numpy
 
 import ivoxoar.space
 
 if __name__ == "__main__":
-    numpy.seterr(divide='ignore', invalid='ignore')
+    ivoxoar.space.silence_numpy_errors()
 
     parser = argparse.ArgumentParser(prog='ivoxinfo')
     parser.add_argument('infile', help='input file, must be a .zpi')

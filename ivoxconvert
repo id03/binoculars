@@ -3,7 +3,6 @@
 import sys
 import os
 import argparse
-import numpy
 
 import ivoxoar.space, ivoxoar.util
 
@@ -14,7 +13,7 @@ def parse_transform_args(transform):
         yield ax.strip(), float(res), expr.strip()
 
 if __name__ == "__main__":
-    numpy.seterr(divide='ignore', invalid='ignore')
+    ivoxoar.space.silence_numpy_errors()
 
     parser = argparse.ArgumentParser(prog='ivoxconvert')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')

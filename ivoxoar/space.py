@@ -6,6 +6,10 @@ import numpy
 from . import util
 
 
+def silence_numpy_errors():
+    numpy.seterr(divide='ignore', invalid='ignore')
+
+
 def sum_onto(a, axis):
     for i in reversed(range(len(a.shape))):
         if axis != i:
