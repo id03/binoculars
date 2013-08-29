@@ -135,6 +135,11 @@ class Space(object):
     def dimension(self):
         return len(self.axes)
 
+    @property
+    def memory_size(self):
+        # approximate! does not take into account all the overhead
+        return self.photons.nbytes + self.contributions.nbytes
+
     def copy(self):
         new = self.__class__(self.axes)
         new.photons[:] = self.photons
@@ -145,7 +150,11 @@ class Space(object):
         return self.photons/self.contributions
 
     def __repr__(self):
-        return '{0.__class__.__name__} ({0.dimension} dimensions, {0.photons.size} points) {{\n    {1}\n}}'.format(self, '\n    '.join(repr(ax) for ax in self.axes))
+        mem = self.memory_size / 1024.
+        units = 'kB', 'MB', 'GB'
+        exp = min(int(numpy.log(self.memory_size / 1024.) / numpy.log(1024.)), 2)
+        mem = '{0:.1f} {1}'.format(mem / 1024**exp, units[exp])
+        return '{0.__class__.__name__} ({0.dimension} dimensions, {0.photons.size} points, {2}) {{\n    {1}\n}}'.format(self, '\n    '.join(repr(ax) for ax in self.axes), mem)
     
     def __getitem__(self, key):
         if isinstance(key, numbers.Number) or isinstance(key, slice):
