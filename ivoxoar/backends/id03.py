@@ -112,7 +112,7 @@ class ID03Input(backend.InputBase):
                 scan, point, image = int(scan), int(point), int(image)
                 if scan == scanno and point not in ret.keys():
                     ret[point] = file
-            except:
+            except ValueError:
                 continue
         return ret
 
