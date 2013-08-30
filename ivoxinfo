@@ -1,0 +1,21 @@
+#!/usr/bin/python
+
+import argparse
+
+import ivoxoar.space
+
+if __name__ == "__main__":
+    ivoxoar.space.silence_numpy_errors()
+
+    parser = argparse.ArgumentParser(prog='ivoxinfo')
+    parser.add_argument('infile', nargs='+', help='input files, must be .zpi')
+
+    args = parser.parse_args()
+    
+    for f in args.infile:
+        try:
+            space = ivoxoar.space.Space.fromfile(f)
+        except Exception as e:
+            print '{0}: unable to load Space: {1}'.format(f, e)
+        else:
+            print '{0}: {1!r}'.format(f, space)

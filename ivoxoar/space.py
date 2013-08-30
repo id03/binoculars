@@ -1,8 +1,13 @@
 import itertools
 import numbers
+import __builtin__
 import numpy
 
 from . import util
+
+
+def silence_numpy_errors():
+    numpy.seterr(divide='ignore', invalid='ignore')
 
 
 def sum_onto(a, axis):
@@ -130,6 +135,11 @@ class Space(object):
     def dimension(self):
         return len(self.axes)
 
+    @property
+    def memory_size(self):
+        # approximate! does not take into account all the overhead
+        return self.photons.nbytes + self.contributions.nbytes
+
     def copy(self):
         new = self.__class__(self.axes)
         new.photons[:] = self.photons
@@ -140,7 +150,11 @@ class Space(object):
         return self.photons/self.contributions
 
     def __repr__(self):
-        return '{0.__class__.__name__} \n{1}'.format(self, '\n'.join(repr(ax) for ax in self.axes))
+        mem = self.memory_size / 1024.
+        units = 'kB', 'MB', 'GB'
+        exp = min(int(numpy.log(self.memory_size / 1024.) / numpy.log(1024.)), 2)
+        mem = '{0:.1f} {1}'.format(mem / 1024**exp, units[exp])
+        return '{0.__class__.__name__} ({0.dimension} dimensions, {0.photons.size} points, {2}) {{\n    {1}\n}}'.format(self, '\n    '.join(repr(ax) for ax in self.axes), mem)
     
     def __getitem__(self, key):
         if isinstance(key, numbers.Number) or isinstance(key, slice):
@@ -307,6 +321,18 @@ class Space(object):
 
         return new
     
+    def transform_coordinates(self, resolutions, labels, transformation):
+        # gather data and transform
+        intensity = self.get_masked()
+        coords = self.get_grid()
+        transcoords = transformation(*coords)
+
+        # get rid of invalids & masked intensities
+        valid = ~__builtin__.sum((~numpy.isfinite(t) for t in transcoords), intensity.mask)
+        transcoords = tuple(t[valid] for t in transcoords)
+
+        return self.from_image(resolutions, labels, transcoords, intensity[valid])
+
     def process_image(self, coordinates, intensity):
         # note: coordinates must be tuple of arrays, not a 2D array
         if len(coordinates) != len(self.axes):

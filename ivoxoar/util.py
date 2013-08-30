@@ -311,6 +311,13 @@ def loop_delayer(delay):
             yield
     return generator()
 
+def transformation_from_expressions(space, exprs):
+    def transformation(*coords):
+        ns = dict((i, getattr(numpy, i)) for i in dir(numpy))
+        ns.update(**dict((ax.label, coord) for ax, coord in zip(space.axes, coords)))
+        return tuple(eval(expr, ns) for expr in exprs)
+    return transformation
+
 
 ### GZIP PICKLING (zpi)
 

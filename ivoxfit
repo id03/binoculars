@@ -11,7 +11,7 @@ import pdb
 import ivoxoar.space, ivoxoar.plot, ivoxoar.fit, ivoxoar.util
 
 if __name__ == "__main__":
-    numpy.seterr(divide='ignore', invalid='ignore')
+    ivoxoar.space.silence_numpy_errors()
 
     parser = argparse.ArgumentParser(prog='ivoxfit')
     parser.add_argument('infile')
