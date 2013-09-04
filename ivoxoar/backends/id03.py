@@ -285,3 +285,34 @@ class EH2(ID03Input):
         intensity = numpy.rot90(intensity)
 
         return intensity.flatten(), (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
+
+    def get_point_params(self, scan, first, last):
+        sl = slice(first, last+1)
+
+        GAM, DEL, TH, CHI, PHI, MU, MON, TRANSM = range(8)
+        params = numpy.zeros((last - first + 1, 8)) # gamma delta theta chi phi mu mon transm
+        params[:, CHI] = scan.motorpos('Chi')
+        params[:, PHI] = scan.motorpos('Phi')
+        params[:, MU] = scan.motorpos('Mu')
+
+        if self.is_zap(scan):
+            th = scan.datacol('th')
+            # correction for difference between back and forth in th motor
+            th -= (th[1] - th[0]) / 2
+            params[:, TH] = th[sl]
+
+            params[:, GAM] = scan.motorpos('Gamma')
+            params[:, DEL] = scan.motorpos('Delta')
+
+            params[:, MON] = scan.datacol('zap_mon')[sl]
+
+            transm = scan.datacol('zap_transm')
+            transm[-1] = transm[-2] # bug in specfile
+            params[:, TRANSM] = transm[sl]
+        else:
+            params[:, TH] = scan.datacol('thcnt')[sl]
+            params[:, GAM] = scan.datacol('gamcnt')[sl]
+            params[:, DEL] = scan.datacol('delcnt')[sl]
+            params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
+            params[:, TRANSM] = scan.datacol('transm')[sl]
+
