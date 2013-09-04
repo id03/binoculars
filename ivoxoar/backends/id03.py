@@ -127,7 +127,7 @@ class ID03Input(backend.InputBase):
         if self.is_zap(scan):
             # zapscans don't contain the UB matrix, this needs to be fixed at ID03
             i = scanno = scan.number()
-            while scanno - i < 10: # look back up to 10 scans to locate a UB matrix
+            while scanno - i < 30: # look back up to 10 scans to locate a UB matrix
                 ubscan = self.get_scan(i)
                 try:
                     UB = numpy.array(ubscan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
@@ -315,4 +315,6 @@ class EH2(ID03Input):
             params[:, DEL] = scan.datacol('delcnt')[sl]
             params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
             params[:, TRANSM] = scan.datacol('transm')[sl]
+        return params
+
 
