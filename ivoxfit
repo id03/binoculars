@@ -48,6 +48,8 @@ if __name__ == "__main__":
             filename = ivoxoar.util.filename_enumerator(args.savefile)
         else:
             filename = ivoxoar.util.filename_enumerator('{0}_fit.pdf'.format(basename))
+
+    fitclass = ivoxoar.fit.get_class_by_name(args.func)
  
     for start, stop in zip(bins[:-1], bins[1:]):
         info = []
@@ -57,14 +59,14 @@ if __name__ == "__main__":
         if newspace.dimension == space.dimension:
             newspace = newspace.project(axindex)
 
-        try:
-            params,variances,fit,paramnames = ivoxoar.fit.fit(newspace, args.func)
+        fit = fitclass(newspace)
+        print fit
+        if fit.success:
             fitlabel.append(numpy.mean([start, stop]))
-            parameters.append(params)
-            print params
-            variance.append(variances)
-        except Exception as e:
-            print e
+            parameters.append(fit.results)
+            variance.append(fit.variances)
+            fit = fit.fitdata
+        else:
             fit = None
 
         if len(newspace.get_masked().compressed()):

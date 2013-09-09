@@ -238,13 +238,12 @@ class Space(object):
         grid = tuple(numpy.array(grid * ax.res + ax.min) for grid, ax in zip(igrid, self.axes))
         return grid
 
-    def max(self):
-        return self.get_masked().max()
+    def max(self, axis=None):
+        return self.get_masked().max(axis=axis)
 
     def argmax(self):
         array = self.get_masked()
-        return tuple(self.axes[ax][key] for ax, key in enumerate(numpy.unravel_index(numpy.argmax(array), array.shape)
-))
+        return tuple(ax[key] for ax, key in zip(self.axes, numpy.unravel_index(numpy.argmax(array), array.shape)))
 
     def __add__(self, other):
         if not isinstance(other, Space):
