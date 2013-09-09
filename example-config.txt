@@ -7,7 +7,7 @@ type = local # run locally
 #type = oar
 #tmpdir = /some/globally/available/path
 #oarsub_options = walltime=0:15 # optionally, tweak oarsub parameters
-#executable = /path/to/custom/python /path/to/ivoxprocess # optionally, override default location of python and/or ivoxoar installation
+#executable = /path/to/custom/python /path/to/binoculars.py # optionally, override default location of python and/or BINoculars installation
 
 # specificy destination file using scan numbers
 destination = demo_{first}-{last}.zpi
@@ -18,7 +18,7 @@ overwrite = true
 
 ### choose an appropriate INPUT class and specify custom options
 [input]
-type = id03:eh1 # refers to class EH1 in ivoxoar/backends/id03.py
+type = id03:eh1 # refers to class EH1 in BINoculars/backends/id03.py
 specfile = /path/to/data/file.spec
 imagefolder = /path/to/data/images
 
@@ -34,5 +34,5 @@ xmask = 50-235
 
 ### choose PROJECTION plus resolution
 [projection]
-type = id03:hklprojection # refers to HKLProjection in ivoxoar/backends/id03.py
+type = id03:hklprojection # refers to HKLProjection in BINoculars/backends/id03.py
 resolution = 0.002, 0.002, 1 # or just give 1 number for all dimensions

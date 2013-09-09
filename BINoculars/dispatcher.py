@@ -218,7 +218,7 @@ class Oar(ReentrantBase):
 
     ### calling OAR
     def oarsub(self, *args):
-        command = '{0} {1}'.format(self.config.executable, ' '.join(args))
+        command = '{0} process {1}'.format(self.config.executable, ' '.join(args))
         ret, output = self.subprocess_run('oarsub', '-l {0}'.format(self.config.oarsub_options), command)
         if ret == 0:
             lines = output.split('\n')
