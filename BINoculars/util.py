@@ -321,10 +321,10 @@ def transformation_from_expressions(space, exprs):
 
 ### GZIP PICKLING (zpi)
 
-# handle old zpi's from before ivoxoar's major restructuring
+# handle old zpi's
 def _pickle_translate(module, name):
-    if module == '__main__' and name in ('Space', 'Axis'):
-        return 'ivoxoar.space', name
+    if module in ('__main__', 'ivoxoar.space') and name in ('Space', 'Axis'):
+        return 'BINoculars.space', name
     return module, name
 
 if inspect.isbuiltin(pickle.Unpickler):

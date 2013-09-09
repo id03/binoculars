@@ -154,14 +154,14 @@ class Oar(ReentrantBase):
         clusters = list(util.cluster_jobs(jobs, self.main.input.config.target_weight))
         for i, jobscluster in enumerate(clusters, start=1):
             uniq = util.uniqid()
-            jobconfig = os.path.join(self.config.tmpdir, 'ivoxoar-{0}-jobcfg.zpi'.format(uniq))
+            jobconfig = os.path.join(self.config.tmpdir, 'binoculars-{0}-jobcfg.zpi'.format(uniq))
             self.configfiles.append(jobconfig)
 
             config = self.main.clone_config()
             if i == len(clusters):
                 config.dispatcher.sum = self.intermediates
             else:
-                interm = os.path.join(self.config.tmpdir, 'ivoxoar-{0}-jobout.zpi'.format(uniq))
+                interm = os.path.join(self.config.tmpdir, 'binoculars-{0}-jobout.zpi'.format(uniq))
                 self.intermediates.append(interm)
                 config.dispatcher.destination.set_tmp_filename(interm)
                 config.dispatcher.sum = ()
