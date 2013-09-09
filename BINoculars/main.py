@@ -5,12 +5,12 @@ import ConfigParser
 
 from . import space, backend, util
 
-def parse_args():
+def parse_args(args):
     parser = argparse.ArgumentParser(prog='binoculars process')
     parser.add_argument('-c', metavar='SECTION:OPTION=VALUE', action='append', type=parse_commandline_config_option, default=[], help='additional configuration option in the form section:option=value')
     parser.add_argument('configfile', help='configuration file')
     parser.add_argument('command', nargs='*', default=[])
-    return parser.parse_args()
+    return parser.parse_args(args)
 
 def parse_commandline_config_option(s):
     try:

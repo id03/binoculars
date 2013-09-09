@@ -171,7 +171,7 @@ def command_plot(args):
 
 
 ### FIT
-def command_fit():
+def command_fit(args):
     import matplotlib.pyplot as pyplot
     import matplotlib.colors
 
@@ -289,6 +289,8 @@ def command_fit():
 
 ### PROCESS
 def command_process(args):
+    import BINoculars.main
+
     BINoculars.util.register_python_executable(__file__)
     BINoculars.main.Main.from_args(args)
 
