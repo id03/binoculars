@@ -8,22 +8,22 @@ import numpy
 import matplotlib.pyplot as pyplot
 import matplotlib.colors
 
-import ivoxoar.space, ivoxoar.plot, ivoxoar.fit, ivoxoar.util
+import BINoculars.space, BINoculars.plot, BINoculars.fit, BINoculars.util
 
 if __name__ == "__main__":
-    ivoxoar.space.silence_numpy_errors()
+    BINoculars.space.silence_numpy_errors()
 
     parser = argparse.ArgumentParser(prog='ivoxplot')
     parser.add_argument('infile', nargs='+')
-    ivoxoar.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'pslice', 'subtract')
+    BINoculars.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'pslice', 'subtract')
     parser.add_argument('--multi', default=None, choices=('grid', 'stack'))
     parser.add_argument('--fit', default = None)
     parser.add_argument('--guess', default = None)
     args = parser.parse_args()
 
     if args.subtract:
-        subtrspace = ivoxoar.space.Space.fromfile(args.subtract)
-        subtrspace, subtrinfo = ivoxoar.util.project_and_slice(subtrspace, args, auto3to2=True)
+        subtrspace = BINoculars.space.Space.fromfile(args.subtract)
+        subtrspace, subtrinfo = BINoculars.util.project_and_slice(subtrspace, args, auto3to2=True)
         args.nolog = True
 
     guess = []
@@ -38,12 +38,12 @@ if __name__ == "__main__":
     plotrows = int(numpy.ceil(float(plotcount) / plotcolumns))
 
     for i, filename in enumerate(args.infile):
-        space = ivoxoar.space.Space.fromfile(filename)
-        space, info = ivoxoar.util.project_and_slice(space, args, auto3to2=True)
+        space = BINoculars.space.Space.fromfile(filename)
+        space, info = BINoculars.util.project_and_slice(space, args, auto3to2=True)
 
         fitdata = None
         if args.fit:
-            fit = ivoxoar.fit.get_class_by_name(args.fit)(space, guess)
+            fit = BINoculars.fit.get_class_by_name(args.fit)(space, guess)
             print fit
             if fit.success:
                 fitdata = fit.fitdata
@@ -68,7 +68,7 @@ if __name__ == "__main__":
 
         if args.multi == 'grid':
             pyplot.subplot(plotrows, plotcolumns, i+1)
-        ivoxoar.plot.plot(space, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit=fitdata)
+        BINoculars.plot.plot(space, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit=fitdata)
 
         if plotcount == 1:
             pyplot.suptitle('{0} {1}'.format(basename, ' '.join(info)))
@@ -87,7 +87,7 @@ if __name__ == "__main__":
             #print 'saved at {0}'.format(args.savefile)
         else:
             filename = '{0}_plot.pdf'.format(os.path.splitext(args.infile[0])[0])
-            filename = ivoxoar.util.find_unused_filename(filename)
+            filename = BINoculars.util.find_unused_filename(filename)
             pyplot.savefig(filename)
             #print 'saved at {0}'.format(filename)
     else:

@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-from ivoxoar import main, util, space
+from BINoculars import main, util, space
 
 if __name__ == '__main__':
     space.silence_numpy_errors()

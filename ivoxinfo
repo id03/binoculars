@@ -2,10 +2,10 @@
 
 import argparse
 
-import ivoxoar.space
+import BINoculars.space
 
 if __name__ == "__main__":
-    ivoxoar.space.silence_numpy_errors()
+    BINoculars.space.silence_numpy_errors()
 
     parser = argparse.ArgumentParser(prog='ivoxinfo')
     parser.add_argument('infile', nargs='+', help='input files, must be .zpi')
@@ -14,7 +14,7 @@ if __name__ == "__main__":
     
     for f in args.infile:
         try:
-            space = ivoxoar.space.Space.fromfile(f)
+            space = BINoculars.space.Space.fromfile(f)
         except Exception as e:
             print '{0}: unable to load Space: {1}'.format(f, e)
         else:

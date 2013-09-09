@@ -4,7 +4,7 @@ import sys
 import os
 import argparse
 
-import ivoxoar.space, ivoxoar.util
+import BINoculars.space, BINoculars.util
 
 def parse_transform_args(transform):
     for t in transform:
@@ -13,12 +13,12 @@ def parse_transform_args(transform):
         yield ax.strip(), float(res), expr.strip()
 
 if __name__ == "__main__":
-    ivoxoar.space.silence_numpy_errors()
+    BINoculars.space.silence_numpy_errors()
 
     parser = argparse.ArgumentParser(prog='ivoxconvert')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
     parser.add_argument('--rebin', metavar='N,M,...', default=None, help='reduce binsize by factor N in first dimension, M in second, etc')
-    ivoxoar.util.argparse_common_arguments(parser, 'project', 'slice', 'pslice')
+    BINoculars.util.argparse_common_arguments(parser, 'project', 'slice', 'pslice')
     parser.add_argument('infile', help='input file, must be a .zpi')
     parser.add_argument('outfile', help='output file, can be .zpi or .edf or .txt')
     parser.add_argument('transform', metavar='VAR@RES=EXPR', nargs='*', default=[], help='perform coordinate transformation, rebinning data on new axis named VAR with resolution RES defined by EXPR, example: Q@0.1=sqrt(H**2+K**2+L**2)')
@@ -26,19 +26,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.wait:
-        ivoxoar.util.statusnl('waiting for {0} to appear'.format(args.infile))
-        ivoxoar.util.wait_for_file(args.infile)
-        ivoxoar.util.statusnl('processing...')
+        BINoculars.util.statusnl('waiting for {0} to appear'.format(args.infile))
+        BINoculars.util.wait_for_file(args.infile)
+        BINoculars.util.statusnl('processing...')
 
-    space = ivoxoar.space.Space.fromfile(args.infile)
+    space = BINoculars.space.Space.fromfile(args.infile)
     ext = os.path.splitext(args.outfile)[-1]
 
     if args.transform:
         labels, resolutions, exprs = zip(*parse_transform_args(args.transform))
-        transformation = ivoxoar.util.transformation_from_expressions(space, exprs)
+        transformation = BINoculars.util.transformation_from_expressions(space, exprs)
         space = space.transform_coordinates(resolutions, labels, transformation)
 
-    space, info = ivoxoar.util.project_and_slice(space, args)
+    space, info = BINoculars.util.project_and_slice(space, args)
     
     if args.rebin:
         if ',' in args.rebin:
@@ -48,11 +48,11 @@ if __name__ == "__main__":
         space = space.rebin(factors)
 
     if ext == '.edf':
-        ivoxoar.util.space_to_edf(space, args.outfile)
+        BINoculars.util.space_to_edf(space, args.outfile)
         print 'saved at {0}'.format(args.outfile)
 
     elif ext == '.txt':
-        ivoxoar.util.space_to_txt(space, args.outfile)
+        BINoculars.util.space_to_txt(space, args.outfile)
         print 'saved at {0}'.format(args.outfile)
 
     elif ext == '.zpi':
