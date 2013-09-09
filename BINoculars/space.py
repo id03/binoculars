@@ -2,6 +2,7 @@ import itertools
 import numbers
 import __builtin__
 import numpy
+import h5py
 
 from . import util
 
@@ -124,9 +125,9 @@ class EmptySpace(object):
 
 class Space(object):
     def __init__(self, axes):
-        if len(axes) > 1 and any(axis.label is None for axis in axes):
-            raise ValueError('axis label is required for multidimensional space')
         self.axes = tuple(axes)
+        if len(self.axes) > 1 and any(axis.label is None for axis in self.axes):
+            raise ValueError('axis label is required for multidimensional space')
         
         self.photons = numpy.zeros([len(ax) for ax in self.axes], order='C')
         self.contributions = numpy.zeros(self.photons.shape, dtype=numpy.uint32, order='C')
@@ -364,11 +365,26 @@ class Space(object):
         return newspace
 
     def tofile(self, filename):
-        util.zpi_save(self, filename)
+        if filename.endswith('.zpi'):
+            return util.zpi_save(self, filename)
+        with h5py.File(filename, 'w') as fp:
+            axes = fp.create_dataset('axes', [len(self.axes), 3], dtype=float)
+            labels = fp.create_dataset('axes_labels', [len(self.axes)], dtype=h5py.special_dtype(vlen=str))
+            for i, ax in enumerate(self.axes):
+                axes[i, :] = ax.min, ax.max, ax.res
+                labels[i] = ax.label
+            fp.create_dataset('counts', self.photons.shape, dtype=self.photons.dtype, compression='gzip').write_direct(self.photons)
+            fp.create_dataset('contributions', self.contributions.shape, dtype=self.contributions.dtype, compression='gzip').write_direct(self.contributions)
     
     @classmethod
     def fromfile(cls, filename):
-        return util.zpi_load(filename)
+        if filename.endswith('.zpi'):
+            return util.zpi_load(filename)
+        with h5py.File(filename, 'r') as fp:
+            space = Space(Axis(min, max, res, lbl) for (lbl, (min, max, res)) in zip(fp['axes_labels'], fp['axes']))
+            fp['counts'].read_direct(space.photons)
+            fp['contributions'].read_direct(space.contributions)
+        return space
 
 
 def union_axes(axes):

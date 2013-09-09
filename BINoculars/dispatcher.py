@@ -53,7 +53,7 @@ class DispatcherBase(util.ConfigurableObject):
     def parse_config(self, config):
         super(DispatcherBase, self).parse_config(config)
         self.config.destination = Destination()
-        self.config.destination.set_final_filename(config.pop('destination', 'output.zpi'), util.parse_bool(config.pop('overwrite', 'false')))
+        self.config.destination.set_final_filename(config.pop('destination', 'output.hdf5'), util.parse_bool(config.pop('overwrite', 'false')))
 
     def has_specific_task(self):
         return False
@@ -161,7 +161,7 @@ class Oar(ReentrantBase):
             if i == len(clusters):
                 config.dispatcher.sum = self.intermediates
             else:
-                interm = os.path.join(self.config.tmpdir, 'binoculars-{0}-jobout.zpi'.format(uniq))
+                interm = os.path.join(self.config.tmpdir, 'binoculars-{0}-jobout.hdf5'.format(uniq))
                 self.intermediates.append(interm)
                 config.dispatcher.destination.set_tmp_filename(interm)
                 config.dispatcher.sum = ()

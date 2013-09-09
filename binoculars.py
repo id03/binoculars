@@ -73,7 +73,7 @@ def command_convert(args):
         BINoculars.util.space_to_txt(space, args.outfile)
         print 'saved at {0}'.format(args.outfile)
 
-    elif ext == '.zpi':
+    elif ext == '.zpi' or ext == '.hdf5':
         space.tofile(args.outfile)
         print 'saved at {0}'.format(args.outfile)
 

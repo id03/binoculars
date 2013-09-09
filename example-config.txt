@@ -10,10 +10,10 @@ type = local # run locally
 #executable = /path/to/custom/python /path/to/binoculars.py # optionally, override default location of python and/or BINoculars installation
 
 # specificy destination file using scan numbers
-destination = demo_{first}-{last}.zpi
+destination = demo_{first}-{last}.hdf5
 overwrite = true
-# or, by default: numbered files in the form output_###.zpi:
-# destination = output.zpi
+# or, by default: numbered files in the form output_###.hdf5:
+# destination = output.hdf5
 # overwrite = false
 
 ### choose an appropriate INPUT class and specify custom options
