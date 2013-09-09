@@ -6,7 +6,7 @@ import ConfigParser
 from . import space, backend, util
 
 def parse_args():
-    parser = argparse.ArgumentParser(prog='ivoxprocess')
+    parser = argparse.ArgumentParser(prog='binoculars process')
     parser.add_argument('-c', metavar='SECTION:OPTION=VALUE', action='append', type=parse_commandline_config_option, default=[], help='additional configuration option in the form section:option=value')
     parser.add_argument('configfile', help='configuration file')
     parser.add_argument('command', nargs='*', default=[])
@@ -36,8 +36,8 @@ class Main(object):
         self.run(command)
 
     @classmethod
-    def from_args(cls):
-        args = parse_args()
+    def from_args(cls, args):
+        args = parse_args(args)
         if not os.path.exists(args.configfile):
             # wait up to 10 seconds if it is a zpi, it might take a while for the file to appear accross the network
             if not args.configfile.endswith('.zpi') or not util.wait_for_file(args.configfile, 10):

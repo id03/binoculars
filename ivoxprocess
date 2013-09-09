@@ -1,8 +1,0 @@
-#!/usr/bin/python
-
-from BINoculars import main, util, space
-
-if __name__ == '__main__':
-    space.silence_numpy_errors()
-    util.register_python_executable(__file__)
-    main.Main.from_args()
