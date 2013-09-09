@@ -186,6 +186,8 @@ class Space(object):
                 stop = None
             else:
                 stop = ax.get_index(key.stop)
+            if start > stop:
+                start, stop = stop, start
             return slice(start, stop)
         if isinstance(key, numbers.Number):
             return ax.get_index(key)
