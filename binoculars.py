@@ -19,7 +19,7 @@ def command_info(args):
         try:
             space = BINoculars.space.Space.fromfile(f)
         except Exception as e:
-            print '{0}: unable to load Space: {1}'.format(f, e)
+            print '{0}: unable to load Space: {1!r}'.format(f, e)
         else:
             print '{0}: {1!r}'.format(f, space)
 
@@ -37,6 +37,7 @@ def command_convert(args):
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
     parser.add_argument('--rebin', metavar='N,M,...', default=None, help='reduce binsize by factor N in first dimension, M in second, etc')
     BINoculars.util.argparse_common_arguments(parser, 'project', 'slice', 'pslice')
+    parser.add_argument('--read-trusted-zpi', action='store_true', help='read legacy .zpi files, ONLY FROM A TRUSTED SOURCE!')
     parser.add_argument('infile', help='input file, must be a .zpi')
     parser.add_argument('outfile', help='output file, can be .zpi or .edf or .txt')
     parser.add_argument('transform', metavar='VAR@RES=EXPR', nargs='*', default=[], help='perform coordinate transformation, rebinning data on new axis named VAR with resolution RES defined by EXPR, example: Q@0.1=sqrt(H**2+K**2+L**2)')
@@ -48,7 +49,13 @@ def command_convert(args):
         BINoculars.util.wait_for_file(args.infile)
         BINoculars.util.statusnl('processing...')
 
-    space = BINoculars.space.Space.fromfile(args.infile)
+    if args.infile.endswith('.zpi'):
+        if not args.read_trusted_zpi:
+            print 'error: .zpi files are unsafe, use --read-trusted-zpi to open'
+            sys.exit(1)
+        space = BINoculars.util.zpi_load(args.infile)
+    else:
+        space = BINoculars.space.Space.fromfile(args.infile)
     ext = os.path.splitext(args.outfile)[-1]
 
     if args.transform:

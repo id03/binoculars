@@ -9,5 +9,8 @@ class ConfigError(ExceptionBase):
 class FileError(ExceptionBase):
     pass
 
+class HDF5FileError(FileError):
+    pass
+
 class SubprocessError(ExceptionBase):
     pass

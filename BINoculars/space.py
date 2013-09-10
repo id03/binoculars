@@ -4,7 +4,7 @@ import __builtin__
 import numpy
 import h5py
 
-from . import util
+from . import util, errors
 
 
 def silence_numpy_errors():
@@ -365,25 +365,28 @@ class Space(object):
         return newspace
 
     def tofile(self, filename):
-        if filename.endswith('.zpi'):
-            return util.zpi_save(self, filename)
-        with h5py.File(filename, 'w') as fp:
-            axes = fp.create_dataset('axes', [len(self.axes), 3], dtype=float)
-            labels = fp.create_dataset('axes_labels', [len(self.axes)], dtype=h5py.special_dtype(vlen=str))
-            for i, ax in enumerate(self.axes):
-                axes[i, :] = ax.min, ax.max, ax.res
-                labels[i] = ax.label
-            fp.create_dataset('counts', self.photons.shape, dtype=self.photons.dtype, compression='gzip').write_direct(self.photons)
-            fp.create_dataset('contributions', self.contributions.shape, dtype=self.contributions.dtype, compression='gzip').write_direct(self.contributions)
+        with util.atomic_write(filename) as tmpname:
+            with h5py.File(tmpname, 'w') as fp:
+                axes = fp.create_dataset('axes', [len(self.axes), 3], dtype=float)
+                labels = fp.create_dataset('axes_labels', [len(self.axes)], dtype=h5py.special_dtype(vlen=str))
+                for i, ax in enumerate(self.axes):
+                    axes[i, :] = ax.min, ax.max, ax.res
+                    labels[i] = ax.label
+                fp.create_dataset('counts', self.photons.shape, dtype=self.photons.dtype, compression='gzip').write_direct(self.photons)
+                fp.create_dataset('contributions', self.contributions.shape, dtype=self.contributions.dtype, compression='gzip').write_direct(self.contributions)
     
     @classmethod
     def fromfile(cls, filename):
-        if filename.endswith('.zpi'):
-            return util.zpi_load(filename)
-        with h5py.File(filename, 'r') as fp:
-            space = Space(Axis(min, max, res, lbl) for (lbl, (min, max, res)) in zip(fp['axes_labels'], fp['axes']))
-            fp['counts'].read_direct(space.photons)
-            fp['contributions'].read_direct(space.contributions)
+        try:
+            with h5py.File(filename, 'r') as fp:
+                try:
+                    space = Space(Axis(min, max, res, lbl) for (lbl, (min, max, res)) in zip(fp['axes_labels'], fp['axes']))
+                    fp['counts'].read_direct(space.photons)
+                    fp['contributions'].read_direct(space.contributions)
+                except (KeyError, TypeError) as e:
+                    raise errors.HDF5FileError('unable to load Space from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
+        except IOError as e:
+            raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(filename, e))
         return space
 
 

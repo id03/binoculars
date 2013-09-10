@@ -8,6 +8,7 @@ import inspect
 import time
 import copy
 import numpy
+import contextlib
 
 
 ### ARGUMENT HANDLING
@@ -349,18 +350,36 @@ else:
         unpickler = _Unpickler(fileobj)
         return unpickler.load()
 
-def zpi_save(obj, filename):
+@contextlib.contextmanager
+def atomic_write(filename):
+    """Atomically write data into 'filename' using a temporary file and os.rename()
+
+    Rename on success, clean up on failure (any exception).
+
+    Example:
+    with atomic_write(filename) as tmpfile
+        with open(tmpfile, 'w') as fp:
+            fp.write(...)
+    """
+
     tmpfile = '{0}-{1}.tmp'.format(os.path.splitext(filename)[0], uniqid())
-    fp = gzip.open(tmpfile, 'wb')
     try:
-        try:
-           pickle.dump(obj, fp, pickle.HIGHEST_PROTOCOL)
-        finally:
-           fp.close()
+        yield tmpfile
+    except:
+        raise
+    else:
         best_effort_atomic_rename(tmpfile, filename)
     finally:
         if os.path.exists(tmpfile):
             os.remove(tmpfile)
+
+def zpi_save(obj, filename):
+    with atomic_write(filename) as tmpfile:
+        fp = gzip.open(tmpfile, 'wb')
+        try:
+            pickle.dump(obj, fp, pickle.HIGHEST_PROTOCOL)
+        finally:
+            fp.close()
 
 def zpi_load(filename):
     if hasattr(filename, 'read'):
