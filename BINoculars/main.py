@@ -3,7 +3,7 @@ import sys
 import argparse
 import ConfigParser
 
-from . import space, backend, util
+from . import space, backend, util, errors
 
 def parse_args(args):
     parser = argparse.ArgumentParser(prog='binoculars process')
