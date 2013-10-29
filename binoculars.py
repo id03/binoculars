@@ -35,12 +35,10 @@ def parse_transform_args(transform):
 def command_convert(args):
     parser = argparse.ArgumentParser(prog='binoculars convert')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
-    parser.add_argument('--rebin', metavar='N,M,...', default=None, help='reduce binsize by factor N in first dimension, M in second, etc')
-    BINoculars.util.argparse_common_arguments(parser, 'project', 'slice', 'pslice')
+    BINoculars.util.argparse_common_arguments(parser, 'project', 'slice', 'pslice', 'rebin', 'transform')
     parser.add_argument('--read-trusted-zpi', action='store_true', help='read legacy .zpi files, ONLY FROM A TRUSTED SOURCE!')
     parser.add_argument('infile', help='input file, must be a .zpi')
     parser.add_argument('outfile', help='output file, can be .zpi or .edf or .txt')
-    parser.add_argument('transform', metavar='VAR@RES=EXPR', nargs='*', default=[], help='perform coordinate transformation, rebinning data on new axis named VAR with resolution RES defined by EXPR, example: Q@0.1=sqrt(H**2+K**2+L**2)')
 
     args = parser.parse_args(args)
     
@@ -58,19 +56,7 @@ def command_convert(args):
         space = BINoculars.space.Space.fromfile(args.infile)
     ext = os.path.splitext(args.outfile)[-1]
 
-    if args.transform:
-        labels, resolutions, exprs = zip(*parse_transform_args(args.transform))
-        transformation = BINoculars.util.transformation_from_expressions(space, exprs)
-        space = space.transform_coordinates(resolutions, labels, transformation)
-
-    space, info = BINoculars.util.project_and_slice(space, args)
-    
-    if args.rebin:
-        if ',' in args.rebin:
-            factors = tuple(int(i) for i in args.rebin.split(','))
-        else:
-            factors = (int(args.rebin),)
-        space = space.rebin(factors)
+    space, info = BINoculars.util.handle_ordered_operations(space, args)
 
     if ext == '.edf':
         BINoculars.util.space_to_edf(space, args.outfile)
@@ -98,7 +84,7 @@ def command_plot(args):
 
     parser = argparse.ArgumentParser(prog='binoculars plot')
     parser.add_argument('infile', nargs='+')
-    BINoculars.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'pslice', 'subtract')
+    BINoculars.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'pslice', 'subtract', 'rebin', 'transform')
     parser.add_argument('--multi', default=None, choices=('grid', 'stack'))
     parser.add_argument('--fit', default = None)
     parser.add_argument('--guess', default = None)
@@ -106,7 +92,7 @@ def command_plot(args):
 
     if args.subtract:
         subtrspace = BINoculars.space.Space.fromfile(args.subtract)
-        subtrspace, subtrinfo = BINoculars.util.project_and_slice(subtrspace, args, auto3to2=True)
+        subtrspace, subtrinfo = BINoculars.util.handle_ordered_operations(subtrspace, args, auto3to2=True)
         args.nolog = True
 
     guess = []
@@ -122,7 +108,7 @@ def command_plot(args):
 
     for i, filename in enumerate(args.infile):
         space = BINoculars.space.Space.fromfile(filename)
-        space, info = BINoculars.util.project_and_slice(space, args, auto3to2=True)
+        space, info = BINoculars.util.handle_ordered_operations(space, args, auto3to2=True)
 
         fitdata = None
         if args.fit:
@@ -189,16 +175,16 @@ def command_fit(args):
     parser.add_argument('axis')
     parser.add_argument('resolution')
     parser.add_argument('func')
-    BINoculars.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'pslice', 'subtract')
+    BINoculars.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'pslice', 'subtract', 'rebin', 'transform')
     args = parser.parse_args(args)
 
     if args.subtract:
         subtrspace = BINoculars.space.Space.fromfile(args.subtract)
-        subtrspace, subtrinfo = project_and_sice(subtrspace, args)
+        subtrspace, subtrinfo = BINoculars.util.handle_ordered_operations(subtrspace, args)
         args.nolog = True
 
     space = BINoculars.space.Space.fromfile(args.infile)
-    space, info = BINoculars.util.project_and_slice(space, args)
+    space, info = BINoculars.util.handle_ordered_operations(space, args)
 
     if float(args.resolution) < space.axes[space.get_axindex_by_label(args.axis)].res:
         raise ValueError('interval {0} to low, minimum interval is {1}'.format(args.resolution, space.axes[space.get_axindex_by_label(args.axis)].res))
