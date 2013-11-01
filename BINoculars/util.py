@@ -106,6 +106,7 @@ def handle_ordered_operations(space, args, auto3to2=False):
         elif command == 'transform':
             labels, resolutions, exprs = zip(*parse_transform_args(opts))
             transformation = transformation_from_expressions(space, exprs)
+            info.append('transformed to {0}'.format(', '.join('{0} = {1}'.format(label, expr) for (label, expr) in zip(labels, exprs))))
             space = space.transform_coordinates(resolutions, labels, transformation)
     
         elif command == 'rebin':

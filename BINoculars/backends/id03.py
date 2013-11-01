@@ -196,10 +196,10 @@ class ID03Input(backend.InputBase):
             matches = self.find_edfs(pattern, zapscanno)
             if 0 not in matches:
                 raise errors.FileError('could not find matching edf for zapscannumber {0} using pattern {1}'.format(zapscanno, pattern))
-            edf = EdfFile.EdfFile(matches[0])
             if dry_run:
                 yield
             else:
+                edf = EdfFile.EdfFile(matches[0])
                 for i in range(first, last+1):
                     yield edf.GetData(i)
 
