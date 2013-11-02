@@ -139,16 +139,22 @@ def command_plot(args):
             pyplot.subplot(plotrows, plotcolumns, i+1)
         BINoculars.plot.plot(space, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit=fitdata)
 
-        if plotcount == 1:
-            pyplot.suptitle('{0} {1}'.format(basename, ' '.join(info)))
-        elif args.multi == 'grid':
+        if plotcount > 1 and args.multi == 'grid':
             pyplot.gca().set_title(basename)
 
+    if plotcount == 1:
+        label = basename
+    else:
+        label = '{0} files'.format(plotcount)
+    
+    if args.subtract:
+        label = '{0} (subtracted {1})'.format(label, os.path.splitext(os.path.basename(args.subtract))[0])
 
-    if plotcount > 1:
-        pyplot.suptitle('{0} files, {1}'.format(plotcount, ' '.join(info)))
-        if args.multi == 'stack':
-            pyplot.legend()
+    if plotcount > 1 and args.multi == 'stack':
+        pyplot.legend()
+
+    pyplot.suptitle('{0}, {1}'.format(label, ' '.join(info)))
+
 
     if args.savepdf or args.savefile:
         if args.savefile:
