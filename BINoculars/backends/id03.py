@@ -31,7 +31,7 @@ class QsphericalProjection(HKLProjection):#calculate q in spherical cooridinates
         qx,qy,qz = q.getQSurface(delta=delta, theta=theta, chi=chi, phi=phi, mu=mu, gamma=gamma)
         r = numpy.sqrt(qx**2 + qy**2 + qz**2)
         theta = numpy.arccos(qz / r)
-        phi = numpy.arctan2(qy / qx)
+        phi = numpy.arctan2(qy, qx)
         return (r, theta, phi)
 
     def get_axis_labels(self):
