@@ -322,7 +322,50 @@ class Space(object):
             new.contributions += contributions[stride]
 
         return new
-    
+
+    def rebin2(self, resolutions):
+        if not len(resolutions) == len(self.axes):
+            raise ValueError('cannot rebin space with different dimensionality compatible')
+        labels = tuple(ax.label for ax in self.axes)
+        photon_intensity = self.photons.flatten()
+        contribution_intensity = self.contributions.flatten()
+        coordinates = tuple(grid.flatten() for grid in self.get_grid())
+
+        new = self.from_image(resolutions, labels, coordinates, photon_intensity)
+        contribution_space = self.from_image(resolutions, labels, coordinates, contribution_intensity)
+        new.contributions = numpy.array(contribution_space.photons, dtype = numpy.int)
+        return new
+
+    def make_compatible(self, other):
+        if not isinstance(other, Space):
+            return NotImplemented
+        if not len(self.axes) == len(other.axes):
+            raise ValueError('cannot make spaces with different dimensionality compatible')
+
+        other = other.reorder(tuple(ax.label for ax in self.axes)) 
+
+        resolutions = tuple(max(a.res, b.res) for (a, b) in zip(self.axes, other.axes))
+        keys = tuple(slice(max(a.min, b.min), min(a.max, b.max)) for (a, b) in zip(self.axes, other.axes))
+
+        for key in keys:
+            if key.start > key.stop:
+               raise(ValueError('spaces to be compared have no overlap'))
+
+        newself = self.__getitem__(keys).rebin2(resolutions)
+        newother =  other.__getitem__(keys).rebin2(resolutions)
+
+        return newself, newother
+
+    def reorder(self, labels):
+        if not self.dimension == len(labels):
+            raise ValueError('cannot make spaces with different dimensionality compatible')
+        newindices = list(self.get_axindex_by_label(label) for label in labels)
+        new = self.__class__(tuple(self.axes[index] for index in newindices))
+        new.photons= numpy.transpose(self.photons, axes = newindices)
+        new.contributions = numpy.transpose(self.contributions, axes = newindices)
+        return new
+
+                         
     def transform_coordinates(self, resolutions, labels, transformation):
         # gather data and transform
         intensity = self.get_masked()
