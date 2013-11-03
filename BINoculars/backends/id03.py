@@ -126,16 +126,20 @@ class ID03Input(backend.InputBase):
     def get_scan_params(self, scan):
         if self.is_zap(scan):
             # zapscans don't contain the UB matrix, this needs to be fixed at ID03
-            i = scanno = scan.number()
-            while scanno - i < 30: # look back up to 10 scans to locate a UB matrix
-                ubscan = self.get_scan(i)
+            scanno = scan.number()
+            UB = None
+            while 1: # look back in spec file to locate a UB matrix
+                try:
+                    ubscan = self.get_scan(scanno)
+                except specfilewrapper.specfile.error:
+                    break
                 try:
                     UB = numpy.array(ubscan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
                 except:
-                    i -= 1
+                    scanno -= 1
                 else:
                     break
-            else:
+            if UB is None:
                 # fall back to UB matrix from the configfile
                 if not self.config.UB:
                     raise errors.ConfigError('UB matrix must be specified in configuration file when processing zapscans')
@@ -191,11 +195,11 @@ class ID03Input(backend.InputBase):
             pattern = self._get_pattern(UCCD) 
             matches = self.find_edfs(pattern, zapscanno)
             if 0 not in matches:
-                raise errors.FileError('could not find matching edf for zapscannumber {0}'.format(zapscanno))
-            edf = EdfFile.EdfFile(matches[0])
+                raise errors.FileError('could not find matching edf for zapscannumber {0} using pattern {1}'.format(zapscanno, pattern))
             if dry_run:
                 yield
             else:
+                edf = EdfFile.EdfFile(matches[0])
                 for i in range(first, last+1):
                     yield edf.GetData(i)
 

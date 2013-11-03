@@ -9,20 +9,33 @@ import time
 import copy
 import numpy
 import contextlib
+import argparse
 
 
 ### ARGUMENT HANDLING
 
+class OrderedOperation(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        oops = getattr(namespace, 'ordered_operations', [])
+        oops.append((self.dest, values))
+        setattr(namespace, 'ordered_operations', oops)
+
+
 def argparse_common_arguments(parser, *args):
     for arg in args:
-        # OPERATIONS
+        # (ORDERED) OPERATIONS
         if arg == 'project':
-            parser.add_argument('-p', '--project', metavar='AXIS', action='append', default=[], help='project space on AXIS')
+            parser.add_argument('-p', '--project', metavar='AXIS', action=OrderedOperation, help='project space on AXIS')
         elif arg == 'slice':
-            parser.add_argument('--slice', nargs=2, metavar=('AXIS', 'START:STOP'), action='append', default=[], help="slice AXIS from START to STOP (replace minus signs by 'm')")
+            parser.add_argument('--slice', nargs=2, metavar=('AXIS', 'START:STOP'), action=OrderedOperation, help="slice AXIS from START to STOP (replace minus signs by 'm')")
         elif arg == 'pslice':
-            parser.add_argument('--pslice', nargs=2, metavar=('AXIS', 'START:STOP'), action='append', default=[], help="like slice, but also project on AXIS after slicing")
- 
+            parser.add_argument('--pslice', nargs=2, metavar=('AXIS', 'START:STOP'), action=OrderedOperation, help="like slice, but also project on AXIS after slicing")
+        elif arg == 'transform':
+            parser.add_argument('--transform', metavar='VAR@RES=EXPR;VAR2@RES2=EXPR2;...', action=OrderedOperation, help='perform coordinate transformation, rebinning data on new axis named VAR with resolution RES defined by EXPR, example: Q@0.1=sqrt(H**2+K**2+L**2)')
+        elif arg == 'rebin':
+            parser.add_argument('--rebin', metavar='N,M,...', action=OrderedOperation, help='reduce binsize by factor N in first dimension, M in second, etc')
+
+        # SUBTRACT
         elif arg == 'subtract':
             parser.add_argument('--subtract', metavar='SPACE', help='subtract SPACE from input file')
 
@@ -42,48 +55,69 @@ def argparse_common_arguments(parser, *args):
         else:
             raise ValueError("unsupported argument '{0}'".format(arg))
 
-def project_and_slice(space, args, auto3to2=False):
+
+def parse_transform_args(transform):
+    for t in transform.split(';'):
+        lhs, expr = t.split('=')
+        ax, res = lhs.split('@')
+        yield ax.strip(), float(res), expr.strip()
+
+
+def handle_ordered_operations(space, args, auto3to2=False):
     info = []
+    for command, opts in getattr(args, 'ordered_operations', []):
 
-    # SLICING
-    for sl in itertools.chain(args.slice, args.pslice):
-        ax, key = sl
-        axindex = space.get_axindex_by_label(ax)
-        axlabel = space.axes[axindex].label
-        if ':' in key:
-            start, stop = key.split(':')
-            if start:
-                start = float(start.replace('m', '-'))
+        if command == 'slice' or command == 'pslice':
+            ax, key = opts
+            axindex = space.get_axindex_by_label(ax)
+            axlabel = space.axes[axindex].label
+            if ':' in key:
+                start, stop = key.split(':')
+                if start:
+                    start = float(start.replace('m', '-'))
+                else:
+                    start = space.axes[axindex].min
+                if stop:
+                    stop = float(stop.replace('m', '-'))
+                else:
+                    stop = space.axes[axindex].max
+                key = slice(start, stop)
+
+                info.append('sliced in {0} from {1} to {2}'.format(axlabel, start, stop))
             else:
-                start = space.axes[axindex].min
-            if stop:
-                stop = float(stop.replace('m', '-'))
-            else:
-                stop = space.axes[axindex].max
-            key = slice(start, stop)
+                key = float(key.replace('m', '-'))
+                info.append('sliced in {0} at {1}'.format(axlabel, key))
+            space = space.slice(axindex, key)
 
-            info.append('sliced in {0} from {1} to {2}'.format(axlabel, start, stop))
-        else:
-            key = float(key.replace('m', '-'))
-            info.append('sliced in {0} at {1}'.format(axlabel, key))
-        olddim = space.dimension
-        space = space.slice(axindex, key)
+            if command == 'pslice':
+                try:
+                    projectaxis = space.get_axindex_by_label(ax)
+                except ValueError:
+                    pass
+                else:
+                    info.append('projected on {0}'.format(space.axes[projectaxis].label))
+                    space = space.project(projectaxis) 
 
-    # PROJECTION
-    for proj in args.project:
-        projectaxis = space.get_axindex_by_label(proj)
-        info.append('projected on {0}'.format(space.axes[projectaxis].label))
-        space = space.project(projectaxis)
-
-    for sl in args.pslice:
-        ax,key = sl
-        try:
-            projectaxis = space.get_axindex_by_label(ax)
-        except ValueError:
-            pass
-        else:
+        elif command == 'project':
+            projectaxis = space.get_axindex_by_label(opts)
             info.append('projected on {0}'.format(space.axes[projectaxis].label))
-            space = space.project(projectaxis)
+            space = space.project(projectaxis)    
+
+        elif command == 'transform':
+            labels, resolutions, exprs = zip(*parse_transform_args(opts))
+            transformation = transformation_from_expressions(space, exprs)
+            info.append('transformed to {0}'.format(', '.join('{0} = {1}'.format(label, expr) for (label, expr) in zip(labels, exprs))))
+            space = space.transform_coordinates(resolutions, labels, transformation)
+    
+        elif command == 'rebin':
+            if ',' in opts:
+                factors = tuple(int(i) for i in opts.split(','))
+            else:
+                factors = (int(opts),) * space.dimension
+            space = space.rebin(factors)
+
+        else:
+            raise ValueError("unsported Ordered Operation '{0}'".format(command))
 
     if auto3to2 and space.dimension == 3: # automatic projection on smallest axis
         projectaxis = numpy.argmin(space.photons.shape)

@@ -27,7 +27,7 @@ target_weight = 4000
 
 # technical yadayada for this particular input class
 centralpixel = 40, 255
-app = 0.003125, 0.003125
+app = 0.003125, 0.003125 # angle per pixel in degrees
 ymask = 185-253,262-400
 xmask = 50-235
 
