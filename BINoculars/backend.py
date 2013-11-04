@@ -90,6 +90,7 @@ def _get_backend(config, section, basecls, default=None, args=[], kwargs={}):
     else:
         raise errors.ConfigError("invalid type '{0}' in section '{1}'".format(type, section))
 
+    clsname = clsname.lower()
     names = dict((name.lower(), name) for name in dir(module))
     if clsname in names:
         cls = getattr(module, names[clsname])
