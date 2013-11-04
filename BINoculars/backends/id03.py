@@ -22,13 +22,13 @@ class HKLProjection(backend.ProjectionBase):
     def get_axis_labels(self):
         return 'H', 'K', 'L'
 
-class QsphericalProjection(HKLProjection):#calculate q in spherical cooridinates in the surface reference frame
+class SphericalQProjection(backend.ProjectionBase):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        q = PyMca.SixCircle()
+        q = SixCircle.SixCircle()
         q.setLambda(wavelength)
         q.setUB(UB)
 
-        qx,qy,qz = q.getQSurface(delta=delta, theta=theta, chi=chi, phi=phi, mu=mu, gamma=gamma)
+        qx,qy,qz = q.getQSurface(gamma=gamma, delta=delta, theta=theta, mu=mu, chi=chi, phi=phi)
         r = numpy.sqrt(qx**2 + qy**2 + qz**2)
         theta = numpy.arccos(qz / r)
         phi = numpy.arctan2(qy, qx)
