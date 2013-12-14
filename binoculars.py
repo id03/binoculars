@@ -6,7 +6,7 @@ import argparse
 import numpy
 import numbers
 
-import BINoculars.space, BINoculars.util
+import BINoculars.space, BINoculars.util, BINoculars.fit
 
 ### INFO
 def command_info(args):
