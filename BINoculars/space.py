@@ -327,13 +327,14 @@ class Space(object):
         if not len(resolutions) == len(self.axes):
             raise ValueError('cannot rebin space with different dimensionality compatible')
         labels = tuple(ax.label for ax in self.axes)
-        photon_intensity = self.photons.flatten()
-        contribution_intensity = self.contributions.flatten()
         coordinates = tuple(grid.flatten() for grid in self.get_grid())
 
-        new = self.from_image(resolutions, labels, coordinates, photon_intensity)
-        contribution_space = self.from_image(resolutions, labels, coordinates, contribution_intensity)
-        new.contributions = numpy.array(contribution_space.photons, dtype = numpy.int)
+        contribution_space = self.from_image(resolutions, labels, coordinates, self.contributions.flatten())
+        contributions = contribution_space.photons.astype(int)
+        del contribution_space
+
+        new = self.from_image(resolutions, labels, coordinates, self.photons.flatten())
+        new.contributions = contributions
         return new
 
     def make_compatible(self, other):
@@ -349,7 +350,7 @@ class Space(object):
 
         for key in keys:
             if key.start > key.stop:
-               raise(ValueError('spaces to be compared have no overlap'))
+               raise ValueError('spaces to be compared have no overlap')
 
         newself = self.__getitem__(keys).rebin2(resolutions)
         newother =  other.__getitem__(keys).rebin2(resolutions)
@@ -361,7 +362,7 @@ class Space(object):
             raise ValueError('cannot make spaces with different dimensionality compatible')
         newindices = list(self.get_axindex_by_label(label) for label in labels)
         new = self.__class__(tuple(self.axes[index] for index in newindices))
-        new.photons= numpy.transpose(self.photons, axes = newindices)
+        new.photons = numpy.transpose(self.photons, axes = newindices)
         new.contributions = numpy.transpose(self.contributions, axes = newindices)
         return new
 

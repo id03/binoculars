@@ -22,13 +22,11 @@ class HKLProjection(backend.ProjectionBase):
     def get_axis_labels(self):
         return 'H', 'K', 'L'
 
-
 class SphericalQProjection(backend.ProjectionBase):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         sixc = SixCircle.SixCircle()
         sixc.setLambda(wavelength)
         sixc.setUB(UB)
-
         qx,qy,qz = sixc.getQSurface(gamma=gamma, delta=delta, theta=theta, mu=mu, chi=chi, phi=phi)
         q = numpy.sqrt(qx**2 + qy**2 + qz**2)
         theta = numpy.arccos(qz / q)
