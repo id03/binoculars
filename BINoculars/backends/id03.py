@@ -22,25 +22,26 @@ class HKLProjection(backend.ProjectionBase):
     def get_axis_labels(self):
         return 'H', 'K', 'L'
 
-class QsphericalProjection(HKLProjection):#calculate q in spherical cooridinates in the surface reference frame
-    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        q = PyMca.SixCircle()
-        q.setLambda(wavelength)
-        q.setUB(UB)
 
-        qx,qy,qz = q.getQSurface(delta=delta, theta=theta, chi=chi, phi=phi, mu=mu, gamma=gamma)
-        r = numpy.sqrt(qx**2 + qy**2 + qz**2)
-        theta = numpy.arccos(qz / r)
+class SphericalQProjection(backend.ProjectionBase):
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        sixc = SixCircle.SixCircle()
+        sixc.setLambda(wavelength)
+        sixc.setUB(UB)
+
+        qx,qy,qz = sixc.getQSurface(gamma=gamma, delta=delta, theta=theta, mu=mu, chi=chi, phi=phi)
+        q = numpy.sqrt(qx**2 + qy**2 + qz**2)
+        theta = numpy.arccos(qz / q)
         phi = numpy.arctan2(qy, qx)
-        return (r, theta, phi)
+        return (q, theta, phi)
 
     def get_axis_labels(self):
-        return 'R', 'Theta', 'Phi'
+        return 'Q', 'Theta', 'Phi'
 
-class TwoThetaProjection(HKLProjection):
+class TwoThetaProjection(SphericalQProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        h,k,l = super(TwoThetaProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
-        return 2 * numpy.arcsin(wavelength * numpy.sqrt(h**2+k**2+l**2) / 4 / numpy.pi), # note: we need to return a 1-tuple?
+        q, theta, phi = super(TwoThetaProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
+        return 2 * numpy.arcsin(q * wavelength / (4 * numpy.pi)) / numpy.pi * 180, # note: we need to return a 1-tuple?
 
     def get_axis_labels(self):
         return 'TwoTheta'
@@ -95,7 +96,8 @@ class ID03Input(backend.InputBase):
         self.config.UB = config.pop('ub', None)
         if self.config.UB:
             self.config.UB = util.parse_tuple(self.config.UB, length=9, type=float)
-        self.config.app = util.parse_tuple(config.pop('app'), length=2, type=float)
+        self.config.sdd = float(config.pop('sdd'))
+        self.config.pixelsize = util.parse_tuple(config.pop('pixelsize'), length=2, type=float)
         self.config.centralpixel = util.parse_tuple(config.pop('centralpixel'), length=2, type=int)
 
     def get_destination_options(self, command):
@@ -260,10 +262,14 @@ class EH1(ID03Input):
         data = image / mon / transm
 
         # pixels to angles
-        app = self.config.app # angle per pixel (delta, gamma)
+        pixelsize = numpy.array(self.config.pixelsize)
+        sdd = self.config.sdd 
+
+        app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
+
         centralpixel = self.config.centralpixel # (column, row) = (delta, gamma)
-        gamma_range= -app[1]*(numpy.arange(data.shape[0])-centralpixel[1])+gamma
-        delta_range= app[0]*(numpy.arange(data.shape[1])-centralpixel[0])+delta
+        gamma_range= -app[1] * (numpy.arange(data.shape[0]) - centralpixel[1]) + gamma
+        delta_range= app[0] * (numpy.arange(data.shape[1]) - centralpixel[0]) + delta
 
         # masking
         gamma_range = gamma_range[self.config.ymask]
@@ -278,8 +284,7 @@ class EH2(ID03Input):
 
     def parse_config(self, config):
         super(EH2, self).parse_config(config)
-        self.config.sdd = float(config.pop('sdd'))
-
+        
     def process_image(self, scanparams, pointparams, image):
         gamma, delta, theta, mu, chi, phi, mon, transm = pointparams
         wavelength, UB = scanparams
@@ -290,11 +295,11 @@ class EH2(ID03Input):
         data *= (self.config.sdd / sdd)**2
 
         # pixels to angles
-        pixelsize = self.config.sdd * numpy.tan(self.config.app[0] * numpy.pi / 180)
+        pixelsize = numpy.array(self.config.pixelsize)
         app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
         centralpixel = self.config.centralpixel # (row, column) = (delta, gamma)
-        gamma_range = app*(numpy.arange(data.shape[1])-centralpixel[1])+gamma
-        delta_range = app*(numpy.arange(data.shape[0])-centralpixel[0])+delta
+        gamma_range = app[1] * (numpy.arange(data.shape[1]) - centralpixel[1]) + gamma
+        delta_range = app[0] * (numpy.arange(data.shape[0]) - centralpixel[0]) + delta
 
         # masking
         gamma_range = gamma_range[self.config.xmask]
@@ -334,5 +339,6 @@ class EH2(ID03Input):
             params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
             params[:, TRANSM] = scan.datacol('transm')[sl]
         return params
+
 
 
