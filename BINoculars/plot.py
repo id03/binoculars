@@ -1,5 +1,80 @@
 import numpy
-import matplotlib.colors
+import matplotlib.colors, matplotlib.cm
+
+# Adapted from http://www.ster.kuleuven.be/~pieterd/python/html/plotting/interactive_colorbar.html
+# which in turn is based on an example from http://matplotlib.org/users/event_handling.html
+class DraggableColorbar(object):
+    def __init__(self, cbar, mappable):
+        self.cbar = cbar
+        self.mappable = mappable
+        self.press = None
+        self.cycle = sorted([i for i in dir(matplotlib.cm) if hasattr(getattr(matplotlib.cm,i),'N')])
+        self.index = self.cycle.index(cbar.get_cmap().name)
+        self.canvas = self.cbar.patch.figure.canvas
+
+    def connect(self):
+        self.cidpress = self.canvas.mpl_connect('button_press_event', self.on_press)
+        self.cidrelease = self.canvas.mpl_connect('button_release_event', self.on_release)
+        self.cidmotion = self.canvas.mpl_connect('motion_notify_event', self.on_motion)
+        self.cidkeypress = self.canvas.mpl_connect('key_press_event', self.key_press)
+
+    def disconnect(self):
+        self.canvas.mpl_disconnect(self.cidpress)
+        self.canvas.mpl_disconnect(self.cidrelease)
+        self.canvas.mpl_disconnect(self.cidmotion)
+        self.canvas.mpl_disconnect(self.cidkeypress)
+
+    def on_press(self, event):
+        if event.inaxes == self.cbar.ax:
+            self.press = event.x, event.y
+
+    def key_press(self, event):
+        if event.key=='down':
+            self.index += 1
+        elif event.key=='up':
+            self.index -= 1
+        if self.index<0:
+            self.index = len(self.cycle)
+        elif self.index>=len(self.cycle):
+            self.index = 0
+        cmap = self.cycle[self.index]
+        self.mappable.set_cmap(cmap)
+        self.cbar.patch.figure.canvas.draw()
+
+    def on_motion(self, event):
+        if self.press is None or event.inaxes != self.cbar.ax:
+            return
+        xprev, yprev = self.press
+        dx = event.x - xprev
+        dy = event.y - yprev
+        self.press = event.x, event.y
+
+        if isinstance(self.cbar.norm, matplotlib.colors.LogNorm):
+            scale = 0.999 * numpy.log10(self.cbar.norm.vmax / self.cbar.norm.vmin)
+            if event.button==1:
+                self.cbar.norm.vmin *= scale**numpy.sign(dy)
+                self.cbar.norm.vmax *= scale**numpy.sign(dy)
+            elif event.button==3:
+                self.cbar.norm.vmin *= scale**numpy.sign(dy)
+                self.cbar.norm.vmax /= scale**numpy.sign(dy)
+        else:
+            scale = 0.03 * (self.cbar.norm.vmax - self.cbar.norm.vmin)
+            if event.button==1:
+                self.cbar.norm.vmin -= scale*numpy.sign(dy)
+                self.cbar.norm.vmax -= scale*numpy.sign(dy)
+            elif event.button==3:
+                self.cbar.norm.vmin -= scale*numpy.sign(dy)
+                self.cbar.norm.vmax += scale*numpy.sign(dy)
+
+        self.mappable.set_norm(self.cbar.norm)
+        self.canvas.draw()
+
+    def on_release(self, event):
+        # force redraw on mouse release
+        self.press = None
+        self.mappable.set_norm(self.cbar.norm)
+        self.canvas.draw()
+
 
 def plot(space, fig, ax, log=True, clipping=0.0, fit=None, **plotopts):
     if space.dimension == 1:
@@ -58,7 +133,9 @@ def plot(space, fig, ax, log=True, clipping=0.0, fit=None, **plotopts):
 
         ax.set_xlabel(space.axes[0].label)
         ax.set_ylabel(space.axes[1].label)
-        fig.colorbar(im)
+        cbarwidget = fig.colorbar(im)
+        fig._draggablecbar = DraggableColorbar(cbarwidget, im) # we need to store this instance somewhere
+        fig._draggablecbar.connect()
 
     elif space.dimension > 2:
         raise ValueError("Cannot plot 3 or higher dimensional spaces, use projections or slices to decrease dimensionality.")
