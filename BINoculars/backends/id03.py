@@ -14,9 +14,10 @@ class HKLProjection(backend.ProjectionBase):
     # scalars: theta, mu, chi, phi
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         R = SixCircle.getHKL(wavelength, UB, gamma=gamma, delta=delta, theta=theta, mu=mu, chi=chi, phi=phi)
-        H = R[0,:]
-        K = R[1,:]
-        L = R[2,:]
+        shape = gamma.size, delta.size
+        H = R[0,:].reshape(shape)
+        K = R[1,:].reshape(shape)
+        L = R[2,:].reshape(shape)
         return (H,K,L)
 
     def get_axis_labels(self):
@@ -274,7 +275,7 @@ class EH1(ID03Input):
         delta_range = delta_range[self.config.xmask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
 
-        return intensity.flatten(), (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
+        return intensity, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
 
 
 class EH2(ID03Input):
@@ -305,7 +306,7 @@ class EH2(ID03Input):
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
         intensity = numpy.rot90(intensity)
 
-        return intensity.flatten(), (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
+        return intensity, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
 
     def get_point_params(self, scan, first, last):
         sl = slice(first, last+1)
