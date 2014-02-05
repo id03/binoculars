@@ -213,7 +213,7 @@ def command_fit(args):
             filename = BINoculars.util.filename_enumerator('{0}_fit.pdf'.format(basename))
 
     fitclass = BINoculars.fit.get_class_by_name(args.func)
- 
+
     for start, stop in zip(bins[:-1], bins[1:]):
         info = []
         key = slice(start, stop)
@@ -223,11 +223,12 @@ def command_fit(args):
             newspace = newspace.project(axindex)
 
         fit = fitclass(newspace)
+        paramnames = fit.parameters
         print fit
         if fit.success:
             fitlabel.append(numpy.mean([start, stop]))
-            parameters.append(fit.results)
-            variance.append(fit.variances)
+            parameters.append(fit.result)
+            variance.append(fit.variance)
             fit = fit.fitdata
         else:
             fit = None
@@ -247,7 +248,10 @@ def command_fit(args):
             info.append('sliced in {0} from {1} to {2}'.format(axlabel, left, right))
             pyplot.suptitle('{0}'.format(' '.join(info)))
 
-            pyplot.savefig(filename.next())
+            filename = '{0}_plot.pdf'.format(os.path.splitext(args.infile[0])[0])
+            filename = BINoculars.util.find_unused_filename(filename)
+            
+            pyplot.savefig(filename)
             pyplot.close()
   
     parameters = numpy.vstack(n for n in parameters).T
