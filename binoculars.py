@@ -233,26 +233,25 @@ def command_fit(args):
         else:
             fit = None
 
-        if len(newspace.get_masked().compressed()):
-            if newspace.dimension == 1:
-                pyplot.figure(figsize=(12, 9))
-                pyplot.subplot(111)
-                BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
-            elif newspace.dimension == 2:
-                pyplot.figure(figsize=(12, 9))
-                pyplot.subplot(121)
-                BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = None)
-                pyplot.subplot(122)
-                BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
 
-            info.append('sliced in {0} from {1} to {2}'.format(axlabel, left, right))
-            pyplot.suptitle('{0}'.format(' '.join(info)))
+        if args.savepdf or args.savefile:
+            if len(newspace.get_masked().compressed()):
+                if newspace.dimension == 1:
+                    pyplot.figure(figsize=(12, 9))
+                    pyplot.subplot(111)
+                    BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
+                elif newspace.dimension == 2:
+                    pyplot.figure(figsize=(12, 9))
+                    pyplot.subplot(121)
+                    BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = None)
+                    pyplot.subplot(122)
+                    BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
 
-            filename = '{0}_plot.pdf'.format(os.path.splitext(args.infile[0])[0])
-            filename = BINoculars.util.find_unused_filename(filename)
-            
-            pyplot.savefig(filename)
-            pyplot.close()
+                info.append('sliced in {0} from {1} to {2}'.format(axlabel, left, right))
+                pyplot.suptitle('{0}'.format(' '.join(info)))
+                
+                pyplot.savefig(filename.next())
+                pyplot.close()
   
     parameters = numpy.vstack(n for n in parameters).T
     variance = numpy.vstack(n for n in variance).T
