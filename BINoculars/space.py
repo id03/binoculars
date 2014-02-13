@@ -194,7 +194,7 @@ class Space(object):
             return ax.get_index(key)
         raise TypeError('unrecognized slice')
 
-    def project(self, axis):
+    def project(self, axis, *more_axes):
         if isinstance(axis, Axis):
             index = self.axes.index(axis)
         elif isinstance(axis, basestring):
@@ -208,7 +208,11 @@ class Space(object):
         newspace = self.__class__(newaxes)
         newspace.photons = self.photons.sum(axis=index)
         newspace.contributions = self.contributions.sum(axis=index)
-        return newspace
+
+        if more_axes:
+            return newspace.project(more_axes[0], *more_axes[1:])
+        else:
+            return newspace
 
     def slice(self, axis, key):
         if isinstance(axis, Axis):
