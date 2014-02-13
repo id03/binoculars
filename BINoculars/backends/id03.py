@@ -98,8 +98,6 @@ class ID03Input(backend.InputBase):
         self.config.sdd = float(config.pop('sdd'))
         self.config.pixelsize = util.parse_tuple(config.pop('pixelsize'), length=2, type=float)
         self.config.centralpixel = util.parse_tuple(config.pop('centralpixel'), length=2, type=int)
-        self.config.isbackground = bool(config.pop('isbackground'))
-
 
     def get_destination_options(self, command):
         if not command:
@@ -218,10 +216,7 @@ class ID03Input(backend.InputBase):
             else:
                 edf = EdfFile.EdfFile(matches[0])
                 for i in range(first, last+1):
-                    if self.config.isbackground:
-                        yield edf.GetData(0)
-                    else:
-                        yield edf.GetData(i)
+                    yield edf.GetData(i)
 
         else:
             try:
@@ -343,5 +338,6 @@ class EH2(ID03Input):
             params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
             params[:, TRANSM] = scan.datacol('transm')[sl]
         return params
+
 
 
