@@ -1,5 +1,6 @@
 import numpy
 import matplotlib.colors, matplotlib.cm
+import mpl_toolkits.mplot3d
 
 # Adapted from http://www.ster.kuleuven.be/~pieterd/python/html/plotting/interactive_colorbar.html
 # which in turn is based on an example from http://matplotlib.org/users/event_handling.html
@@ -76,6 +77,24 @@ class DraggableColorbar(object):
         self.canvas.draw()
 
 
+def get_clipped_norm(data, clipping, log):
+    colordata = data.compressed()
+    if log:
+        colordata = colordata[colordata > 0]
+
+    if clipping:
+        chop = int(round(colordata.size * clipping))
+        clip = sorted(colordata)[chop:-(1+chop)]
+        vmin, vmax = clip[0], clip[-1]
+    else:
+        vmin, vmax = colordata.min(), colordata.max()
+
+    if log:
+        return matplotlib.colors.LogNorm(vmin, vmax)
+    else:
+        return matplotlib.colors.Normalize(vmin, vmax)
+
+
 def plot(space, fig, ax, log=True, clipping=0.0, fit=None, **plotopts):
     if space.dimension == 1:
         data = space.get_masked()
@@ -99,32 +118,13 @@ def plot(space, fig, ax, log=True, clipping=0.0, fit=None, **plotopts):
     elif space.dimension == 2:
         data = space.get_masked()
 
-        # COLOR CLIPPING
-        colordata = data.compressed()
-        if log:
-            colordata = colordata[colordata > 0]
-
-        if clipping:
-            chop = int(round(colordata.size * clipping))
-            clip = sorted(colordata)[chop:-(1+chop)]
-            vmin, vmax = clip[0], clip[-1]
-            del clip
-        else:
-            vmin, vmax = colordata.min(), colordata.max()
-        del colordata
-
         # 2D IMSHOW PLOT
-        data = space.get_masked()
-
         xmin = space.axes[0].min
         xmax = space.axes[0].max
         ymin = space.axes[1].min
         ymax = space.axes[1].max
         
-        if log:
-            norm = matplotlib.colors.LogNorm(vmin, vmax)
-        else:
-            norm = matplotlib.colors.Normalize(vmin, vmax)
+        norm = get_clipped_norm(data, clipping, log)
 
         if fit is not None:
             im = ax.imshow(fit.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=norm, **plotopts)
@@ -136,6 +136,22 @@ def plot(space, fig, ax, log=True, clipping=0.0, fit=None, **plotopts):
         cbarwidget = fig.colorbar(im)
         fig._draggablecbar = DraggableColorbar(cbarwidget, im) # we need to store this instance somewhere
         fig._draggablecbar.connect()
+    
+    elif space.dimension == 3:
+        if not isinstance(ax, mpl_toolkits.mplot3d.Axes3D):
+            raise ValueError("For 3D plots, the 'ax' parameter must be an Axes3D instance (use for example gca(projection='3d') to get one)")
 
-    elif space.dimension > 2:
-        raise ValueError("Cannot plot 3 or higher dimensional spaces, use projections or slices to decrease dimensionality.")
+        cmap = getattr(matplotlib.cm, plotopts.pop('cmap', 'jet'))
+        norm = get_clipped_norm(space.get_masked(), clipping, log)
+
+        gridx, gridy, gridz = space.get_grid()
+        ax.plot_surface(gridx[0,:,:], gridy[0,:,:], gridz[0,:,:],  facecolors=cmap(norm(space.project(0).get_masked())), shade=False, cstride=1, rstride=1)
+        ax.plot_surface(gridx[:,-1,:], gridy[:,-1,:], gridz[:,-1,:], facecolors=cmap(norm(space.project(1).get_masked())), shade=False, cstride=1, rstride=1)
+        ax.plot_surface(gridx[:,:,0], gridy[:,:,0], gridz[:,:,0],  facecolors=cmap(norm(space.project(2).get_masked())), shade=False, cstride=1, rstride=1)
+
+        ax.set_xlabel(space.axes[0].label)
+        ax.set_ylabel(space.axes[1].label)
+        ax.set_zlabel(space.axes[2].label)
+
+    elif space.dimension > 3:
+        raise ValueError("Cannot plot 4 or higher dimensional spaces, use projections or slices to decrease dimensionality.")
