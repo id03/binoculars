@@ -77,17 +77,19 @@ class DraggableColorbar(object):
         self.canvas.draw()
 
 
-def get_clipped_norm(data, clipping, log):
-    colordata = data.compressed()
+def get_clipped_norm(data, clipping=0.0, log=True):
+    if hasattr(data, 'compressed'):
+        data = data.compressed()
+
     if log:
-        colordata = colordata[colordata > 0]
+        data = data[data > 0]
 
     if clipping:
-        chop = int(round(colordata.size * clipping))
-        clip = sorted(colordata)[chop:-(1+chop)]
+        chop = int(round(data.size * clipping))
+        clip = sorted(data)[chop:-(1+chop)]
         vmin, vmax = clip[0], clip[-1]
     else:
-        vmin, vmax = colordata.min(), colordata.max()
+        vmin, vmax = data.min(), data.max()
 
     if log:
         return matplotlib.colors.LogNorm(vmin, vmax)
