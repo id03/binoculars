@@ -94,7 +94,7 @@ class PeakFitBase(FitBase):
         xdata, ydata, cxdata, cydata = self._prepare(space)
         xdata = xdata[0]
         cxdata = cxdata[0]
-        background = cydata < numpy.median(cydata)
+        background = cydata < numpy.mean(cydata)
         slope, offset, r , p, std = linregress(cxdata[background], cydata[background])
         loc = cxdata[cydata.argmax()]
         I =  cydata.max() - loc * slope - offset
