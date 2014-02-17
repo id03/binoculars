@@ -83,7 +83,7 @@ class ID03Input(backend.InputBase):
         pointparams = self.get_point_params(scan, job.firstpoint, job.lastpoint) # 2D array of diffractometer angles + mon + transm
         images = self.get_images(scan, job.firstpoint, job.lastpoint) # iterator!
         
-        for pp, image in zip(pointparams, images):
+        for pp, image in itertools.izip(pointparams, images):
             yield self.process_image(scanparams, pp, image)
 
     def parse_config(self, config):
