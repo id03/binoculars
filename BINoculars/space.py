@@ -447,6 +447,42 @@ class Space(object):
             raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(filename, e))
         return space
 
+    @classmethod
+    def fromfile_sliced(cls, filename, key):
+        dspace = DummySpace.fromfile(filename)
+        newkey = tuple(dspace._convertindex(k,ax) for k, ax in zip(key, dspace.axes))
+        newaxes = tuple(ax[k] for k, ax in zip(newkey, dspace.axes))
+        space = Space(newaxes)
+
+        try:
+            with h5py.File(filename, 'r') as fp:
+                try:
+                    fp['counts'].read_direct(space.photons, numpy.s_[newkey])
+                    fp['contributions'].read_direct(space.contributions, numpy.s_[newkey])                    
+                except (KeyError, TypeError) as e:
+                    raise errors.HDF5FileError('unable to load Space from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
+        except IOError as e:
+            raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(filename, e))
+        return space
+
+class DummySpace(Space):
+    def __init__(self, axes):
+        self.axes = tuple(axes)
+        if len(self.axes) > 1 and any(axis.label is None for axis in self.axes):
+            raise ValueError('axis label is required for multidimensional space')
+
+    @classmethod
+    def fromfile(cls, filename):
+        try:
+            with h5py.File(filename, 'r') as fp:
+                try:
+                    space = DummySpace(Axis(min, max, res, lbl) for (lbl, (min, max, res)) in zip(fp['axes_labels'], fp['axes']))
+                except (KeyError, TypeError) as e:
+                    raise errors.HDF5FileError('unable to load Space from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
+        except IOError as e:
+            raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(filename, e))
+        return space
+
 
 def union_axes(axes):
     axes = tuple(axes)

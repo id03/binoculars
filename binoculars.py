@@ -189,7 +189,7 @@ def command_fit(args):
         subtrspace, subtrinfo = BINoculars.util.handle_ordered_operations(subtrspace, args)
         args.nolog = True
 
-    space = BINoculars.space.Space.fromfile(args.infile)
+    space = BINoculars.space.DummySpace.fromfile(args.infile)
     space, info = BINoculars.util.handle_ordered_operations(space, args)
 
     if float(args.resolution) < space.axes[space.get_axindex_by_label(args.axis)].res:
@@ -216,8 +216,9 @@ def command_fit(args):
 
     for start, stop in zip(bins[:-1], bins[1:]):
         info = []
-        key = slice(start, stop)
-        newspace = space.slice(axindex, key)
+        key = list(slice(None) for ax in space.axes)
+        key[axindex] = slice(start, stop)
+        newspace =  BINoculars.space.Space.fromfile_sliced(args.infile, key)
         left, right = newspace.axes[axindex].min,newspace.axes[axindex].max
         if newspace.dimension == space.dimension:
             newspace = newspace.project(axindex)

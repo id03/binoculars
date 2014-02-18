@@ -81,6 +81,9 @@ class PeakFitBase(FitBase):
         argmax = tuple((signal * grid).sum() / signal.sum() for grid in self.cxdata)
         argmax_bkg = linparams[-1] + numpy.sum(numpy.vstack(param * grid.flatten() for (param, grid) in zip(linparams[:-1], argmax)))
         maximum = self.space.get_value(argmax) - argmax_bkg
+        
+        if numpy.isnan(maximum):
+            maximum = self.cydata.max() 
 
         self.set_guess(maximum, argmax, linparams)
 
@@ -146,7 +149,7 @@ class Lorentzian2D(PeakFitBase):
     @staticmethod
     def func((x,y), (I, loc0, loc1, gamma0, gamma1, th, slope1, slope2, offset)):
         a,b = tuple(grid - center for grid, center in zip(rot2d(x,y,th),rot2d(loc0,loc1,th)))
-        return (I  / (1 + ((a)/gamma0)**2) * 1 / (1 + ((b)/gamma1)**2) + x * slope1 + y * slope2 + offset)
+        return (I  / (1 + (a/gamma0)**2) * 1 / (1 + (b/gamma1)**2) + x * slope1 + y * slope2 + offset)
 
     def set_guess(self, maximum , argmax, linparams):
         gamma0 = 5 * self.space.axes[0].res #estimated FWHM on 10 pixels
