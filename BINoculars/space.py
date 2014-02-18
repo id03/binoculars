@@ -175,6 +175,16 @@ class Space(object):
         newspace.contributions = self.contributions[newkey]
         return newspace
 
+
+    def get_value(self, key):
+        if isinstance(key, numbers.Number):
+            if not len(self.axes) == 1:
+                raise IndexError('dimension mismatch')
+        elif isinstance(key, tuple) or isinstance(key, list):
+            newkey = tuple(self._convertindex(k,ax) for k, ax in zip(key, self.axes))
+            return self.photons[newkey] / self.contributions[newkey]
+
+
     def _convertindex(self,key,ax):
         if isinstance(key,slice):
             if key.step is not None:
