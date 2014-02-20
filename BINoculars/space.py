@@ -61,6 +61,20 @@ class Axis(object):
             if self.min <= value <= self.max:
                 return int(round((value - self.min) / self.res))
             raise ValueError('cannot get index: value {0} not in range [{1}, {2}]'.format(value, self.min, self.max))
+        elif isinstance(value, slice):
+            if value.step is not None:
+                raise IndexError('stride not supported')
+            if value.start is None:
+                start = None
+            else:
+                start = self.get_index(value.start)
+            if value.stop is None:
+                stop = None
+            else:
+                stop = self.get_index(value.stop)
+            if start > stop:
+                start, stop = stop, start
+            return slice(start, stop)
         else:
             if ((self.min <= value) & (value <= self.max)).all():
                 return numpy.around((value - self.min) / self.res).astype(int)
@@ -151,11 +165,7 @@ class Space(object):
         return self.photons/self.contributions
 
     def __repr__(self):
-        mem = self.memory_size / 1024.
-        units = 'kB', 'MB', 'GB'
-        exp = min(int(numpy.log(self.memory_size / 1024.) / numpy.log(1024.)), 2)
-        mem = '{0:.1f} {1}'.format(mem / 1024**exp, units[exp])
-        return '{0.__class__.__name__} ({0.dimension} dimensions, {0.photons.size} points, {2}) {{\n    {1}\n}}'.format(self, '\n    '.join(repr(ax) for ax in self.axes), mem)
+        return '{0.__class__.__name__} ({0.dimension} dimensions, {0.photons.size} points, {2}) {{\n    {1}\n}}'.format(self, '\n    '.join(repr(ax) for ax in self.axes), util.format_bytes(self.memory_size))
     
     def __getitem__(self, key):
         if isinstance(key, numbers.Number) or isinstance(key, slice):
@@ -166,7 +176,7 @@ class Space(object):
         elif not isinstance(key, tuple) or not len(key) == len(self.axes):
             raise IndexError('dimension mismatch')
 
-        newkey = tuple(self._convertindex(k,ax) for k, ax in zip(key, self.axes))
+        newkey = tuple(ax.get_index(k) for k, ax in zip(key, self.axes))
         newaxes = tuple(ax[k] for k, ax in zip(newkey, self.axes) if isinstance(ax[k], Axis))
         if not newaxes:
             raise ValueError('zero-dimensional spaces are not supported')
@@ -175,34 +185,13 @@ class Space(object):
         newspace.contributions = self.contributions[newkey]
         return newspace
 
-
     def get_value(self, key):
         if isinstance(key, numbers.Number):
             if not len(self.axes) == 1:
                 raise IndexError('dimension mismatch')
         elif isinstance(key, tuple) or isinstance(key, list):
-            newkey = tuple(self._convertindex(k,ax) for k, ax in zip(key, self.axes))
+            newkey = tuple(ax.get_index(k) for k, ax in zip(key, self.axes))
             return self.photons[newkey] / self.contributions[newkey]
-
-
-    def _convertindex(self,key,ax):
-        if isinstance(key,slice):
-            if key.step is not None:
-                raise IndexError('stride not supported')
-            if key.start is None:
-                start = None
-            else:
-                start = ax.get_index(key.start)
-            if key.stop is None:
-                stop = None
-            else:
-                stop = ax.get_index(key.stop)
-            if start > stop:
-                start, stop = stop, start
-            return slice(start, stop)
-        if isinstance(key, numbers.Number):
-            return ax.get_index(key)
-        raise TypeError('unrecognized slice')
 
     def project(self, axis, *more_axes):
         if isinstance(axis, Axis):
@@ -424,7 +413,7 @@ class Space(object):
 
     def tofile(self, filename):
         with util.atomic_write(filename) as tmpname:
-            with h5py.File(tmpname, 'w') as fp:
+            with util.open_h5py(tmpname, 'w') as fp:
                 axes = fp.create_dataset('axes', [len(self.axes), 3], dtype=float)
                 labels = fp.create_dataset('axes_labels', [len(self.axes)], dtype=h5py.special_dtype(vlen=str))
                 for i, ax in enumerate(self.axes):
@@ -432,51 +421,31 @@ class Space(object):
                     labels[i] = ax.label
                 fp.create_dataset('counts', self.photons.shape, dtype=self.photons.dtype, compression='gzip').write_direct(self.photons)
                 fp.create_dataset('contributions', self.contributions.shape, dtype=self.contributions.dtype, compression='gzip').write_direct(self.contributions)
+
+    @staticmethod
+    def _axes_fromfile(file):
+        with util.open_h5py(file, 'r') as fp:
+            try:
+                return tuple(Axis(min, max, res, lbl) for (lbl, (min, max, res)) in zip(fp['axes_labels'], fp['axes']))
+            except (KeyError, TypeError) as e:
+                raise errors.HDF5FileError('unable to load axes definition from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
     
     @classmethod
-    def fromfile(cls, filename):
+    def fromfile(cls, file, key=None):
         try:
-            with h5py.File(filename, 'r') as fp:
+            with util.open_h5py(file, 'r') as fp:
+                axes = cls._axes_fromfile(fp)
+                if key:
+                    if len(axes) != len(key):
+                        raise ValueError("dimensionality of 'key' does not match dimensionality of Space in HDF5 file {0}".format(filename))
+                    key = tuple(ax.get_index(k) for k, ax in zip(key, axes))
+                    axes = tuple(ax[k] for k, ax in zip(key, axes))
+                else:
+                    newkey = Ellipsis
+                space = cls(axes)
                 try:
-                    space = Space(Axis(min, max, res, lbl) for (lbl, (min, max, res)) in zip(fp['axes_labels'], fp['axes']))
-                    fp['counts'].read_direct(space.photons)
-                    fp['contributions'].read_direct(space.contributions)
-                except (KeyError, TypeError) as e:
-                    raise errors.HDF5FileError('unable to load Space from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
-        except IOError as e:
-            raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(filename, e))
-        return space
-
-    @classmethod
-    def fromfile_sliced(cls, filename, key):
-        dspace = DummySpace.fromfile(filename)
-        newkey = tuple(dspace._convertindex(k,ax) for k, ax in zip(key, dspace.axes))
-        newaxes = tuple(ax[k] for k, ax in zip(newkey, dspace.axes))
-        space = Space(newaxes)
-
-        try:
-            with h5py.File(filename, 'r') as fp:
-                try:
-                    fp['counts'].read_direct(space.photons, numpy.s_[newkey])
-                    fp['contributions'].read_direct(space.contributions, numpy.s_[newkey])                    
-                except (KeyError, TypeError) as e:
-                    raise errors.HDF5FileError('unable to load Space from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
-        except IOError as e:
-            raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(filename, e))
-        return space
-
-class DummySpace(Space):
-    def __init__(self, axes):
-        self.axes = tuple(axes)
-        if len(self.axes) > 1 and any(axis.label is None for axis in self.axes):
-            raise ValueError('axis label is required for multidimensional space')
-
-    @classmethod
-    def fromfile(cls, filename):
-        try:
-            with h5py.File(filename, 'r') as fp:
-                try:
-                    space = DummySpace(Axis(min, max, res, lbl) for (lbl, (min, max, res)) in zip(fp['axes_labels'], fp['axes']))
+                    fp['counts'].read_direct(space.photons, key)
+                    fp['contributions'].read_direct(space.contributions, key)
                 except (KeyError, TypeError) as e:
                     raise errors.HDF5FileError('unable to load Space from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
         except IOError as e:

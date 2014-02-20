@@ -10,6 +10,7 @@ import copy
 import numpy
 import contextlib
 import argparse
+import h5py
 
 
 ### ARGUMENT HANDLING
@@ -285,6 +286,14 @@ def space_to_txt(space, filename):
         fp.write('\tintensity\n')
         numpy.savetxt(fp, data, fmt='%.6g', delimiter='\t')
 
+@contextlib.contextmanager
+def open_h5py(file, mode):
+    if isinstance(file, h5py.File):
+        yield file
+    else:
+        with h5py.File(tmpfile, mode) as fp:
+            yield fp
+
 
 ### VARIOUS
 
@@ -352,6 +361,12 @@ def transformation_from_expressions(space, exprs):
         ns.update(**dict((ax.label, coord) for ax, coord in zip(space.axes, coords)))
         return tuple(eval(expr, ns) for expr in exprs)
     return transformation
+
+
+def format_bytes(bytes):
+    units = 'kB', 'MB', 'GB'
+    exp = min(int(numpy.log(bytes) / numpy.log(1024.)), 1)
+    return '{0:.1f} {1}'.format(bytes / 1024**exp, units[exp-1])
 
 
 ### GZIP PICKLING (zpi)
