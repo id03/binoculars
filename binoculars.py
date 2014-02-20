@@ -6,7 +6,7 @@ import argparse
 import numpy
 import numbers
 
-import BINoculars.space, BINoculars.util
+import BINoculars.space, BINoculars.util, BINoculars.fit
 
 ### INFO
 def command_info(args):
@@ -189,7 +189,7 @@ def command_fit(args):
         subtrspace, subtrinfo = BINoculars.util.handle_ordered_operations(subtrspace, args)
         args.nolog = True
 
-    space = BINoculars.space.Space.fromfile(args.infile)
+    space = BINoculars.space.DummySpace.fromfile(args.infile)
     space, info = BINoculars.util.handle_ordered_operations(space, args)
 
     if float(args.resolution) < space.axes[space.get_axindex_by_label(args.axis)].res:
@@ -213,42 +213,46 @@ def command_fit(args):
             filename = BINoculars.util.filename_enumerator('{0}_fit.pdf'.format(basename))
 
     fitclass = BINoculars.fit.get_class_by_name(args.func)
- 
+
     for start, stop in zip(bins[:-1], bins[1:]):
         info = []
-        key = slice(start, stop)
-        newspace = space.slice(axindex, key)
+        key = list(slice(None) for ax in space.axes)
+        key[axindex] = slice(start, stop)
+        newspace =  BINoculars.space.Space.fromfile_sliced(args.infile, key)
         left, right = newspace.axes[axindex].min,newspace.axes[axindex].max
         if newspace.dimension == space.dimension:
             newspace = newspace.project(axindex)
 
         fit = fitclass(newspace)
+        paramnames = fit.parameters
         print fit
         if fit.success:
             fitlabel.append(numpy.mean([start, stop]))
-            parameters.append(fit.results)
-            variance.append(fit.variances)
+            parameters.append(fit.result)
+            variance.append(fit.variance)
             fit = fit.fitdata
         else:
             fit = None
 
-        if len(newspace.get_masked().compressed()):
-            if newspace.dimension == 1:
-                pyplot.figure(figsize=(12, 9))
-                pyplot.subplot(111)
-                BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
-            elif newspace.dimension == 2:
-                pyplot.figure(figsize=(12, 9))
-                pyplot.subplot(121)
-                BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = None)
-                pyplot.subplot(122)
-                BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
 
-            info.append('sliced in {0} from {1} to {2}'.format(axlabel, left, right))
-            pyplot.suptitle('{0}'.format(' '.join(info)))
+        if args.savepdf or args.savefile:
+            if len(newspace.get_masked().compressed()):
+                if newspace.dimension == 1:
+                    pyplot.figure(figsize=(12, 9))
+                    pyplot.subplot(111)
+                    BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
+                elif newspace.dimension == 2:
+                    pyplot.figure(figsize=(12, 9))
+                    pyplot.subplot(121)
+                    BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = None)
+                    pyplot.subplot(122)
+                    BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
 
-            pyplot.savefig(filename.next())
-            pyplot.close()
+                info.append('sliced in {0} from {1} to {2}'.format(axlabel, left, right))
+                pyplot.suptitle('{0}'.format(' '.join(info)))
+                
+                pyplot.savefig(filename.next())
+                pyplot.close()
   
     parameters = numpy.vstack(n for n in parameters).T
     variance = numpy.vstack(n for n in variance).T

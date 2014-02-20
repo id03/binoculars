@@ -70,38 +70,28 @@ class FitBase(object):
 
 class PeakFitBase(FitBase):
     def _guess(self):
-        iguess = []
-        guess = []
-        x0= list(self.space.argmax())
-        skey = []
-        for i in range(self.space.dimension):
-            skey.append(x0[:])
-            skey[i][i] = slice(None)
-        for s in skey:
-            iguess.append(self._1Dguess(self.space[tuple(s)]))
-        for arg in self.parameters:
-            if not arg.isalpha():
-                argname = arg.rstrip('0123456789')
-                index = int(arg.split(argname)[-1])
-                guess.append(iguess[index][argname])
-            elif arg in iguess[0].keys():
-                guess.append(iguess[0][arg])
-            else:
-                guess.append(0)
-        self.guess = guess
- 
-    def _1Dguess(self, space):
-        xdata, ydata, cxdata, cydata = self._prepare(space)
-        xdata = xdata[0]
-        cxdata = cxdata[0]
-        background = cydata < numpy.median(cydata)
-        slope, offset, r , p, std = linregress(cxdata[background], cydata[background])
-        loc = cxdata[cydata.argmax()]
-        I =  cydata.max() - loc * slope - offset
-        gydata = ydata - xdata * slope - offset
-        gamma = (gydata.compressed() > I/2).sum() * space.axes[0].res / 2 
-        return {'I':I,'gamma':gamma,'slope':slope,'offset':offset,'loc':loc}
+        maximum = self.cydata.max() # for background determination
 
+        background = self.cydata < (numpy.median(self.cydata) + maximum) / 2 
+        linparams = self._linfit(list(grid[background] for grid in self.cxdata), self.cydata[background])
+
+        simbackground = linparams[-1] + numpy.sum(numpy.vstack(param * grid.flatten() for (param, grid) in zip(linparams[:-1], self.cxdata)) , axis = 0)
+        signal = self.cydata - simbackground
+        
+        argmax = tuple((signal * grid).sum() / signal.sum() for grid in self.cxdata)
+        argmax_bkg = linparams[-1] + numpy.sum(numpy.vstack(param * grid.flatten() for (param, grid) in zip(linparams[:-1], argmax)))
+        maximum = self.space.get_value(argmax) - argmax_bkg
+        
+        if numpy.isnan(maximum):
+            maximum = self.cydata.max() 
+
+        self.set_guess(maximum, argmax, linparams)
+
+    def _linfit(self, coordinates, intensity):
+        coordinates = list(coordinates)
+        coordinates.append(numpy.ones_like(coordinates[0]))
+        matrix = numpy.vstack(coords.flatten() for coords in coordinates).T
+        return numpy.linalg.lstsq(matrix, intensity)[0]
 
 class AutoDimensionFit(FitBase):
     def __new__(cls, space, guess=None):
@@ -137,18 +127,37 @@ def get_class_by_name(name):
 # fitting functions
 class Lorentzian1D(PeakFitBase):
     @staticmethod
-    def func((x,), (I, loc ,gamma, offset, slope)):
-        return I * gamma**2 / ((x - loc)**2 + gamma**2)+ offset + x * slope
+    def func((x,), (I, loc ,gamma, slope, offset)):
+        return I / ((x - loc)**2 + gamma**2)+ offset + x * slope
+
+    def set_guess(self, maximum , argmax, linparams):
+        gamma0 = 5 * self.space.axes[0].res #estimated FWHM on 10 pixels
+        self.guess =  [maximum , argmax[0], gamma0, linparams[0], linparams[1]] 
+
+class PolarLorentzian2D(PeakFitBase):
+    @staticmethod
+    def func((x,y), (I, loc0, loc1, gamma0, gamma1, th, slope1, slope2, offset)):
+        a,b = tuple(grid - center for grid, center in zip(rot2d(x,y,th),rot2d(loc0,loc1,th)))
+        return (I  / (1 + (a / gamma0)**2 + (b / gamma1)**2 ) + x * slope1 + y * slope2 + offset)
+
+    def set_guess(self, maximum , argmax, linparams):
+        gamma0 = self.space.axes[0].res#estimated FWHM on 10 pixels
+        gamma1 = self.space.axes[1].res
+        self.guess = [maximum , argmax[0], argmax[1], gamma0, gamma1, 0, linparams[0], linparams[1], linparams[2]]
 
 class Lorentzian2D(PeakFitBase):
     @staticmethod
-    def func((x,y), (I, loc0, loc1, gamma0, gamma1, offset, th)):
-        a,b = rot2d(x,y,th)
-        a0,b0 = rot2d(loc0,loc1,th)
-        return (I  / (1 + ((a-a0)/gamma0)**2) * 1 / (1 + ((b-b0)/gamma1)**2) + offset)
+    def func((x,y), (I, loc0, loc1, gamma0, gamma1, th, slope1, slope2, offset)):
+        a,b = tuple(grid - center for grid, center in zip(rot2d(x,y,th),rot2d(loc0,loc1,th)))
+        return (I  / (1 + (a/gamma0)**2) * 1 / (1 + (b/gamma1)**2) + x * slope1 + y * slope2 + offset)
+
+    def set_guess(self, maximum , argmax, linparams):
+        gamma0 = 5 * self.space.axes[0].res #estimated FWHM on 10 pixels
+        gamma1 = 5 * self.space.axes[1].res 
+        self.guess = [maximum , argmax[0], argmax[1],gamma0, gamma1, 0, linparams[0], linparams[1], linparams[2]] 
 
 class Lorentzian(AutoDimensionFit):
-    dimensions = {1: Lorentzian1D, 2: Lorentzian2D}
+    dimensions = {1: Lorentzian1D, 2: PolarLorentzian2D}
 
 class Gaussian1D(PeakFitBase):
     @staticmethod

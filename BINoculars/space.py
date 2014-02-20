@@ -183,6 +183,16 @@ class Space(object):
         newspace.contributions = self.contributions[newkey]
         return newspace
 
+
+    def get_value(self, key):
+        if isinstance(key, numbers.Number):
+            if not len(self.axes) == 1:
+                raise IndexError('dimension mismatch')
+        elif isinstance(key, tuple) or isinstance(key, list):
+            newkey = tuple(self._convertindex(k,ax) for k, ax in zip(key, self.axes))
+            return self.photons[newkey] / self.contributions[newkey]
+
+
     def _convertindex(self,key,ax):
         if isinstance(key,slice):
             if key.step is not None:
@@ -202,7 +212,7 @@ class Space(object):
             return ax.get_index(key)
         raise TypeError('unrecognized slice')
 
-    def project(self, axis):
+    def project(self, axis, *more_axes):
         if isinstance(axis, Axis):
             index = self.axes.index(axis)
         elif isinstance(axis, basestring):
@@ -216,7 +226,11 @@ class Space(object):
         newspace = self.__class__(newaxes)
         newspace.photons = self.photons.sum(axis=index)
         newspace.contributions = self.contributions.sum(axis=index)
-        return newspace
+
+        if more_axes:
+            return newspace.project(more_axes[0], *more_axes[1:])
+        else:
+            return newspace
 
     def slice(self, axis, key):
         if isinstance(axis, Axis):
@@ -435,6 +449,42 @@ class Space(object):
                     space = Space(Axis(min, max, res, lbl) for (lbl, (min, max, res)) in zip(fp['axes_labels'], fp['axes'])) # TODO: restore from floats or ints
                     fp['counts'].read_direct(space.photons)
                     fp['contributions'].read_direct(space.contributions)
+                except (KeyError, TypeError) as e:
+                    raise errors.HDF5FileError('unable to load Space from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
+        except IOError as e:
+            raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(filename, e))
+        return space
+
+    @classmethod
+    def fromfile_sliced(cls, filename, key):
+        dspace = DummySpace.fromfile(filename)
+        newkey = tuple(dspace._convertindex(k,ax) for k, ax in zip(key, dspace.axes))
+        newaxes = tuple(ax[k] for k, ax in zip(newkey, dspace.axes))
+        space = Space(newaxes)
+
+        try:
+            with h5py.File(filename, 'r') as fp:
+                try:
+                    fp['counts'].read_direct(space.photons, numpy.s_[newkey])
+                    fp['contributions'].read_direct(space.contributions, numpy.s_[newkey])                    
+                except (KeyError, TypeError) as e:
+                    raise errors.HDF5FileError('unable to load Space from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
+        except IOError as e:
+            raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(filename, e))
+        return space
+
+class DummySpace(Space):
+    def __init__(self, axes):
+        self.axes = tuple(axes)
+        if len(self.axes) > 1 and any(axis.label is None for axis in self.axes):
+            raise ValueError('axis label is required for multidimensional space')
+
+    @classmethod
+    def fromfile(cls, filename):
+        try:
+            with h5py.File(filename, 'r') as fp:
+                try:
+                    space = DummySpace(Axis(min, max, res, lbl) for (lbl, (min, max, res)) in zip(fp['axes_labels'], fp['axes']))
                 except (KeyError, TypeError) as e:
                     raise errors.HDF5FileError('unable to load Space from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
         except IOError as e:
