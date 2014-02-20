@@ -281,7 +281,7 @@ class Space(object):
         new += other
         return new
 
-    def __iadd__(self, other): # TODO int check
+    def __iadd__(self, other):
         if not isinstance(other, Space):
             return NotImplemented
         if not len(self.axes) == len(other.axes) or not all(a.is_compatible(b) for (a, b) in zip(self.axes, other.axes)):
@@ -313,16 +313,16 @@ class Space(object):
         self.photons -= other.photons
         return self
 
-    def trim(self): # TODO int check
+    def trim(self):
         mask = self.contributions > 0
         lims = (numpy.flatnonzero(sum_onto(mask, i)) for (i, ax) in enumerate(self.axes))
         lims = tuple((i.min(), i.max()) for i in lims)
-        self.axes = tuple(ax.rebound(ax[min], ax[max]) for (ax, (min, max)) in zip(self.axes, lims))
+        self.axes = tuple(ax.rebound(min + ax.imin, max + ax.imax) for (ax, (min, max)) in zip(self.axes, lims))
         slices = tuple(slice(min, max+1) for (min, max) in lims)
         self.photons = self.photons[slices].copy()
         self.contributions = self.contributions[slices].copy()
 
-    def rebin(self, factors): # TODO int check
+    def rebin(self, factors):
         if len(factors) != len(self.axes):
             raise ValueError('dimension mismatch between factors and axes')
         if not all(isinstance(factor, int) for factor in factors) or not all(factor % 2 == 0 for factor in factors):
@@ -333,13 +333,13 @@ class Space(object):
 
         photons = numpy.zeros(tempshape, order='C')
         contributions = numpy.zeros(tempshape, dtype=numpy.uint32, order='C')
-        pad = tuple(slice(left+factor/2, left+factor/2+size) for left, factor, size in zip(lefts, factors, self.photons.shape))
+        pad = tuple(slice(left, left+size) for left, factor, size in zip(lefts, factors, self.photons.shape))
         photons[pad] = self.photons
         contributions[pad] = self.contributions
 
         new = self.__class__(newaxes)
         for offsets in itertools.product(*[range(factor) for factor in factors]):
-            stride = tuple(slice(offset, offset+size+left+factor/2, factor) for offset, size, factor, left in zip(offsets, self.photons.shape, factors, lefts))
+            stride = tuple(slice(offset, offset + len(ax)*factor, factor) for offset, ax, factor in zip(offsets, newaxes, factors))
             new.photons += photons[stride]
             new.contributions += contributions[stride]
 
@@ -359,7 +359,7 @@ class Space(object):
         new.contributions = contributions
         return new
 
-    def make_compatible(self, other): # TODO int check
+    def make_compatible(self, other):
         if not isinstance(other, Space):
             return NotImplemented
         if not len(self.axes) == len(other.axes):
