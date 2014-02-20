@@ -70,7 +70,7 @@ def handle_ordered_operations(space, args, auto3to2=False):
 
         if command == 'slice' or command == 'pslice':
             ax, key = opts
-            axindex = space.get_axindex_by_label(ax)
+            axindex = space.axes.index(ax)
             axlabel = space.axes[axindex].label
             if ':' in key:
                 start, stop = key.split(':')
@@ -92,7 +92,7 @@ def handle_ordered_operations(space, args, auto3to2=False):
 
             if command == 'pslice':
                 try:
-                    projectaxis = space.get_axindex_by_label(ax)
+                    projectaxis = space.axes.index(ax)
                 except ValueError:
                     pass
                 else:
@@ -100,7 +100,7 @@ def handle_ordered_operations(space, args, auto3to2=False):
                     space = space.project(projectaxis) 
 
         elif command == 'project':
-            projectaxis = space.get_axindex_by_label(opts)
+            projectaxis = space.axes.index(opts)
             info.append('projected on {0}'.format(space.axes[projectaxis].label))
             space = space.project(projectaxis)    
 
@@ -291,7 +291,7 @@ def open_h5py(file, mode):
     if isinstance(file, h5py.File):
         yield file
     else:
-        with h5py.File(tmpfile, mode) as fp:
+        with h5py.File(file, mode) as fp:
             yield fp
 
 

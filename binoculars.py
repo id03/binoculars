@@ -18,8 +18,7 @@ def command_info(args):
     
     for f in args.infile:
         try:
-            with h5py.File(f, 'r') as fp:
-                axes = BINoculars.space.Space._axes_fromfile(fp)
+            axes = BINoculars.space.Axes.fromfile(f)
             points = numpy.array([len(ax) for ax in axes]).prod()
             # assuming double precision floats for photons, 32 bit integers for contributions
             bytes = BINoculars.util.format_bytes((8 + 4) * points)
@@ -186,23 +185,17 @@ def command_fit(args):
     parser.add_argument('axis')
     parser.add_argument('resolution')
     parser.add_argument('func')
-    BINoculars.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'pslice', 'subtract', 'rebin', 'transform')
+    BINoculars.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog')
     args = parser.parse_args(args)
 
-    if args.subtract:
-        subtrspace = BINoculars.space.Space.fromfile(args.subtract)
-        subtrspace, subtrinfo = BINoculars.util.handle_ordered_operations(subtrspace, args)
-        args.nolog = True
+    axes = BINoculars.space.Axes.fromfile(args.infile)
+    axindex = axes.index(args.axis)
+    ax = axes[axindex]
+    axlabel = ax.label
+    if float(args.resolution) < ax.res:
+        raise ValueError('interval {0} to low, minimum interval is {1}'.format(args.resolution, ax.res))
 
-    space = BINoculars.space.DummySpace.fromfile(args.infile)
-    space, info = BINoculars.util.handle_ordered_operations(space, args)
-
-    if float(args.resolution) < space.axes[space.get_axindex_by_label(args.axis)].res:
-        raise ValueError('interval {0} to low, minimum interval is {1}'.format(args.resolution, space.axes[space.get_axindex_by_label(args.axis)].res))
-
-    axindex = space.get_axindex_by_label(args.axis)
-    axlabel = space.axes[axindex].label
-    mi, ma = space.axes[axindex].min, space.axes[axindex].max
+    mi, ma = ax.min, ax.max
     bins = numpy.linspace(mi, ma, numpy.ceil(1 / numpy.float(args.resolution) * (ma - mi)) + 1)
 
     parameters = []
@@ -221,11 +214,11 @@ def command_fit(args):
 
     for start, stop in zip(bins[:-1], bins[1:]):
         info = []
-        key = list(slice(None) for ax in space.axes)
+        key = [slice(None) for i in axes]
         key[axindex] = slice(start, stop)
         newspace =  BINoculars.space.Space.fromfile_sliced(args.infile, key)
         left, right = newspace.axes[axindex].min,newspace.axes[axindex].max
-        if newspace.dimension == space.dimension:
+        if newspace.dimension == axes.dimension:
             newspace = newspace.project(axindex)
 
         fit = fitclass(newspace)

@@ -128,6 +128,76 @@ class Axis(object):
         return '{0.__class__.__name__} {0.label} (min={0.min}, max={0.max}, res={0.res}, count={1})'.format(self, len(self))
 
 
+class Axes(object):
+    def __init__(self, axes):
+        self.axes = tuple(axes)
+        if len(self.axes) > 1 and any(axis.label is None for axis in self.axes):
+            raise ValueError('axis label is required for multidimensional space')
+
+    def __iter__(self):
+        return iter(self.axes)
+
+    @property
+    def dimension(self):
+        return len(self.axes)
+
+    @classmethod
+    def fromfile(cls, file):
+        with util.open_h5py(file, 'r') as fp:
+            try:
+                if 'axes' in fp:
+                    # old style, float min/max
+                    return cls(tuple(Axis(min, max, res, lbl) for ((min, max, res), lbl) in zip(fp['axes'], fp['axes_labels'])))
+                else:
+                    # new style, integer min/max
+                    return cls(tuple(Axis(imin, imax, res, lbl) for ((imin, imax), res, lbl) in zip(fp['axes_range'], fp['axes_res'], fp['axes_labels'])))
+            except (KeyError, TypeError) as e:
+                raise errors.HDF5FileError('unable to load axes definition from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
+
+    def tofile(self, file):
+        with util.open_h5py(file, 'w') as fp:
+            range = fp.create_dataset('axes_range', [len(self.axes), 2], dtype=int)
+            res = fp.create_dataset('axes_res', [len(self.axes)], dtype=float)
+            labels = fp.create_dataset('axes_labels', [len(self.axes)], dtype=h5py.special_dtype(vlen=str))
+            for i, ax in enumerate(self.axes):
+                range[i, :] = ax.imin, ax.imax
+                res[i] = ax.res
+                labels[i] = ax.label
+
+    def index(self, obj):
+        if isinstance(obj, Axis):
+            return self.axes.index(obj)
+        elif isinstance(obj, int) and 0 <= obj < len(self.axes):
+            return obj
+        elif isinstance(obj, basestring):
+            label = obj.lower()
+            matches = tuple(i for i, axis in enumerate(self.axes) if axis.label.lower() == label)
+            if len(matches) == 0:
+                raise ValueError('no matching axis found')
+            elif len(matches) == 1:
+                return matches[0]
+            else:
+                raise ValueError('ambiguous axis label {0}'.format(label))
+        else:
+            raise ValueError('invalid axis identifier {0!r}'.format(obj))
+
+    def __len__(self):
+        return len(self.axes)
+
+    def __getitem__(self, key):
+        return self.axes[key]
+
+    def __eq__(self, other):
+        if not isinstance(other, Axes):
+            return NotImplemented
+        return self.axes == other.axes
+
+    def __ne__(self, other):
+        if not isinstance(other, Axes):
+            return NotImplemented
+        return self.axes != other.axes
+
+
 class EmptySpace(object):
     def __add__(self, other):
         if not isinstance(other, Space):
@@ -147,16 +217,17 @@ class EmptySpace(object):
 
 class Space(object):
     def __init__(self, axes):
-        self.axes = tuple(axes)
-        if len(self.axes) > 1 and any(axis.label is None for axis in self.axes):
-            raise ValueError('axis label is required for multidimensional space')
+        if not isinstance(axes, Axes):
+            self.axes = Axes(axes)
+        else:
+            self.axes = axes
         
         self.photons = numpy.zeros([len(ax) for ax in self.axes], order='C')
         self.contributions = numpy.zeros(self.photons.shape, dtype=numpy.uint32, order='C')
 
     @property
     def dimension(self):
-        return len(self.axes)
+        return self.axes.dimension
 
     @property
     def memory_size(self):
@@ -202,14 +273,7 @@ class Space(object):
             return self.photons[newkey] / self.contributions[newkey]
 
     def project(self, axis, *more_axes):
-        if isinstance(axis, Axis):
-            index = self.axes.index(axis)
-        elif isinstance(axis, basestring):
-            index = self.get_axindex_by_label(axis)
-        elif isinstance(axis, int):
-            index = axis
-        else:
-            raise ValueError('unknown axis specification {0!r}'.format(axis))
+        index = self.axes.index(axis)
         newaxes = list(self.axes)
         newaxes.pop(index)
         newspace = self.__class__(newaxes)
@@ -222,27 +286,10 @@ class Space(object):
             return newspace
 
     def slice(self, axis, key):
-        if isinstance(axis, Axis):
-            axindex = self.axes.index(axis)
-        elif isinstance(axis, basestring):
-            axindex = self.get_axindex_by_label(axis)
-        elif isinstance(axis, int):
-            axindex = axis
-        else:
-            raise ValueError('unknown axis specification {0!r}'.format(axis))
+        axindex = self.axes.index(axis)
         newkey = list(slice(None) for ax in self.axes)
         newkey[axindex] = key
         return self.__getitem__(tuple(newkey))
-
-    def get_axindex_by_label(self, label):
-        label = label.lower()
-        matches = tuple(i for i, axis in enumerate(self.axes) if axis.label.lower() == label)
-        if len(matches) == 0:
-            raise ValueError('no matching axis found')
-        elif len(matches) == 1:
-            return matches[0]
-        else:
-            raise ValueError('ambiguous axis label {0}'.format(label))
 
     def get_masked(self):
         return numpy.ma.array(data=self.get(), mask=(self.contributions == 0))
@@ -371,7 +418,7 @@ class Space(object):
     def reorder(self, labels):
         if not self.dimension == len(labels):
             raise ValueError('cannot make spaces with different dimensionality compatible')
-        newindices = list(self.get_axindex_by_label(label) for label in labels)
+        newindices = list(self.axes.index(label) for label in labels)
         new = self.__class__(tuple(self.axes[index] for index in newindices))
         new.photons = numpy.transpose(self.photons, axes = newindices)
         new.contributions = numpy.transpose(self.contributions, axes = newindices)
@@ -422,27 +469,15 @@ class Space(object):
     def tofile(self, filename):
         with util.atomic_write(filename) as tmpname:
             with util.open_h5py(tmpname, 'w') as fp:
-                axes = fp.create_dataset('axes', [len(self.axes), 3], dtype=float)
-                labels = fp.create_dataset('axes_labels', [len(self.axes)], dtype=h5py.special_dtype(vlen=str))
-                for i, ax in enumerate(self.axes):
-                    axes[i, :] = ax.min, ax.max, ax.res # TODO store imin, imax instead of min, max
-                    labels[i] = ax.label
+                self.axes.tofile(fp)
                 fp.create_dataset('counts', self.photons.shape, dtype=self.photons.dtype, compression='gzip').write_direct(self.photons)
                 fp.create_dataset('contributions', self.contributions.shape, dtype=self.contributions.dtype, compression='gzip').write_direct(self.contributions)
 
-    @staticmethod
-    def _axes_fromfile(file):
-        with util.open_h5py(file, 'r') as fp:
-            try:
-                return tuple(Axis(min, max, res, lbl) for (lbl, (min, max, res)) in zip(fp['axes_labels'], fp['axes'])) # TODO: restore from floats or ints
-            except (KeyError, TypeError) as e:
-                raise errors.HDF5FileError('unable to load axes definition from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
-    
     @classmethod
     def fromfile(cls, file, key=None):
         try:
             with util.open_h5py(file, 'r') as fp:
-                axes = cls._axes_fromfile(fp)
+                axes = Axes.fromfile(fp)
                 if key:
                     if len(axes) != len(key):
                         raise ValueError("dimensionality of 'key' does not match dimensionality of Space in HDF5 file {0}".format(filename))
