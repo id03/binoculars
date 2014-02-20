@@ -21,16 +21,26 @@ def sum_onto(a, axis):
 class Axis(object):
     def __init__(self, min, max, res, label=None):
         self.res = float(res)
-        if round(min / self.res) != round(min / self.res,6) or round(max / self.res) != round(max / self.res,6):
-            self.min = numpy.floor(float(min)/self.res)*self.res
-            self.max = numpy.ceil(float(max)/self.res)*self.res
+        if isinstance(min, int):
+            self.imin = min
         else:
-            self.min = min
-            self.max = max
+            self.imin = int(numpy.floor(min / self.res))
+        if isinstance(max, int):
+            self.imax = max
+        else:
+            self.imax = int(numpy.ceil(max / self.res))
         self.label = label
+
+    @property
+    def max(self):
+        return self.imax * self.res
+
+    @property
+    def min(self):
+        return self.imin * self.res
     
     def __len__(self):
-        return int(round((self.max - self.min) / self.res)) + 1
+        return self.imax - self.imin + 1
 
     def __getitem__(self, key):
         if isinstance(key, slice):
@@ -48,11 +58,11 @@ class Axis(object):
                 stop = key.stop
             else:
                 raise IndexError('slice stop must be integer')
-            return self.__class__(self.min + start * self.res, self.min + (stop - 1) * self.res, self.res, self.label)
+            return self.__class__((self.imin + start) * self.res, (self.imin + stop - 1) * self.res, self.res, self.label)
         elif isinstance(key, int):
             if key >= len(self):  # to support iteration
                 raise IndexError('key out of range')
-            return self.min + key * self.res
+            return (self.imin + key) * self.res
         else:
             raise IndexError('unknown key {0!r}'.format(key))
 
@@ -85,15 +95,15 @@ class Axis(object):
             return NotImplemented
         if not self.is_compatible(other):
             raise ValueError('cannot unite axes with different resolution/label')
-        return self.__class__(min(self.min, other.min), max(self.max, other.max), self.res, self.label)
+        return self.__class__(min(self.imin, other.imin), max(self.imax, other.imax), self.res, self.label)
 
     def __eq__(self, other):
         if not isinstance(other, Axis):
             return NotImplemented
-        return self.res == other.res and self.min == other.min and self.max == other.max and self.label == other.label
+        return self.res == other.res and self.imin == other.imin and self.imax == other.imax and self.label == other.label
 
     def __hash__(self):
-        return hash(self.min) ^ hash(self.max) ^ hash(self.res) ^ hash(self.label)
+        return hash(self.imin) ^ hash(self.imax) ^ hash(self.res) ^ hash(self.label)
 
     def is_compatible(self, other):
         if not isinstance(other, Axis):
@@ -104,17 +114,15 @@ class Axis(object):
         if isinstance(other, numbers.Number):
             return self.min <= other <= self.max
         elif isinstance(other, Axis):
-            return self.is_compatible(other) and self.min <= other.min and self.max >= other.max
+            return self.is_compatible(other) and self.imin <= other.imin and self.imax >= other.imax
 
     def rebound(self, min, max):
         return self.__class__(min, max, self.res, self.label)
 
     def rebin(self, factor):
-        newres = self.res*factor
-        left = int(round(self.min/self.res))
-        right = int(round(self.max/self.res))
-        new = self.__class__(newres * numpy.floor(round(self.min / newres, 3)), newres * numpy.ceil(round(self.max / newres, 3)), newres, self.label)
-        return left % factor, -right % factor, new
+        # for integers the following relations hold: a // b == floor(a / b), -(-a // b) == ceil(a / b)
+        new = self.__class__(self.imin // factor, -(-self.imax  // factor), factor*self.res, self.label)
+        return self.imin % factor, -self.imax % factor, new
 
     def __repr__(self):
         return '{0.__class__.__name__} {0.label} (min={0.min}, max={0.max}, res={0.res}, count={1})'.format(self, len(self))
@@ -241,7 +249,7 @@ class Space(object):
         
     def get_grid(self):
         igrid = numpy.mgrid[tuple(slice(0, len(ax)) for ax in self.axes)]
-        grid = tuple(numpy.array(grid * ax.res + ax.min) for grid, ax in zip(igrid, self.axes))
+        grid = tuple(numpy.array((grid + ax.imin) * ax.res) for grid, ax in zip(igrid, self.axes))
         return grid
 
     def max(self, axis=None):
@@ -298,7 +306,7 @@ class Space(object):
         mask = self.contributions > 0
         lims = (numpy.flatnonzero(sum_onto(mask, i)) for (i, ax) in enumerate(self.axes))
         lims = tuple((i.min(), i.max()) for i in lims)
-        self.axes = tuple(ax.rebound(ax[min], ax[max]) for (ax, (min, max)) in zip(self.axes, lims))
+        self.axes = tuple(ax.rebound(min + ax.imin, max + ax.imax) for (ax, (min, max)) in zip(self.axes, lims))
         slices = tuple(slice(min, max+1) for (min, max) in lims)
         self.photons = self.photons[slices].copy()
         self.contributions = self.contributions[slices].copy()
@@ -314,13 +322,13 @@ class Space(object):
 
         photons = numpy.zeros(tempshape, order='C')
         contributions = numpy.zeros(tempshape, dtype=numpy.uint32, order='C')
-        pad = tuple(slice(left+factor/2, left+factor/2+size) for left, factor, size in zip(lefts, factors, self.photons.shape))
+        pad = tuple(slice(left, left+size) for left, factor, size in zip(lefts, factors, self.photons.shape))
         photons[pad] = self.photons
         contributions[pad] = self.contributions
 
         new = self.__class__(newaxes)
         for offsets in itertools.product(*[range(factor) for factor in factors]):
-            stride = tuple(slice(offset, offset+size+left+factor/2, factor) for offset, size, factor, left in zip(offsets, self.photons.shape, factors, lefts))
+            stride = tuple(slice(offset, offset + len(ax)*factor, factor) for offset, ax, factor in zip(offsets, newaxes, factors))
             new.photons += photons[stride]
             new.contributions += contributions[stride]
 
@@ -417,7 +425,7 @@ class Space(object):
                 axes = fp.create_dataset('axes', [len(self.axes), 3], dtype=float)
                 labels = fp.create_dataset('axes_labels', [len(self.axes)], dtype=h5py.special_dtype(vlen=str))
                 for i, ax in enumerate(self.axes):
-                    axes[i, :] = ax.min, ax.max, ax.res
+                    axes[i, :] = ax.min, ax.max, ax.res # TODO store imin, imax instead of min, max
                     labels[i] = ax.label
                 fp.create_dataset('counts', self.photons.shape, dtype=self.photons.dtype, compression='gzip').write_direct(self.photons)
                 fp.create_dataset('contributions', self.contributions.shape, dtype=self.contributions.dtype, compression='gzip').write_direct(self.contributions)
@@ -426,7 +434,7 @@ class Space(object):
     def _axes_fromfile(file):
         with util.open_h5py(file, 'r') as fp:
             try:
-                return tuple(Axis(min, max, res, lbl) for (lbl, (min, max, res)) in zip(fp['axes_labels'], fp['axes']))
+                return tuple(Axis(min, max, res, lbl) for (lbl, (min, max, res)) in zip(fp['axes_labels'], fp['axes'])) # TODO: restore from floats or ints
             except (KeyError, TypeError) as e:
                 raise errors.HDF5FileError('unable to load axes definition from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
     
