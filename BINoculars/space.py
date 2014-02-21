@@ -82,7 +82,7 @@ class Axis(object):
                 stop = None
             else:
                 stop = self.get_index(value.stop)
-            if start > stop:
+            if start is not None and stop is not None and start > stop:
                 start, stop = stop, start
             return slice(start, stop)
         else:
