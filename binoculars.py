@@ -39,7 +39,7 @@ def parse_transform_args(transform):
 def command_convert(args):
     parser = argparse.ArgumentParser(prog='binoculars convert')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
-    BINoculars.util.argparse_common_arguments(parser, 'project', 'slice', 'pslice', 'rebin', 'transform')
+    BINoculars.util.argparse_common_arguments(parser, 'project', 'slice', 'pslice', 'rebin', 'transform', 'subtract')
     parser.add_argument('--read-trusted-zpi', action='store_true', help='read legacy .zpi files, ONLY FROM A TRUSTED SOURCE!')
     parser.add_argument('infile', help='input file, must be a .zpi')
     parser.add_argument('outfile', help='output file, can be .zpi or .edf or .txt')
@@ -59,6 +59,9 @@ def command_convert(args):
     else:
         space = BINoculars.space.Space.fromfile(args.infile)
     ext = os.path.splitext(args.outfile)[-1]
+
+    if args.subtract:
+        space -= BINoculars.space.Space.fromfile(args.subtract)
 
     space, info = BINoculars.util.handle_ordered_operations(space, args)
 
