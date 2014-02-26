@@ -480,19 +480,19 @@ class Space(object):
                 axes = Axes.fromfile(fp)
                 if key:
                     if len(axes) != len(key):
-                        raise ValueError("dimensionality of 'key' does not match dimensionality of Space in HDF5 file {0}".format(filename))
+                        raise ValueError("dimensionality of 'key' does not match dimensionality of Space in HDF5 file {0}".format(file))
                     key = tuple(ax.get_index(k) for k, ax in zip(key, axes))
                     axes = tuple(ax[k] for k, ax in zip(key, axes))
                 else:
-                    newkey = Ellipsis
+                    key = Ellipsis
                 space = cls(axes)
                 try:
                     fp['counts'].read_direct(space.photons, key)
                     fp['contributions'].read_direct(space.contributions, key)
                 except (KeyError, TypeError) as e:
-                    raise errors.HDF5FileError('unable to load Space from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
+                    raise errors.HDF5FileError('unable to load Space from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(file, e))
         except IOError as e:
-            raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(filename, e))
+            raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(file, e))
         return space
 
 

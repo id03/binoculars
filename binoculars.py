@@ -219,7 +219,7 @@ def command_fit(args):
         info = []
         key = [slice(None) for i in axes]
         key[axindex] = slice(start, stop)
-        newspace =  BINoculars.space.Space.fromfile_sliced(args.infile, key)
+        newspace =  BINoculars.space.Space.fromfile(args.infile, key)
         left, right = newspace.axes[axindex].min,newspace.axes[axindex].max
         if newspace.dimension == axes.dimension:
             newspace = newspace.project(axindex)
