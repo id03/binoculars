@@ -359,7 +359,9 @@ class Space(object):
         self.contributions = self.contributions[slices].copy()
 
     def rebin(self, factors):
-        if len(factors) != len(self.axes):
+        if isinstance(factors, int):
+            factors = [factors] * len(self.axes)
+        elif len(factors) != len(self.axes):
             raise ValueError('dimension mismatch between factors and axes')
         if not all(isinstance(factor, int) for factor in factors) or not all(factor % 2 == 0 for factor in factors):
             raise ValueError('binning factors must be even integers')
