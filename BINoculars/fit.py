@@ -24,7 +24,7 @@ class FitBase(object):
         self.parameters = args[1]
         
         self.xdata, self.ydata, self.cxdata, self.cydata = self._prepare(self.space)
-        if guess:
+        if guess is not None:
             if len(guess) != len(self.parameters):
                 raise ValueError('invalid number of guess parameters {0!r} for {1!r}'.format(guess, self.parameters))
             self.guess = guess

@@ -188,6 +188,7 @@ def command_fit(args):
     parser.add_argument('axis')
     parser.add_argument('resolution')
     parser.add_argument('func')
+    parser.add_argument('--follow', action='store_true', help='use the result of the previous fit as guess for the next')
     BINoculars.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog')
     args = parser.parse_args(args)
 
@@ -204,6 +205,7 @@ def command_fit(args):
     parameters = []
     variance = []
     fitlabel = []
+    guess = None
 
     basename = os.path.splitext(os.path.basename(args.infile))[0]
 
@@ -224,17 +226,24 @@ def command_fit(args):
         if newspace.dimension == axes.dimension:
             newspace = newspace.project(axindex)
 
-        fit = fitclass(newspace)
+        fit = fitclass(newspace, guess)
+
         paramnames = fit.parameters
         print fit
         if fit.success:
             fitlabel.append(numpy.mean([start, stop]))
             parameters.append(fit.result)
             variance.append(fit.variance)
+            if args.follow and not fit.variance[0] == float(0):
+                guess = fit.result
+            else:
+                guess = None
             fit = fit.fitdata
         else:
             fit = None
+            guess = None
 
+        print guess
 
         if args.savepdf or args.savefile:
             if len(newspace.get_masked().compressed()):
