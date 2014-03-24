@@ -25,6 +25,19 @@ def multiprocessing_main((config, command)): # note the double parenthesis for m
     Main.from_object(config, command)
     return config.dispatcher.destination.retrieve()
 
+def read_config_text(fn, overrides=[]):
+     config = ConfigParser.RawConfigParser()
+     config.read(args.configfile)
+
+     for section, option, value in args.c:
+         config.set(section, option, value)
+
+     configobj = util.Config()
+     for section in 'dispatcher', 'projection', 'input':
+         setattr(configobj, section, dict((k, v.split('#')[0].strip()) for (k, v) in config.items(section)))
+
+     return configobj
+
 
 class Main(object):
     def __init__(self, config, command):
@@ -49,16 +62,7 @@ class Main(object):
                 configobj = util.zpi_load(fp)
         if not configobj:
             # reopen args.configfile as text
-            config = ConfigParser.RawConfigParser()
-            config.read(args.configfile)
-
-            for section, option, value in args.c:
-                config.set(section, option, value)
-
-            configobj = util.Config()
-            for section in 'dispatcher', 'projection', 'input':
-                setattr(configobj, section, dict((k, v.split('#')[0].strip()) for (k, v) in config.items(section)))
-
+            configobj = read_config_text(args.configfile, overrides=args.c)
         return cls(configobj, args.command)
 
     @classmethod

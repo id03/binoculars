@@ -141,6 +141,15 @@ class Axes(object):
     def dimension(self):
         return len(self.axes)
 
+    @property
+    def npoints(self):
+        return numpy.array([len(ax) for ax in self.axes]).prod()
+
+    @property
+    def memory_size(self):
+        # assuming double precision floats for photons, 32 bit integers for contributions
+        return (8+4) * self.npoints
+
     @classmethod
     def fromfile(cls, file):
         with util.open_h5py(file, 'r') as fp:
@@ -197,6 +206,9 @@ class Axes(object):
             return NotImplemented
         return self.axes != other.axes
 
+    def __repr__(self):
+        return '{0.__class__.__name__} ({0.dimension} dimensions, {0.npoints} points, {1}) {{\n    {2}\n}}'.format(self, util.format_bytes(self.memory_size), '\n    '.join(repr(ax) for ax in self.axes))
+
 
 class EmptySpace(object):
     def __add__(self, other):
@@ -230,6 +242,10 @@ class Space(object):
         return self.axes.dimension
 
     @property
+    def npoints(self):
+        return self.photos.size
+
+    @property
     def memory_size(self):
         # approximate! does not take into account all the overhead
         return self.photons.nbytes + self.contributions.nbytes
@@ -244,7 +260,7 @@ class Space(object):
         return self.photons/self.contributions
 
     def __repr__(self):
-        return '{0.__class__.__name__} ({0.dimension} dimensions, {0.photons.size} points, {2}) {{\n    {1}\n}}'.format(self, '\n    '.join(repr(ax) for ax in self.axes), util.format_bytes(self.memory_size))
+        return '{0.__class__.__name__} ({0.dimension} dimensions, {0.npoints} points, {1}) {{\n    {2}\n}}'.format(self, util.format_bytes(self.memory_size), '\n    '.join(repr(ax) for ax in self.axes))
     
     def __getitem__(self, key):
         if isinstance(key, numbers.Number) or isinstance(key, slice):

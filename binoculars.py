@@ -19,13 +19,10 @@ def command_info(args):
     for f in args.infile:
         try:
             axes = BINoculars.space.Axes.fromfile(f)
-            points = numpy.array([len(ax) for ax in axes]).prod()
-            # assuming double precision floats for photons, 32 bit integers for contributions
-            bytes = BINoculars.util.format_bytes((8 + 4) * points)
         except Exception as e:
             print '{0}: unable to load Space: {1!r}'.format(f, e)
         else:
-            print '{0} Space ({1} dimensions, {2} points, {3}) {{\n    {4}\n}}'.format(f, len(axes), points, bytes, '\n    '.join(repr(ax) for ax in axes))
+            print '{0} {1!r}'.format(f, axes)
 
 
 ### CONVERT
