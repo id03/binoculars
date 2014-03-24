@@ -1,6 +1,5 @@
 import os
 import time
-import inspect
 import itertools
 import subprocess
 import multiprocessing

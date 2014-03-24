@@ -1,12 +1,7 @@
 import numpy
-import scipy.optimize, scipy.fftpack
-from scipy.special import wofz
+import scipy.optimize, scipy.special
 import inspect
 import re
-import pdb
-from scipy.stats import linregress
-
-import matplotlib.pyplot as plt
 
 
 class FitBase(object):
@@ -168,4 +163,4 @@ class Voigt1D(PeakFitBase):
     @staticmethod
     def func((x,), (loc, I, sigma, gamma, offset, slope)):
         z = (x - loc + numpy.complex(0, gamma)) / (sigma * numpy.sqrt(2))
-        return I * numpy.real(wofz(z))/(sigma * numpy.sqrt(2 *  numpy.pi)) + offset + x * slope
+        return I * numpy.real(scipy.special.wofz(z))/(sigma * numpy.sqrt(2 *  numpy.pi)) + offset + x * slope

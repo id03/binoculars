@@ -4,10 +4,8 @@ import sys
 import os
 import argparse
 import numpy
-import numbers
-import h5py
 
-import BINoculars.space, BINoculars.util, BINoculars.fit
+import BINoculars.space, BINoculars.util
 
 ### INFO
 def command_info(args):
@@ -82,9 +80,7 @@ def command_convert(args):
 ### PLOT
 def command_plot(args):
     import matplotlib.pyplot as pyplot
-    import matplotlib.colors
-
-    import BINoculars.plot
+    import BINoculars.fit, BINoculars.plot
 
     parser = argparse.ArgumentParser(prog='binoculars plot')
     parser.add_argument('infile', nargs='+')
@@ -176,8 +172,6 @@ def command_plot(args):
 ### FIT
 def command_fit(args):
     import matplotlib.pyplot as pyplot
-    import matplotlib.colors
-
     import BINoculars.fit, BINoculars.plot
 
     parser = argparse.ArgumentParser(prog='binoculars fit')

@@ -6,7 +6,7 @@ import numpy
 
 from PyMca import SixCircle, specfilewrapper, specfile, EdfFile
 
-from .. import space, backend, errors, util
+from .. import backend, errors, util
 
 
 class HKLProjection(backend.ProjectionBase):

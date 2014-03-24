@@ -1,6 +1,4 @@
-import itertools
-
-from . import space, util, errors, dispatcher
+from . import util, errors, dispatcher
 
 
 class ProjectionBase(util.ConfigurableObject):
