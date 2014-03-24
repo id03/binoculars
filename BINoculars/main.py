@@ -27,9 +27,9 @@ def multiprocessing_main((config, command)): # note the double parenthesis for m
 
 def read_config_text(fn, overrides=[]):
      config = ConfigParser.RawConfigParser()
-     config.read(args.configfile)
+     config.read(fn)
 
-     for section, option, value in args.c:
+     for section, option, value in overrides:
          config.set(section, option, value)
 
      configobj = util.Config()
