@@ -243,7 +243,7 @@ class Space(object):
 
     @property
     def npoints(self):
-        return self.photos.size
+        return self.photons.size
 
     @property
     def memory_size(self):
