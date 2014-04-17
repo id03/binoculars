@@ -1,6 +1,4 @@
 import sys
-sys.path.append('/home/willem/Documents/PhD/python/BINoculars')
-
 import os
 import glob
 from PyQt4 import QtGui, QtCore, Qt

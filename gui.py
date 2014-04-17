@@ -1,6 +1,4 @@
 import sys
-sys.path.append('/home/willem/Documents/PhD/python/BINoculars')
-
 import os
 import glob
 from PyQt4 import QtGui, QtCore, Qt
@@ -186,6 +184,8 @@ class RangeSlider(QtGui.QSlider):
                                              pos-slider_min, slider_max-slider_min,
                                              opt.upsideDown)
 
+
+
 class Window(QtGui.QDialog):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
@@ -211,17 +211,14 @@ class Window(QtGui.QDialog):
         self.plot_widget = PlotWidget(filename)
         self.tab_widget.addTab(self.plot_widget, '{0}'.format(filename.split('/')[-1]))
         self.setLayout(self.vbox)
-        
-
-
-
-        
+                
 class PlotWidget(QtGui.QWidget):
     def __init__(self, filename ,parent=None):
         super(PlotWidget, self).__init__(parent)
 
         self.figure = matplotlib.figure.Figure()
         self.canvas = FigureCanvasQTAgg(self.figure)
+
         self.filename = filename
         self.axes = BINoculars.space.Axes.fromfile(filename)
 
