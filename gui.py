@@ -190,75 +190,44 @@ class Window(QtGui.QDialog):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
 
+        load_hdf5file = QtGui.QAction("Load mesh", self)  
+        load_hdf5file.triggered.connect(self.load_hdf5file)
+
         menu_bar = QtGui.QMenuBar() 
         file = menu_bar.addMenu("&File") 
-      
-        tab_widget = QtGui.QTabWidget() 
+        file.addAction(load_hdf5file) 
 
-        self.plot_widget = PlotWidget()
+        self.tab_widget = QtGui.QTabWidget() 
 
-                  
-        tab_widget.addTab(self.plot_widget, "Plot mesh") 
+                 
+        self.vbox = QtGui.QVBoxLayout()
+        self.vbox.addWidget(menu_bar) 
+        self.vbox.addWidget(self.tab_widget) 
+        self.setLayout(self.vbox) 
 
-        vbox = QtGui.QVBoxLayout()
-        vbox.addWidget(menu_bar) 
-        vbox.addWidget(tab_widget) 
-        self.setLayout(vbox) 
+    def load_hdf5file(self):
+        filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open file', '.', '*.hdf5'))
 
-
-    def load_specfile(self):
-        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open file', '.')
-        self.mask_widget.spec_widget.setData(QDataSource.QDataSource(str(fname)))
-
-    def load_configfile(self):
-        filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open file', '.', '*.txt'))
-        self.config_widget.set_config_from_file(BINoculars.main.read_config_text(filename))
+        self.plot_widget = PlotWidget(filename)
+        self.tab_widget.addTab(self.plot_widget, '{0}'.format(filename.split('/')[-1]))
+        self.setLayout(self.vbox)
         
+
+
+
         
 class PlotWidget(QtGui.QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, filename ,parent=None):
         super(PlotWidget, self).__init__(parent)
 
         self.figure = matplotlib.figure.Figure()
         self.canvas = FigureCanvasQTAgg(self.figure)
-        self.ax = None
-        self.sub = None
+        self.filename = filename
+        self.axes = BINoculars.space.Axes.fromfile(filename)
 
         hbox = QtGui.QHBoxLayout() 
         left = QtGui.QVBoxLayout()
         right = QtGui.QVBoxLayout()
-
-        self.button_openfolder = QtGui.QPushButton('open folder')
-        self.button_openfolder.clicked.connect(self.openfolder)
-
-        self.meshtable = QtGui.QTableWidget()
-        self.meshtable.dragEnabled()
-        self.meshtable.setColumnCount(1)
-        self.meshtable.setHorizontalHeaderLabels(['name'])
-        self.meshtable.setMinimumSize(350, 0)
-
-        self.button_limits = QtGui.QPushButton('set limits')
-        self.button_limits.clicked.connect(self.setlimits)
-
-        subhbox = QtGui.QHBoxLayout()
-        
-        self.checkbox_nolog = QtGui.QCheckBox('no log', self)
-        subhbox.addWidget(self.checkbox_nolog)
-
-        self.subgroup = QtGui.QButtonGroup(self)
-        
-        self.multi = None
-
-        def callback_generator(label):
-            return lambda: self.set_multi(label)
-
-        for label in ('stack', 'grid'):
-            rb = QtGui.QRadioButton(label, self)
-            rb.clicked.connect(callback_generator(label))
-            if label == 'grid':
-                rb.setChecked(True)
-            self.subgroup.addButton(rb)
-            subhbox.addWidget(rb)
 
         self.button_plot = QtGui.QPushButton('plot')
         self.button_plot.clicked.connect(self.plot)
@@ -266,88 +235,44 @@ class PlotWidget(QtGui.QWidget):
         self.button_save = QtGui.QPushButton('save')
         self.button_save.clicked.connect(self.save)
 
-        left.addWidget(self.button_openfolder)
-        left.addWidget(self.meshtable)
-        left.addWidget(self.button_limits)
-        left.addLayout(subhbox)
+        self.limitwidget = LimitWidget(self.axes)
+        self.limitwidget.connect(self.limitwidget, QtCore.SIGNAL("keydict"), self.update_key)
+        self.limitwidget.send_signal()
+
+
         left.addWidget(self.button_plot)
         left.addWidget(self.button_save)
+
+        left.addWidget(self.limitwidget)
+
 
         right.addWidget(self.canvas)
 
         hbox.addLayout(left)
         hbox.addLayout(right)
 
-        self.setLayout(hbox)
-
-    def set_multi(self,label):
-        self.multi = label
-
-    def openfolder(self):
-        imagefolder = str(QtGui.QFileDialog.getExistingDirectory(self, "Select Directory"))
-        pattern = '{0}/*.hdf5'.format(imagefolder)
-        self.filelist = glob.glob(pattern)
-        self.meshtable.setRowCount(len(self.filelist))
-        for index in range(len(self.filelist)):
-            self.meshtable.setItem(index, 0, QtGui.QTableWidgetItem(self.filelist[index].split('/')[-1]))
-        
-    def setlimits(self):
-        selection = self.meshtable.selectionModel()
-        indices = selection.selectedRows()
-
-        if self.sub is not None:
-            self.sub.done
-        self.sub = limitdialog(BINoculars.space.Axes.fromfile(self.filelist[indices[0].row()]))
-        self.sub.connect(self.sub, QtCore.SIGNAL("keydict"), self.update_key)
-        self.sub.show()
-        self.sub.exec_()
-      
-
+        self.setLayout(hbox)  
 
     def update_key(self, input):
         self.key = input['key']
         self.projection = input['project']
 
     def plot(self):
-        selection = self.meshtable.selectionModel()
-        indices = selection.selectedRows()
-        filelist = list(self.filelist[index.row()] for index in indices)
-
         self.figure.clear()
 
-        plotcount = len(filelist)
-        plotcolumns = int(numpy.ceil(numpy.sqrt(plotcount)))
-        plotrows = int(numpy.ceil(float(plotcount) / plotcolumns))
-
-
-        for i, filename in enumerate(filelist):
-            space = BINoculars.space.Space.fromfile(filename, self.key)
-            if len(self.projection) > 0:
-                space = space.project(*self.projection)
-
-            fitdata = None
-
-            if plotcount > 1:
-                if space.dimension == 1 and self.multi is 'grid':
-                    self.multi = 'stack'
-                if space.dimension == 2 and self.multi != 'grid':
-                    if self.multi is not None:
-                        sys.stderr.write('warning: stack display not supported for multi-file-plotting, falling back to grid\n')
-                    self.multi = 'grid'
-
-         
-            self.ax = self.figure.add_subplot(111)
-
-            BINoculars.plot.plot(space, self.figure, self.ax)
-
-            self.canvas.draw()
+        space = BINoculars.space.Space.fromfile(self.filename, self.key)
+        if len(self.projection) > 0:
+            space = space.project(*self.projection)         
+        self.ax = self.figure.add_subplot(111)
+        BINoculars.plot.plot(space, self.figure, self.ax)
+        self.canvas.draw()
 
     def save(self):
         pass
 
-class limitdialog(QtGui.QDialog):
+class LimitWidget(QtGui.QWidget):
     def __init__(self, axes, parent=None):
-        super(limitdialog, self).__init__(parent)
+        super(LimitWidget, self).__init__(parent)
         
         self.axes = axes
 
@@ -493,9 +418,11 @@ if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
 
     main = Window()
+    main.resize(1000, 600)
     main.show()
 
     sys.exit(app.exec_())
+
 
 
 
