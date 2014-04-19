@@ -256,7 +256,6 @@ class PlotWidget(QtGui.QWidget):
 
     def plot(self):
         self.figure.clear()
-
         space = BINoculars.space.Space.fromfile(self.filename, self.key)
         if len(self.projection) > 0:
             space = space.project(*self.projection)         
