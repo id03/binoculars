@@ -29,9 +29,9 @@ class Window(QtGui.QDialog):
         self.vbox.addWidget(self.tab_widget) 
         self.setLayout(self.vbox) 
 
-    def load_hdf5file(self):
-        filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open file', '.', '*.hdf5'))
-
+    def load_hdf5file(self, filename = None):
+        if filename is None:
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open file', '.', '*.hdf5'))
         self.plot_widget = FitWidget(filename)
         self.tab_widget.addTab(self.plot_widget, '{0}'.format(filename.split('/')[-1]))
         self.setLayout(self.vbox)
@@ -43,6 +43,124 @@ class FitSlice(object):
         self.axis = axis
         self.result = None
         
+
+
+class ButtonedSlider(QtGui.QWidget):
+    def __init__(self,parent=None):
+        super(ButtonedSlider, self).__init__(parent)
+
+        self.navigation_button_left_end = QtGui.QPushButton('|<')
+        self.navigation_button_left_one = QtGui.QPushButton('<')
+        self.navigation_slider = QtGui.QSlider(Qt.Qt.Horizontal)
+        self.navigation_slider.sliderReleased.connect(self.send)
+
+        self.navigation_button_right_one = QtGui.QPushButton('>')
+        self.navigation_button_right_end = QtGui.QPushButton('>|')
+
+        self.navigation_button_left_end.setMaximumWidth(20)
+        self.navigation_button_left_one.setMaximumWidth(20)
+        self.navigation_button_right_end.setMaximumWidth(20)
+        self.navigation_button_right_one.setMaximumWidth(20)
+
+        self.navigation_button_left_end.clicked.connect(self.slider_change_left_end)
+        self.navigation_button_left_one.clicked.connect(self.slider_change_left_one)
+        self.navigation_button_right_end.clicked.connect(self.slider_change_right_end)
+        self.navigation_button_right_one.clicked.connect(self.slider_change_right_one)
+
+        box = QtGui.QHBoxLayout() 
+        box.addWidget(self.navigation_button_left_end)
+        box.addWidget(self.navigation_button_left_one)
+        box.addWidget(self.navigation_slider)
+        box.addWidget(self.navigation_button_right_one)
+        box.addWidget(self.navigation_button_right_end)
+
+        self.setDisabled(True)
+        self.setLayout(box)
+
+    def set_length(self,length):
+        self.navigation_slider.setMinimum(0)
+        self.navigation_slider.setMaximum(length - 1)
+        self.navigation_slider.setTickPosition(QtGui.QSlider.TicksBelow)
+        self.navigation_slider.setValue(0)
+        self.setEnabled(True)
+
+
+    def send(self):
+        self.emit(QtCore.SIGNAL('slice_index'), self.navigation_slider.value())
+
+    def slider_change_left_one(self):
+        self.navigation_slider.setValue(max(self.navigation_slider.value() - 1, 0))
+        self.send()
+
+    def slider_change_left_end(self):
+        self.navigation_slider.setValue(0)
+        self.send()
+
+    def slider_change_right_one(self):
+        self.navigation_slider.setValue(min(self.navigation_slider.value() + 1, self.navigation_slider.maximum()))
+        self.send()
+
+    def slider_change_right_end(self):
+        self.navigation_slider.setValue(self.navigation_slider.maximum())
+        self.send()
+
+    def index(self):
+        return self.navigation_slider.value()
+
+
+class ControlWidget(QtGui.QWidget):
+    def __init__(self, axes ,parent=None):
+        super(ControlWidget, self).__init__(parent)
+
+        self.axes = axes
+
+        self.resolution_axis = QtGui.QComboBox()
+        for ax in self.axes:
+            self.resolution_axis.addItem(ax.label)
+
+        self.resolution_line = QtGui.QLineEdit(str(self.axes[0].res))
+        self.resolution_line.setMaximumWidth(50)
+        self.resolution_button = QtGui.QPushButton('set')
+        self.resolution_button.clicked.connect(parent.set_res)
+
+        self.button_plot = QtGui.QPushButton('plot')
+        self.button_plot.clicked.connect(parent.plot)
+
+        self.button_save = QtGui.QPushButton('save')
+        self.button_save.clicked.connect(parent.save)
+
+        
+        self.nav = ButtonedSlider()
+        self.nav.connect(self.nav, QtCore.SIGNAL('slice_index'), parent.plot)
+
+        vbox = QtGui.QVBoxLayout() 
+
+        vbox.addWidget(self.button_plot)
+        vbox.addWidget(self.button_save)
+
+        smallbox = QtGui.QHBoxLayout() 
+        smallbox.addWidget(self.resolution_axis)
+        smallbox.addWidget(self.resolution_line)
+        smallbox.addWidget(self.resolution_button)
+
+        vbox.addLayout(smallbox)
+        vbox.addWidget(self.nav)
+        self.setLayout(vbox) 
+
+    @property
+    def res(self):
+        return self.resolution_line.text()
+
+    @property
+    def axis(self):
+        return str(self.resolution_axis.currentText())
+
+    @property
+    def index(self):
+        return str(self.resolution_axis.currentText())
+
+    def set_length(self, length):
+        self.nav.set_length(length)
                 
 class FitWidget(QtGui.QWidget):
     def __init__(self, filename ,parent=None):
@@ -59,70 +177,21 @@ class FitWidget(QtGui.QWidget):
         hbox = QtGui.QHBoxLayout() 
 
         splitter = QtGui.QSplitter(QtCore.Qt.Horizontal)
-        self.make_leftpanel()
+        self.control_widget = ControlWidget(self.axes, self)
 
-        splitter.addWidget(self.leftpanel)
+        splitter.addWidget(self.control_widget)
         splitter.addWidget(self.canvas)
 
         hbox.addWidget(splitter) 
 
         self.setLayout(hbox)  
 
+    def plot(self, index = None):
+        if index == None:
+            fitslice = self.slices[self.control_widget.index]
+        else:
+            fitslice = self.slices[index]
 
-    def make_leftpanel(self):
-        self.leftpanel = QtGui.QWidget()
-
-        self.leftpanel.resolution_axis = QtGui.QComboBox()
-        for ax in self.axes:
-            self.leftpanel.resolution_axis.addItem(ax.label)
-        self.leftpanel.resolution_line = QtGui.QLineEdit(str(self.axes[0].res))
-        self.leftpanel.resolution_line.setMaximumWidth(50)
-        self.leftpanel.resolution_button = QtGui.QPushButton('set')
-        self.leftpanel.resolution_button.clicked.connect(self.set_res)
-
-        self.leftpanel.navigation_button_left_end = QtGui.QPushButton('|<')
-        self.leftpanel.navigation_button_left_one = QtGui.QPushButton('<')
-        self.leftpanel.navigation_slider = QtGui.QSlider(Qt.Qt.Horizontal)
-        self.leftpanel.navigation_slider.sliderReleased.connect(self.plot)
-
-        self.leftpanel.navigation_button_right_one = QtGui.QPushButton('>')
-        self.leftpanel.navigation_button_right_end = QtGui.QPushButton('>|')
-
-        self.leftpanel.navigation_button_left_end.setMaximumWidth(20)
-        self.leftpanel.navigation_button_left_one.setMaximumWidth(20)
-        self.leftpanel.navigation_button_right_end.setMaximumWidth(20)
-        self.leftpanel.navigation_button_right_one.setMaximumWidth(20)
-
-        self.leftpanel.button_plot = QtGui.QPushButton('plot')
-        self.leftpanel.button_plot.clicked.connect(self.plot)
-
-        self.leftpanel.button_save = QtGui.QPushButton('save')
-        self.leftpanel.button_save.clicked.connect(self.save)
-
-        vbox = QtGui.QVBoxLayout() 
-
-        vbox.addWidget(self.leftpanel.button_plot)
-        vbox.addWidget(self.leftpanel.button_save)
-
-        smallbox = QtGui.QHBoxLayout() 
-        smallbox.addWidget(self.leftpanel.resolution_axis)
-        smallbox.addWidget(self.leftpanel.resolution_line)
-        smallbox.addWidget(self.leftpanel.resolution_button)
-
-        lowbox = QtGui.QHBoxLayout() 
-        lowbox.addWidget(self.leftpanel.navigation_button_left_end)
-        lowbox.addWidget(self.leftpanel.navigation_button_left_one)
-        lowbox.addWidget(self.leftpanel.navigation_slider)
-        lowbox.addWidget(self.leftpanel.navigation_button_right_one)
-        lowbox.addWidget(self.leftpanel.navigation_button_right_end)
-
-        vbox.addLayout(smallbox)
-        vbox.addLayout(lowbox)
-
-        self.leftpanel.setLayout(vbox) 
-
-    def plot(self):
-        fitslice = self.slices[self.leftpanel.navigation_slider.value()]
         self.figure.clear()
         space = BINoculars.space.Space.fromfile(self.filename, fitslice.key)
         space = space.project(fitslice.axis)
@@ -144,10 +213,16 @@ class FitWidget(QtGui.QWidget):
     def save(self):
         pass
 
-    def set_res(self):
+    def set_res(self, axis = None, resolution = None):
+
         self.slices = list()
-        resolution = self.leftpanel.resolution_line.text()
-        axindex = self.axes.index(str(self.leftpanel.resolution_axis.currentText()))
+
+        if not resolution:
+            resolution = self.control_widget.res
+        if not axis:
+            axis = self.control_widget.axis
+
+        axindex = self.axes.index(axis)
         ax = self.axes[axindex]
         axlabel = ax.label
 
@@ -162,42 +237,20 @@ class FitWidget(QtGui.QWidget):
             key[axindex] = slice(start, stop)
             self.slices.append(FitSlice(key, axlabel))
 
-        self.leftpanel.navigation_slider.setMinimum(0)
-        self.leftpanel.navigation_slider.setMaximum(len(self.slices) - 1)
-        self.leftpanel.navigation_slider.setTickPosition(QtGui.QSlider.TicksBelow)
-        self.leftpanel.navigation_slider.setValue(0)
-
-        self.leftpanel.navigation_button_left_end.clicked.connect(self.slider_change_left_end)
-        self.leftpanel.navigation_button_left_one.clicked.connect(self.slider_change_left_one)
-        self.leftpanel.navigation_button_right_end.clicked.connect(self.slider_change_right_end)
-        self.leftpanel.navigation_button_right_one.clicked.connect(self.slider_change_right_one)
-
+        self.control_widget.set_length(len(self.slices))
         self.plot()
         
-    def slider_change_left_one(self):
-        self.leftpanel.navigation_slider.setValue(max(self.leftpanel.navigation_slider.value() - 1, 0))
-        self.plot()
-
-    def slider_change_left_end(self):
-        self.leftpanel.navigation_slider.setValue(0)
-        self.plot()
-
-    def slider_change_right_one(self):
-        self.leftpanel.navigation_slider.setValue(min(self.leftpanel.navigation_slider.value() + 1, len(self.slices) - 1))
-        self.plot()
-
-    def slider_change_right_end(self):
-        self.leftpanel.navigation_slider.setValue(len(self.slices) - 1)
-        self.plot()
-
 
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
 
     main = Window()
     main.resize(1000, 600)
+    #main.load_hdf5file('mesh_5781-5788.hdf5')
+    #main.plot_widget.set_res(axis = 'l')
     main.show()
 
+    
     sys.exit(app.exec_())
 
 

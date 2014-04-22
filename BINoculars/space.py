@@ -527,6 +527,18 @@ def union_axes(axes):
     first = axes[0]
     return first.__class__(mi, ma, first.res, first.label)
 
+def intersect_axes(axes):
+    axes = tuple(axes)
+    if len(axes) == 1:
+        return axes[0]
+    if not all(isinstance(ax, Axis) for ax in axes):
+        raise TypeError('not all objects are Axis instances')
+    if len(set(ax.res for ax in axes)) != 1 or len(set(ax.label for ax in axes)) != 1:
+        raise ValueError('cannot unite axes with different resolution/label')
+    mi = max(ax.min for ax in axes)
+    ma = min(ax.max for ax in axes)
+    first = axes[0]
+    return first.__class__(mi, ma, first.res, first.label)
 
 def sum(spaces):
     spaces = tuple(spaces)

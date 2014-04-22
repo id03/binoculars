@@ -188,8 +188,7 @@ class RangeSlider(QtGui.QSlider):
 
 class HiddenToolbar(NavigationToolbar2QTAgg):
     def __init__(self, canvas):
-        NavigationToolbar2QTAgg.__init__(self, canvas, None, True)
-        self.coordinates()
+        NavigationToolbar2QTAgg.__init__(self, canvas, None)
 
 class Window(QtGui.QDialog):
     def __init__(self, parent=None):
@@ -213,8 +212,9 @@ class Window(QtGui.QDialog):
         self.vbox.addWidget(self.tab_widget) 
         self.setLayout(self.vbox) 
 
-    def load_hdf5file(self):
-        filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open file', '.', '*.hdf5'))
+    def load_hdf5file(self, filename = None):
+        if not filename:
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open file', '.', '*.hdf5'))
 
         plot_widget = PlotWidget(filename)
         self.tab_widget.addTab(plot_widget, '{0}'.format(filename.split('/')[-1]))
@@ -252,7 +252,7 @@ class OverviewWidget(QtGui.QWidget):
         self.button_save = QtGui.QPushButton('save')
         self.button_save.clicked.connect(self.save)
 
-        self.set_axes()
+        self.axes = BINoculars.space.Axes.fromfile(filename)
         self.limitwidget = LimitWidget(self.axes)
         self.limitwidget.connect(self.limitwidget, QtCore.SIGNAL("keydict"), self.update_key)
         self.limitwidget.send_signal()
@@ -260,6 +260,14 @@ class OverviewWidget(QtGui.QWidget):
         left.addWidget(self.button_plot)
         left.addWidget(self.button_save)
 
+        radiobox =  QtGui.QHBoxLayout() 
+        self.group = QtGui.QButtonGroup(self)
+        for label in ['stack', 'grid']:
+            rb = QtGui.QRadioButton(label, self)
+            self.group.addButton(rb)
+            radiobox.addWidget(rb)
+
+        left.addLayout(radiobox)
         left.addWidget(self.limitwidget)
         right.addWidget(self.canvas)
 
@@ -269,18 +277,10 @@ class OverviewWidget(QtGui.QWidget):
         self.setLayout(hbox)  
 
     def set_axes(self):
-        axeslist = []
-        dmin = dict()
-        dmax = dict()
-        dres = dict()
-        for file in self.filelist:
-            axeslist.append(BINoculars.space.Axes.fromfile(file))
-        for index, ax in enumerate(axeslist[0]):
-            dmin[ax.label] = list(axes[index].min for axes in axeslist)
-            dmax[ax.label] = list(axes[index].max for axes in axeslist)
-            dres[ax.label] = list(axes[index].res for axes in axeslist)
-
-
+        axes = tuple(BINoculars.space.Axes.fromfile(filename) for filename in self.filelist)
+        first = axes[0]
+        self.axes = BINoculars.space.Axes(tuple(BINoculars.space.intersect_axes(ax[i] for ax in axes) for i in range(first.dimension))) # too strong demand but easiest to implement
+        self.limitwidget.update(self.axes)
 
     def update_key(self, input):
         self.key = input['key']
@@ -288,15 +288,41 @@ class OverviewWidget(QtGui.QWidget):
 
     def plot(self):
         self.figure.clear()
-        space = BINoculars.space.Space.fromfile(self.filelist[0], self.key)
-        if len(self.projection) > 0:
-            space = space.project(*self.projection)
-        if len(space.axes) > 2 or len(space.axes) == 0:
-            self.error.showMessage('choose suitable number of projections, plotting only in 1D and 2D')
-        else:
-            self.ax = self.figure.add_subplot(111)
-            BINoculars.plot.plot(space, self.figure, self.ax)
-            self.canvas.draw()
+
+        plotcount = len(self.filelist)
+        plotcolumns = int(numpy.ceil(numpy.sqrt(plotcount)))
+        plotrows = int(numpy.ceil(float(plotcount) / plotcolumns))
+        plotoption = None
+        if self.group.checkedButton():
+            plotoption = self.group.checkedButton().text()
+        
+        for i, filename in enumerate(self.filelist):
+            space = BINoculars.space.Space.fromfile(filename, key = self.key)
+            if len(self.projection) > 0:
+                space = space.project(*self.projection)
+            if len(space.axes) > 2 or len(space.axes) == 0:
+                self.error.showMessage('choose suitable number of projections, plotting only in 1D and 2D')
+
+            if plotcount > 1:
+                if space.dimension == 1 and (plotoption == 'stack' or plotoption == None):
+                    self.ax = self.figure.add_subplot(111)
+                if space.dimension == 2 and plotoption != 'grid':
+                    sys.stderr.write('warning: stack display not supported for multi-file-plotting, falling back to grid\n')
+                    plotoption = 'grid'
+                elif space.dimension > 3:
+                    sys.stderr.write('error: cannot display 4 or higher dimensional data, use --project or --slice to decrease dimensionality\n')
+                    sys.exit(1)
+ 
+            basename = os.path.splitext(os.path.basename(filename))[0]
+
+            if plotoption == 'grid':
+                self.ax = self.figure.add_subplot(plotrows, plotcolumns, i+1)
+            BINoculars.plot.plot(space,self.figure, self.ax, label = basename)
+
+        #if plotcount > 1 and plotoption == 'stack':
+        #    self.figure.legend()
+
+        self.canvas.draw()
 
     def save(self):
         pass
@@ -371,6 +397,10 @@ class LimitWidget(QtGui.QWidget):
         super(LimitWidget, self).__init__(parent)
         
         self.axes = axes
+        self.sliders = list()
+        self.qlabels = list()
+        self.leftindicator = list()
+        self.rightindicator = list()
 
         labels = list(ax.label for ax in axes)
 
@@ -397,10 +427,6 @@ class LimitWidget(QtGui.QWidget):
 
         vbox.addLayout(hbox)
         
-        self.sliders = list()
-        self.qlabels = list()
-        self.leftindicator = list()
-        self.rightindicator = list()
 
         for label in labels:
             self.qlabels.append(QtGui.QLabel(self))
@@ -502,12 +528,34 @@ class LimitWidget(QtGui.QWidget):
         for box, state in zip(self.checkbox,self.state):
             box.setChecked(state)
 
+    def update(self, axes):
+        low = tuple(self.axes[index][slider.low()] for index, slider in enumerate(self.sliders))
+        high = tuple(self.axes[index][slider.high()] for index, slider in enumerate(self.sliders))
+
+        for index, ax in enumerate(axes):
+            self.sliders[index].setMinimum(0)
+            self.sliders[index].setMaximum(len(ax) - 1)
+
+        self.axes = axes
+
+        for index, slider in enumerate(self.sliders):
+            self.leftindicator[index].setText(str(low[index]))
+            self.rightindicator[index].setText(str(high[index]))
+
+        self.update_sliders_left()
+        self.update_sliders_right()
+
+        self.send_signal()
+
     
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
 
     main = Window()
     main.resize(1000, 600)
+    #main.load_hdf5file('demo_1720-1721.hdf5')
+    #main.load_hdf5file('demo_1726-1727.hdf5')
+    #main.load_hdf5file('demo_1737-1738.hdf5')
     main.show()
 
     sys.exit(app.exec_())
