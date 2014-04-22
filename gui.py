@@ -11,6 +11,7 @@ from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationTool
 import matplotlib.figure, matplotlib.image
 
 
+
 #RangeSlider is taken from https://www.mail-archive.com/pyqt@riverbankcomputing.com/msg22889.html
 class RangeSlider(QtGui.QSlider):
     """ A slider for ranges.
@@ -185,6 +186,10 @@ class RangeSlider(QtGui.QSlider):
                                              opt.upsideDown)
 
 
+class HiddenToolbar(NavigationToolbar2QTAgg):
+    def __init__(self, canvas):
+        NavigationToolbar2QTAgg.__init__(self, canvas, None, True)
+        self.coordinates()
 
 class Window(QtGui.QDialog):
     def __init__(self, parent=None):
@@ -193,13 +198,16 @@ class Window(QtGui.QDialog):
         load_hdf5file = QtGui.QAction("Load mesh", self)  
         load_hdf5file.triggered.connect(self.load_hdf5file)
 
+        self.overview = None
+
         menu_bar = QtGui.QMenuBar() 
         file = menu_bar.addMenu("&File") 
         file.addAction(load_hdf5file) 
 
-        self.tab_widget = QtGui.QTabWidget() 
+        self.tab_widget = QtGui.QTabWidget()
+        self.tab_widget.setTabsClosable(True)
+        self.tab_widget.tabCloseRequested.connect(self.tab_widget.removeTab)
 
-                 
         self.vbox = QtGui.QVBoxLayout()
         self.vbox.addWidget(menu_bar) 
         self.vbox.addWidget(self.tab_widget) 
@@ -208,9 +216,90 @@ class Window(QtGui.QDialog):
     def load_hdf5file(self):
         filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open file', '.', '*.hdf5'))
 
-        self.plot_widget = PlotWidget(filename)
-        self.tab_widget.addTab(self.plot_widget, '{0}'.format(filename.split('/')[-1]))
+        plot_widget = PlotWidget(filename)
+        self.tab_widget.addTab(plot_widget, '{0}'.format(filename.split('/')[-1]))
+        plot_widget.connect(plot_widget, QtCore.SIGNAL("to_overview"), self.add_to_overview)
         self.setLayout(self.vbox)
+
+    def add_to_overview(self, input):
+        if self.overview is None:
+            self.overview = OverviewWidget(*input)
+            self.tab_widget.addTab(self.overview, 'overview')
+            self.setLayout(self.vbox)
+        else:
+            self.overview.filelist.append(input[0])
+            self.overview.set_axes()
+            
+
+class OverviewWidget(QtGui.QWidget):
+    def __init__(self, filename, key, projection, parent = None):
+        super(OverviewWidget, self).__init__(parent)
+
+        self.figure = matplotlib.figure.Figure()
+        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.toolbar = HiddenToolbar(self.canvas)
+        self.error = QtGui.QErrorMessage()
+
+        self.filelist = [filename]
+
+        hbox = QtGui.QHBoxLayout() 
+        left = QtGui.QVBoxLayout()
+        right = QtGui.QVBoxLayout()
+
+        self.button_plot = QtGui.QPushButton('plot')
+        self.button_plot.clicked.connect(self.plot)
+
+        self.button_save = QtGui.QPushButton('save')
+        self.button_save.clicked.connect(self.save)
+
+        self.set_axes()
+        self.limitwidget = LimitWidget(self.axes)
+        self.limitwidget.connect(self.limitwidget, QtCore.SIGNAL("keydict"), self.update_key)
+        self.limitwidget.send_signal()
+
+        left.addWidget(self.button_plot)
+        left.addWidget(self.button_save)
+
+        left.addWidget(self.limitwidget)
+        right.addWidget(self.canvas)
+
+        hbox.addLayout(left)
+        hbox.addLayout(right)
+
+        self.setLayout(hbox)  
+
+    def set_axes(self):
+        axeslist = []
+        dmin = dict()
+        dmax = dict()
+        dres = dict()
+        for file in self.filelist:
+            axeslist.append(BINoculars.space.Axes.fromfile(file))
+        for index, ax in enumerate(axeslist[0]):
+            dmin[ax.label] = list(axes[index].min for axes in axeslist)
+            dmax[ax.label] = list(axes[index].max for axes in axeslist)
+            dres[ax.label] = list(axes[index].res for axes in axeslist)
+
+
+
+    def update_key(self, input):
+        self.key = input['key']
+        self.projection = input['project']
+
+    def plot(self):
+        self.figure.clear()
+        space = BINoculars.space.Space.fromfile(self.filelist[0], self.key)
+        if len(self.projection) > 0:
+            space = space.project(*self.projection)
+        if len(space.axes) > 2 or len(space.axes) == 0:
+            self.error.showMessage('choose suitable number of projections, plotting only in 1D and 2D')
+        else:
+            self.ax = self.figure.add_subplot(111)
+            BINoculars.plot.plot(space, self.figure, self.ax)
+            self.canvas.draw()
+
+    def save(self):
+        pass
                 
 class PlotWidget(QtGui.QWidget):
     def __init__(self, filename ,parent=None):
@@ -218,6 +307,7 @@ class PlotWidget(QtGui.QWidget):
 
         self.figure = matplotlib.figure.Figure()
         self.canvas = FigureCanvasQTAgg(self.figure)
+        self.error = QtGui.QErrorMessage()
 
         self.filename = filename
         self.axes = BINoculars.space.Axes.fromfile(filename)
@@ -232,6 +322,9 @@ class PlotWidget(QtGui.QWidget):
         self.button_save = QtGui.QPushButton('save')
         self.button_save.clicked.connect(self.save)
 
+        self.button_overview = QtGui.QPushButton('add to overview')
+        self.button_overview.clicked.connect(self.add_to_overview)
+
         self.limitwidget = LimitWidget(self.axes)
         self.limitwidget.connect(self.limitwidget, QtCore.SIGNAL("keydict"), self.update_key)
         self.limitwidget.send_signal()
@@ -239,6 +332,7 @@ class PlotWidget(QtGui.QWidget):
 
         left.addWidget(self.button_plot)
         left.addWidget(self.button_save)
+        left.addWidget(self.button_overview)
 
         left.addWidget(self.limitwidget)
 
@@ -250,6 +344,9 @@ class PlotWidget(QtGui.QWidget):
 
         self.setLayout(hbox)  
 
+    def add_to_overview(self):
+        self.emit(QtCore.SIGNAL('to_overview'), (self.filename, self.key, self.projection))
+
     def update_key(self, input):
         self.key = input['key']
         self.projection = input['project']
@@ -258,10 +355,13 @@ class PlotWidget(QtGui.QWidget):
         self.figure.clear()
         space = BINoculars.space.Space.fromfile(self.filename, self.key)
         if len(self.projection) > 0:
-            space = space.project(*self.projection)         
-        self.ax = self.figure.add_subplot(111)
-        BINoculars.plot.plot(space, self.figure, self.ax)
-        self.canvas.draw()
+            space = space.project(*self.projection)
+        if len(space.axes) > 2 or len(space.axes) == 0:
+            self.error.showMessage('choose suitable number of projections, plotting only in 1D and 2D')
+        else:
+            self.ax = self.figure.add_subplot(111)
+            BINoculars.plot.plot(space, self.figure, self.ax)
+            self.canvas.draw()
 
     def save(self):
         pass
@@ -389,16 +489,9 @@ class LimitWidget(QtGui.QWidget):
             right.setText(str(ax[slider.high()]))
 
     def update_checkbox(self):
-        newstate = list()
+        self.state = list()
         for box in self.checkbox:
-            newstate.append(box.checkState())
-        newstate = numpy.array(newstate, dtype = numpy.bool)
-        dim = numpy.alen(newstate) - newstate.sum()
-        if dim == 1 or dim == 2:
-            self.state = newstate
-        else:
-            for box, state in zip(self.checkbox,self.state):
-                box.setChecked(state)
+            self.state.append(box.checkState())
         self.send_signal()
 
 
