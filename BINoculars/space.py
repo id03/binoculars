@@ -128,6 +128,30 @@ class Axis(object):
         return '{0.__class__.__name__} {0.label} (min={0.min}, max={0.max}, res={0.res}, count={1})'.format(self, len(self))
 
 
+    def restrict(self, value):#Usefull for plotting
+       if isinstance(value, numbers.Number):
+           if value <= self.min:
+               return self.min
+           elif value >= self.max:
+               return self.max
+           else:
+               return value
+       elif isinstance(value, slice):
+           if value.step is not None:
+                   raise IndexError('stride not supported')
+           if value.start is None:
+               start = None
+           else:
+               start = self.restrict(value.start)
+           if value.stop is None:
+               stop = None
+           else:
+               stop = self.restrict(value.stop)
+           if start is not None and stop is not None and start > stop:
+               start, stop = stop, start
+           return slice(start, stop)
+
+
 class Axes(object):
     def __init__(self, axes):
         self.axes = tuple(axes)
@@ -538,18 +562,19 @@ def union_axes(axes):
     first = axes[0]
     return first.__class__(mi, ma, first.res, first.label)
 
-def intersect_axes(axes):
+def union_unequal_axes(axes):
     axes = tuple(axes)
     if len(axes) == 1:
         return axes[0]
     if not all(isinstance(ax, Axis) for ax in axes):
         raise TypeError('not all objects are Axis instances')
-    if len(set(ax.res for ax in axes)) != 1 or len(set(ax.label for ax in axes)) != 1:
-        raise ValueError('cannot unite axes with different resolution/label')
-    mi = max(ax.min for ax in axes)
-    ma = min(ax.max for ax in axes)
+    if len(set(ax.label for ax in axes)) != 1:
+        raise ValueError('cannot unite axes with different label')
+    mi = min(ax.min for ax in axes)
+    ma = max(ax.max for ax in axes)
+    res = min(ax.res for ax in axes) #making it easier to use the sliderwidget otherwise this hase no meaning
     first = axes[0]
-    return first.__class__(mi, ma, first.res, first.label)
+    return first.__class__(mi, ma, res, first.label)
 
 def sum(spaces):
     spaces = tuple(spaces)

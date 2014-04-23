@@ -5,7 +5,7 @@ from PyQt4 import QtGui, QtCore, Qt
 from PyMca import QSpecFileWidget, QDataSource, StackBrowser, StackSelector
 import BINoculars.main, BINoculars.space, BINoculars.plot
 import numpy
-
+import json
 
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationToolbar2QTAgg
 import matplotlib.figure, matplotlib.image
@@ -197,11 +197,26 @@ class Window(QtGui.QDialog):
         load_hdf5file = QtGui.QAction("Load mesh", self)  
         load_hdf5file.triggered.connect(self.load_hdf5file)
 
-        self.overview = None
+        newcollection = QtGui.QAction("New collection", self)  
+        newcollection.triggered.connect(self.newcollection)
+
+        loadcollection = QtGui.QAction("Open collection", self)  
+        loadcollection.triggered.connect(self.loadcollection)
+
+        savecollection = QtGui.QAction("Save collection", self)  
+        savecollection.triggered.connect(self.savecollection)
+
+        addmesh = QtGui.QAction("Add mesh to collection", self)  
+        addmesh.triggered.connect(self.add_to_collection)
 
         menu_bar = QtGui.QMenuBar() 
         file = menu_bar.addMenu("&File") 
         file.addAction(load_hdf5file) 
+        file.addAction(newcollection) 
+        file.addAction(loadcollection) 
+        file.addAction(savecollection)
+        file.addAction(addmesh) 
+
 
         self.tab_widget = QtGui.QTabWidget()
         self.tab_widget.setTabsClosable(True)
@@ -214,33 +229,55 @@ class Window(QtGui.QDialog):
 
     def load_hdf5file(self, filename = None):
         if not filename:
-            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open file', '.', '*.hdf5'))
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open mesh', '.', '*.hdf5'))
 
-        plot_widget = PlotWidget(filename)
-        self.tab_widget.addTab(plot_widget, '{0}'.format(filename.split('/')[-1]))
-        plot_widget.connect(plot_widget, QtCore.SIGNAL("to_overview"), self.add_to_overview)
+        widget = CollectionWidget([filename])
+        self.tab_widget.addTab(widget, '{0}'.format(filename.split('/')[-1]))
         self.setLayout(self.vbox)
 
-    def add_to_overview(self, input):
-        if self.overview is None:
-            self.overview = OverviewWidget(*input)
-            self.tab_widget.addTab(self.overview, 'overview')
-            self.setLayout(self.vbox)
-        else:
-            self.overview.filelist.append(input[0])
-            self.overview.set_axes()
+    def newcollection(self, filename = None):
+        if not filename:
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open mesh', '.', '*.hdf5'))
+        widget = CollectionWidget([filename])
+        self.tab_widget.addTab(widget, 'New Collection')
+        self.setLayout(self.vbox)
             
+    def loadcollection(self):
+        widget = CollectionWidget.fromfile(str(QtGui.QFileDialog.getOpenFileName(self, 'Open collection', '.', '*.col')))
+        self.tab_widget.addTab(widget, 'Open Collection')
+        self.setLayout(self.vbox)
 
-class OverviewWidget(QtGui.QWidget):
-    def __init__(self, filename, key, projection, parent = None):
-        super(OverviewWidget, self).__init__(parent)
+    def savecollection(self):
+        widget = self.tab_widget.currentWidget()
+        widget.tofile()
+
+    def add_to_collection(self):
+        widget = self.tab_widget.currentWidget()
+        widget.addmesh(str(QtGui.QFileDialog.getOpenFileName(self, 'Open mesh', '.', '*.hdf5')))
+
+
+class CollectionWidget(QtGui.QWidget):
+    def __init__(self, filelist, key = None, projection = None, parent = None):
+        super(CollectionWidget, self).__init__(parent)
 
         self.figure = matplotlib.figure.Figure()
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.toolbar = HiddenToolbar(self.canvas)
         self.error = QtGui.QErrorMessage()
 
-        self.filelist = [filename]
+        self.log = QtGui.QCheckBox('nolog', self)
+        self.log.setChecked(True)
+
+        self.datarange = RangeSlider(Qt.Qt.Horizontal)
+        self.datarange.setMinimum(0)
+        self.datarange.setMaximum(250)
+        self.datarange.setLow(0)
+        self.datarange.setHigh(self.datarange.maximum())
+        self.datarange.setTickPosition(QtGui.QSlider.TicksBelow)
+
+        self.filelist = filelist
+        self.key = key
+        self.projection = projection
 
         hbox = QtGui.QHBoxLayout() 
         left = QtGui.QVBoxLayout()
@@ -252,8 +289,9 @@ class OverviewWidget(QtGui.QWidget):
         self.button_save = QtGui.QPushButton('save')
         self.button_save.clicked.connect(self.save)
 
-        self.axes = BINoculars.space.Axes.fromfile(filename)
-        self.limitwidget = LimitWidget(self.axes)
+        self.plotaxes = self.set_plotaxes()
+
+        self.limitwidget = LimitWidget(self.plotaxes)
         self.limitwidget.connect(self.limitwidget, QtCore.SIGNAL("keydict"), self.update_key)
         self.limitwidget.send_signal()
 
@@ -267,25 +305,35 @@ class OverviewWidget(QtGui.QWidget):
             self.group.addButton(rb)
             radiobox.addWidget(rb)
 
+        datarangebox = QtGui.QHBoxLayout() 
+        datarangebox.addWidget(self.log)
+        datarangebox.addWidget(self.datarange)
+
         left.addLayout(radiobox)
+        left.addLayout(datarangebox)
         left.addWidget(self.limitwidget)
         right.addWidget(self.canvas)
+
+
 
         hbox.addLayout(left)
         hbox.addLayout(right)
 
         self.setLayout(hbox)  
 
-    def set_axes(self):
+    def set_plotaxes(self):
         axes = tuple(BINoculars.space.Axes.fromfile(filename) for filename in self.filelist)
         first = axes[0]
-        self.axes = BINoculars.space.Axes(tuple(BINoculars.space.intersect_axes(ax[i] for ax in axes) for i in range(first.dimension))) # too strong demand but easiest to implement
-        self.limitwidget.update(self.axes)
-
+        return BINoculars.space.Axes(tuple(BINoculars.space.union_unequal_axes(ax[i] for ax in axes) for i in range(first.dimension)))
+    
     def update_key(self, input):
         self.key = input['key']
         self.projection = input['project']
 
+    @staticmethod
+    def restricted_key(key, axes):
+        return tuple(ax.restrict(s) for s, ax in zip(key, axes))
+    
     def plot(self):
         self.figure.clear()
 
@@ -297,7 +345,8 @@ class OverviewWidget(QtGui.QWidget):
             plotoption = self.group.checkedButton().text()
         
         for i, filename in enumerate(self.filelist):
-            space = BINoculars.space.Space.fromfile(filename, key = self.key)
+            axes = BINoculars.space.Axes.fromfile(filename)
+            space = BINoculars.space.Space.fromfile(filename, key = self.restricted_key(self.key, axes))
             projection = [ax for ax in self.projection if ax in space.axes]
             if projection:
                 space = space.project(*projection)
@@ -313,87 +362,66 @@ class OverviewWidget(QtGui.QWidget):
                 elif space.dimension > 3:
                     sys.stderr.write('error: cannot display 4 or higher dimensional data, use --project or --slice to decrease dimensionality\n')
                     sys.exit(1)
- 
+            else:
+                 self.ax = self.figure.add_subplot(111)
             basename = os.path.splitext(os.path.basename(filename))[0]
+
+            vmin = self.datarange.low() * 1.0 / self.datarange.maximum()
+            vmax = self.datarange.high() * 1.0 / self.datarange.maximum()
 
             if plotoption == 'grid':
                 self.ax = self.figure.add_subplot(plotrows, plotcolumns, i+1)
-            BINoculars.plot.plot(space,self.figure, self.ax, label = basename)
+            BINoculars.plot.plot(space,self.figure, self.ax, log = self.log.checkState(),label = basename, scalemin = vmin, scalemax = vmax)
 
         #if plotcount > 1 and plotoption == 'stack':
         #    self.figure.legend()
 
         self.canvas.draw()
 
+
+    @staticmethod
+    def key_to_str(key):
+        return list([s.start, s.stop] for s in key)
+
+    @staticmethod
+    def str_to_key(s):
+        return tuple(slice(float(key[0]), float(key[1])) for key in s)
+
+    def tofile(self, filename = None):
+        dict = {}
+        dict['filelist'] = self.filelist
+        dict['key'] = self.key_to_str(self.key)
+        dict['projection'] = self.projection
+
+        if filename == None:
+            filename = str(QtGui.QFileDialog.getSaveFileName(self, 'Save Collection', '.'))
+
+        with open(filename, 'w') as fp:
+            json.dump(dict, fp)
+
+    @classmethod
+    def fromfile(cls, filename = None):
+        if filename == None:
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Collection', '.', '*.col'))        
+        try:
+            with open(filename, 'r') as fp:
+                dict = json.load(fp)
+        except IOError as e:
+            raise self.error.showMessage("unable to open '{0}' as collection file (original error: {1!r})".format(filename, e))
+
+        widget = cls(dict['filelist'], cls.str_to_key(dict['key']), dict['projection'])
+
+        return widget
+    
+
+    def addmesh(self,filename = None):
+        if filename == None:
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Collection', '.', '*.hdf5'))
+        self.filelist.append(filename)
+
     def save(self):
-        pass
+        self.figure.savefig(str(QtGui.QFileDialog.getSaveFileName(self, 'Save Collection', '.')))
                 
-class PlotWidget(QtGui.QWidget):
-    def __init__(self, filename ,parent=None):
-        super(PlotWidget, self).__init__(parent)
-
-        self.figure = matplotlib.figure.Figure()
-        self.canvas = FigureCanvasQTAgg(self.figure)
-        self.error = QtGui.QErrorMessage()
-
-        self.filename = filename
-        self.axes = BINoculars.space.Axes.fromfile(filename)
-
-        hbox = QtGui.QHBoxLayout() 
-        left = QtGui.QVBoxLayout()
-        right = QtGui.QVBoxLayout()
-
-        self.button_plot = QtGui.QPushButton('plot')
-        self.button_plot.clicked.connect(self.plot)
-
-        self.button_save = QtGui.QPushButton('save')
-        self.button_save.clicked.connect(self.save)
-
-        self.button_overview = QtGui.QPushButton('add to overview')
-        self.button_overview.clicked.connect(self.add_to_overview)
-
-        self.limitwidget = LimitWidget(self.axes)
-        self.limitwidget.connect(self.limitwidget, QtCore.SIGNAL("keydict"), self.update_key)
-        self.limitwidget.send_signal()
-
-
-        left.addWidget(self.button_plot)
-        left.addWidget(self.button_save)
-        left.addWidget(self.button_overview)
-
-        left.addWidget(self.limitwidget)
-
-
-        right.addWidget(self.canvas)
-
-        hbox.addLayout(left)
-        hbox.addLayout(right)
-
-        self.setLayout(hbox)  
-
-    def add_to_overview(self):
-        self.emit(QtCore.SIGNAL('to_overview'), (self.filename, self.key, self.projection))
-
-    def update_key(self, input):
-        self.key = input['key']
-        self.projection = input['project']
-
-    def plot(self):
-        self.figure.clear()
-        space = BINoculars.space.Space.fromfile(self.filename, self.key)
-        projection = [ax for ax in self.projection if ax in space.axes]
-        if projection:
-            space = space.project(*projection)
-        if len(space.axes) > 2 or len(space.axes) == 0:
-            self.error.showMessage('choose suitable number of projections, plotting only in 1D and 2D')
-        else:
-            self.ax = self.figure.add_subplot(111)
-            BINoculars.plot.plot(space, self.figure, self.ax)
-            self.canvas.draw()
-
-    def save(self):
-        pass
-
 class LimitWidget(QtGui.QWidget):
     def __init__(self, axes, parent=None):
         super(LimitWidget, self).__init__(parent)
@@ -549,14 +577,14 @@ class LimitWidget(QtGui.QWidget):
         self.update_sliders_right()
 
         self.send_signal()
-
+            
     
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
 
     main = Window()
     main.resize(1000, 600)
-    #main.load_hdf5file('demo_1720-1721.hdf5')
+    #main.newcollection('demo_1720-1721.hdf5')
     #main.load_hdf5file('demo_1726-1727.hdf5')
     #main.load_hdf5file('demo_1737-1738.hdf5')
     main.show()
