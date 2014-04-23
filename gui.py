@@ -298,8 +298,9 @@ class OverviewWidget(QtGui.QWidget):
         
         for i, filename in enumerate(self.filelist):
             space = BINoculars.space.Space.fromfile(filename, key = self.key)
-            if len(self.projection) > 0:
-                space = space.project(*self.projection)
+            projection = [ax for ax in self.projection if ax in space.axes]
+            if projection:
+                space = space.project(*projection)
             if len(space.axes) > 2 or len(space.axes) == 0:
                 self.error.showMessage('choose suitable number of projections, plotting only in 1D and 2D')
 
@@ -380,8 +381,9 @@ class PlotWidget(QtGui.QWidget):
     def plot(self):
         self.figure.clear()
         space = BINoculars.space.Space.fromfile(self.filename, self.key)
-        if len(self.projection) > 0:
-            space = space.project(*self.projection)
+        projection = [ax for ax in self.projection if ax in space.axes]
+        if projection:
+            space = space.project(*projection)
         if len(space.axes) > 2 or len(space.axes) == 0:
             self.error.showMessage('choose suitable number of projections, plotting only in 1D and 2D')
         else:
@@ -478,7 +480,8 @@ class LimitWidget(QtGui.QWidget):
 
     def send_signal(self):
         signal = {}
-        key = list(slice(float(str(left.text())), float(str(right.text())), None) for ax, left, right in zip(self.axes, self.leftindicator, self.rightindicator))
+        key = ((float(str(left.text())), float(str(right.text()))) for left, right in zip(self.leftindicator, self.rightindicator))
+        key = [left if left == right else slice(left, right, None) for left, right in key]
         project = []
         for ax, state in zip(self.axes, self.state):
             if state:

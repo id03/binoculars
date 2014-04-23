@@ -190,6 +190,17 @@ class Axes(object):
         else:
             raise ValueError('invalid axis identifier {0!r}'.format(obj))
 
+    def __contains__(self, obj):
+        if isinstance(obj, Axis):
+            return obj in self.axes
+        elif isinstance(obj, int):
+            return 0 <= obj < len(self.axes)
+        elif isinstance(obj, basestring):
+            label = obj.lower()
+            return any(axis.label.lower() == label for axis in self.axes)
+        else:
+            raise ValueError('invalid axis identifier {0!r}'.format(obj))
+
     def __len__(self):
         return len(self.axes)
 
@@ -500,7 +511,7 @@ class Space(object):
                     if len(axes) != len(key):
                         raise ValueError("dimensionality of 'key' does not match dimensionality of Space in HDF5 file {0}".format(file))
                     key = tuple(ax.get_index(k) for k, ax in zip(key, axes))
-                    axes = tuple(ax[k] for k, ax in zip(key, axes))
+                    axes = tuple(ax[k] for k, ax in zip(key, axes) if isinstance(k, slice))
                 else:
                     key = Ellipsis
                 space = cls(axes)
