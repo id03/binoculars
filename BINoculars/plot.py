@@ -77,35 +77,27 @@ class DraggableColorbar(object):
         self.canvas.draw()
 
 
-def get_clipped_norm(data, clipping=0.0, log=True, scalemin = None, scalemax = None):
+def get_clipped_norm(data, clipping=0.0, log=True):
     if hasattr(data, 'compressed'):
         data = data.compressed()
 
     if log:
         data = data[data > 0]
 
-    if scalemin == None and scalemax == None:    
-        if clipping:
-            chop = int(round(data.size * clipping))
-            clip = sorted(data)[chop:-(1+chop)]
-            vmin, vmax = clip[0], clip[-1]
-        else:
-            vmin, vmax = data.min(), data.max()
+    if clipping:
+        chop = int(round(data.size * clipping))
+        clip = sorted(data)[chop:-(1+chop)]
+        vmin, vmax = clip[0], clip[-1]
     else:
-        if log:
-            power = 3
-            vmin = data.min() + (data.max() - data.min()) * scalemin ** power
-            vmax = data.min() + (data.max() - data.min()) * scalemax ** power
-        else:
-            vmin = data.min() + (data.max() - data.min()) * scalemin
-            vmax = data.min() + (data.max() - data.min()) * scalemax
+        vmin, vmax = data.min(), data.max()
+        
     if log:
         return matplotlib.colors.LogNorm(vmin, vmax)
     else:
         return matplotlib.colors.Normalize(vmin, vmax)
 
 
-def plot(space, fig, ax, log=True, clipping=0.0, fit=None, scalemin = None, scalemax = None,  **plotopts):
+def plot(space, fig, ax, log=True, clipping=0.0, fit=None, norm=None,  **plotopts):
     if space.dimension == 1:
         data = space.get_masked()
         xrange = numpy.ma.array(space.axes[0][:], mask=data.mask)
@@ -134,12 +126,13 @@ def plot(space, fig, ax, log=True, clipping=0.0, fit=None, scalemin = None, scal
         ymin = space.axes[1].min
         ymax = space.axes[1].max
         
-        norm = get_clipped_norm(data, clipping, log, scalemin = scalemin, scalemax = scalemax)
+        if not norm:
+            norm = get_clipped_norm(data, clipping, log)
 
         if fit is not None:
-            im = ax.imshow(fit.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=norm, **plotopts)
+            im = ax.imshow(fit.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm = norm, **plotopts)
         else:
-            im = ax.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=norm, **plotopts)
+            im = ax.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm = norm,  **plotopts)
 
         ax.set_xlabel(space.axes[0].label)
         ax.set_ylabel(space.axes[1].label)

@@ -119,6 +119,11 @@ class RangeSlider(QtGui.QSlider):
                 self.setRepeatAction(self.SliderNoAction)
         else:
             event.ignore()
+
+
+    def mouseReleaseEvent(self, event):
+        self.emit(QtCore.SIGNAL('sliderReleased()'))
+
                                 
     def mouseMoveEvent(self, event):
         if self.pressed_control != QtGui.QStyle.SC_SliderHandle:
@@ -194,29 +199,24 @@ class Window(QtGui.QDialog):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
 
-        load_hdf5file = QtGui.QAction("Load mesh", self)  
-        load_hdf5file.triggered.connect(self.load_hdf5file)
+        newproject = QtGui.QAction("New project", self)  
+        newproject.triggered.connect(self.newproject)
 
-        newcollection = QtGui.QAction("New collection", self)  
-        newcollection.triggered.connect(self.newcollection)
+        loadproject = QtGui.QAction("Open project", self)  
+        loadproject.triggered.connect(self.loadproject)
 
-        loadcollection = QtGui.QAction("Open collection", self)  
-        loadcollection.triggered.connect(self.loadcollection)
+        saveproject = QtGui.QAction("Save project", self)  
+        saveproject.triggered.connect(self.saveproject)
 
-        savecollection = QtGui.QAction("Save collection", self)  
-        savecollection.triggered.connect(self.savecollection)
-
-        addmesh = QtGui.QAction("Add mesh to collection", self)  
-        addmesh.triggered.connect(self.add_to_collection)
+        addspace = QtGui.QAction("Import space", self)  
+        addspace.triggered.connect(self.add_to_project)
 
         menu_bar = QtGui.QMenuBar() 
         file = menu_bar.addMenu("&File") 
-        file.addAction(load_hdf5file) 
-        file.addAction(newcollection) 
-        file.addAction(loadcollection) 
-        file.addAction(savecollection)
-        file.addAction(addmesh) 
-
+        file.addAction(newproject) 
+        file.addAction(loadproject) 
+        file.addAction(saveproject)
+        file.addAction(addspace) 
 
         self.tab_widget = QtGui.QTabWidget()
         self.tab_widget.setTabsClosable(True)
@@ -227,38 +227,31 @@ class Window(QtGui.QDialog):
         self.vbox.addWidget(self.tab_widget) 
         self.setLayout(self.vbox) 
 
-    def load_hdf5file(self, filename = None):
+    def newproject(self, filename = None):
         if not filename:
             filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open mesh', '.', '*.hdf5'))
-
-        widget = CollectionWidget([filename])
-        self.tab_widget.addTab(widget, '{0}'.format(filename.split('/')[-1]))
-        self.setLayout(self.vbox)
-
-    def newcollection(self, filename = None):
-        if not filename:
-            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open mesh', '.', '*.hdf5'))
-        widget = CollectionWidget([filename])
-        self.tab_widget.addTab(widget, 'New Collection')
+        widget = ProjectWidget([filename])
+        self.tab_widget.addTab(widget, 'New Project')
         self.setLayout(self.vbox)
             
-    def loadcollection(self):
-        widget = CollectionWidget.fromfile(str(QtGui.QFileDialog.getOpenFileName(self, 'Open collection', '.', '*.col')))
-        self.tab_widget.addTab(widget, 'Open Collection')
+    def loadproject(self, filename = None):
+        if not filename:
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open project', '.', '*.proj'))
+        widget = ProjectWidget.fromfile(filename)
+        self.tab_widget.addTab(widget, 'Open Project')
         self.setLayout(self.vbox)
 
-    def savecollection(self):
+    def saveproject(self):
         widget = self.tab_widget.currentWidget()
         widget.tofile()
 
-    def add_to_collection(self):
+    def add_to_project(self):
         widget = self.tab_widget.currentWidget()
-        widget.addmesh(str(QtGui.QFileDialog.getOpenFileName(self, 'Open mesh', '.', '*.hdf5')))
+        widget.addspace(str(QtGui.QFileDialog.getOpenFileName(self, 'Open mesh', '.', '*.hdf5')))
 
-
-class CollectionWidget(QtGui.QWidget):
+class ProjectWidget(QtGui.QWidget):
     def __init__(self, filelist, key = None, projection = None, parent = None):
-        super(CollectionWidget, self).__init__(parent)
+        super(ProjectWidget, self).__init__(parent)
 
         self.figure = matplotlib.figure.Figure()
         self.canvas = FigureCanvasQTAgg(self.figure)
@@ -268,12 +261,16 @@ class CollectionWidget(QtGui.QWidget):
         self.log = QtGui.QCheckBox('nolog', self)
         self.log.setChecked(True)
 
+        self.samerange = QtGui.QCheckBox('same intensity range', self)
+        self.samerange.setChecked(False)
+
         self.datarange = RangeSlider(Qt.Qt.Horizontal)
         self.datarange.setMinimum(0)
         self.datarange.setMaximum(250)
         self.datarange.setLow(0)
         self.datarange.setHigh(self.datarange.maximum())
         self.datarange.setTickPosition(QtGui.QSlider.TicksBelow)
+        self.datarange.connect(self.datarange,QtCore.SIGNAL('sliderReleased()'), self.plot)
 
         self.filelist = filelist
         self.key = key
@@ -293,7 +290,7 @@ class CollectionWidget(QtGui.QWidget):
 
         self.limitwidget = LimitWidget(self.plotaxes)
         self.limitwidget.connect(self.limitwidget, QtCore.SIGNAL("keydict"), self.update_key)
-        self.limitwidget.send_signal()
+        self.limitwidget.connect(self.limitwidget, QtCore.SIGNAL("rangechange"), self.update_figure_range)
 
         left.addWidget(self.button_plot)
         left.addWidget(self.button_save)
@@ -307,20 +304,21 @@ class CollectionWidget(QtGui.QWidget):
 
         datarangebox = QtGui.QHBoxLayout() 
         datarangebox.addWidget(self.log)
-        datarangebox.addWidget(self.datarange)
+        datarangebox.addWidget(self.samerange)
 
         left.addLayout(radiobox)
         left.addLayout(datarangebox)
+        left.addWidget(self.datarange)
         left.addWidget(self.limitwidget)
         right.addWidget(self.canvas)
-
-
 
         hbox.addLayout(left)
         hbox.addLayout(right)
 
-        self.setLayout(hbox)  
+        self.setLayout(hbox)
 
+        self.limitwidget.send_signal()
+  
     def set_plotaxes(self):
         axes = tuple(BINoculars.space.Axes.fromfile(filename) for filename in self.filelist)
         first = axes[0]
@@ -330,10 +328,60 @@ class CollectionWidget(QtGui.QWidget):
         self.key = input['key']
         self.projection = input['project']
 
+        if len(self.limitwidget.sliders) - len(self.projection) == 1:
+            self.datarange.setDisabled(True)
+        elif len(self.limitwidget.sliders) - len(self.projection) == 2:
+            self.datarange.setEnabled(True)
+
+        self.plot()
+
     @staticmethod
     def restricted_key(key, axes):
         return tuple(ax.restrict(s) for s, ax in zip(key, axes))
-    
+
+    def get_colorscale(self):
+        log = self.log.checkState()
+        same = self.samerange.CheckState()
+
+    def get_norm(self,log, mi, ma, rangemin, rangemax):
+        if log:
+            power = 3
+            vmin = mi + (ma - mi) * rangemin ** power
+            vmax = mi + (ma - mi) * rangemax ** power
+        else:
+            vmin = mi + (ma - mi) * rangemin
+            vmax = mi + (ma - mi) * rangemax
+
+        if log:
+            return matplotlib.colors.LogNorm(vmin, vmax)
+        else:
+            return matplotlib.colors.Normalize(vmin, vmax)
+
+    def get_norm_list(self, spaces):
+        log = self.log.checkState()
+        same = self.samerange.checkState()
+
+        rangemin = self.datarange.low() * 1.0 / self.datarange.maximum()
+        rangemax = self.datarange.high() * 1.0 / self.datarange.maximum()
+
+        datamin = []
+        datamax = []
+        for space in spaces:
+            data = space.get_masked().compressed()
+            if log:
+                data = data[data > 0]
+            datamin.append(data.min())
+            datamax.append(data.max())
+
+        if same:
+            return [self.get_norm(log, min(datamin), max(datamax), rangemin, rangemax)] * len(spaces)
+
+        else:
+            norm = []
+            for i, space in enumerate(spaces):
+                norm.append(self.get_norm(log, datamin[i], datamax[i], rangemin, rangemax))
+            return norm
+
     def plot(self):
         self.figure.clear()
 
@@ -344,6 +392,7 @@ class CollectionWidget(QtGui.QWidget):
         if self.group.checkedButton():
             plotoption = self.group.checkedButton().text()
         
+        spaces = []
         for i, filename in enumerate(self.filelist):
             axes = BINoculars.space.Axes.fromfile(filename)
             space = BINoculars.space.Space.fromfile(filename, key = self.restricted_key(self.key, axes))
@@ -352,7 +401,11 @@ class CollectionWidget(QtGui.QWidget):
                 space = space.project(*projection)
             if len(space.axes) > 2 or len(space.axes) == 0:
                 self.error.showMessage('choose suitable number of projections, plotting only in 1D and 2D')
+            spaces.append(space)
 
+        norm = self.get_norm_list(spaces)
+
+        for i,space in enumerate(spaces):
             if plotcount > 1:
                 if space.dimension == 1 and (plotoption == 'stack' or plotoption == None):
                     self.ax = self.figure.add_subplot(111)
@@ -366,19 +419,26 @@ class CollectionWidget(QtGui.QWidget):
                  self.ax = self.figure.add_subplot(111)
             basename = os.path.splitext(os.path.basename(filename))[0]
 
-            vmin = self.datarange.low() * 1.0 / self.datarange.maximum()
-            vmax = self.datarange.high() * 1.0 / self.datarange.maximum()
-
             if plotoption == 'grid':
                 self.ax = self.figure.add_subplot(plotrows, plotcolumns, i+1)
-            BINoculars.plot.plot(space,self.figure, self.ax, log = self.log.checkState(),label = basename, scalemin = vmin, scalemax = vmax)
+            BINoculars.plot.plot(space,self.figure, self.ax, log = self.log.checkState(),label = basename, norm = norm[i])
 
         #if plotcount > 1 and plotoption == 'stack':
         #    self.figure.legend()
 
         self.canvas.draw()
 
-
+    def update_figure_range(self, key):
+        for ax in self.figure.axes:
+            xlabel, ylabel = ax.get_xlabel(), ax.get_ylabel()
+            if xlabel in self.plotaxes:
+                xindex = self.plotaxes.index(xlabel)
+                ax.set_xlim(key[xindex][0], key[xindex][1])
+            if ylabel in self.plotaxes:
+                yindex = self.plotaxes.index(ylabel)
+                ax.set_ylim(key[yindex][0], key[yindex][1])
+        self.canvas.draw()
+            
     @staticmethod
     def key_to_str(key):
         return list([s.start, s.stop] for s in key)
@@ -394,7 +454,7 @@ class CollectionWidget(QtGui.QWidget):
         dict['projection'] = self.projection
 
         if filename == None:
-            filename = str(QtGui.QFileDialog.getSaveFileName(self, 'Save Collection', '.'))
+            filename = str(QtGui.QFileDialog.getSaveFileName(self, 'Save Project', '.'))
 
         with open(filename, 'w') as fp:
             json.dump(dict, fp)
@@ -402,25 +462,24 @@ class CollectionWidget(QtGui.QWidget):
     @classmethod
     def fromfile(cls, filename = None):
         if filename == None:
-            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Collection', '.', '*.col'))        
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.col'))        
         try:
             with open(filename, 'r') as fp:
                 dict = json.load(fp)
         except IOError as e:
-            raise self.error.showMessage("unable to open '{0}' as collection file (original error: {1!r})".format(filename, e))
+            raise self.error.showMessage("unable to open '{0}' as project file (original error: {1!r})".format(filename, e))
 
         widget = cls(dict['filelist'], cls.str_to_key(dict['key']), dict['projection'])
 
         return widget
     
-
-    def addmesh(self,filename = None):
+    def addspace(self,filename = None):
         if filename == None:
-            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Collection', '.', '*.hdf5'))
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.hdf5'))
         self.filelist.append(filename)
 
     def save(self):
-        self.figure.savefig(str(QtGui.QFileDialog.getSaveFileName(self, 'Save Collection', '.')))
+        self.figure.savefig(str(QtGui.QFileDialog.getSaveFileName(self, 'Save Project', '.')))
                 
 class LimitWidget(QtGui.QWidget):
     def __init__(self, axes, parent=None):
@@ -438,7 +497,7 @@ class LimitWidget(QtGui.QWidget):
         hbox = QtGui.QHBoxLayout()
 
         self.projectionlabel = QtGui.QLabel(self)
-        self.projectionlabel.setText('projection on axis')
+        self.projectionlabel.setText('projection along axis')
         
         vbox.addWidget(self.projectionlabel)
 
@@ -491,6 +550,8 @@ class LimitWidget(QtGui.QWidget):
 
         for slider in self.sliders:
             QtCore.QObject.connect(slider, QtCore.SIGNAL('sliderMoved(int)'), self.update_lines)
+        for slider in self.sliders:
+            QtCore.QObject.connect(slider, QtCore.SIGNAL('sliderReleased()'), self.send_signal)
 
         for line in self.leftindicator:
             line.editingFinished.connect(self.update_sliders_left)
@@ -499,12 +560,12 @@ class LimitWidget(QtGui.QWidget):
 
         self.setLayout(vbox)
 
-
     def update_lines(self, value = 0 ):
         for index, slider in enumerate(self.sliders):
             self.leftindicator[index].setText(str(self.axes[index][slider.low()]))
             self.rightindicator[index].setText(str(self.axes[index][slider.high()]))
-        self.send_signal()
+        key = list((float(str(left.text())), float(str(right.text()))) for left, right in zip(self.leftindicator, self.rightindicator))
+        self.emit(QtCore.SIGNAL('rangechange'), key)
 
     def send_signal(self):
         signal = {}
@@ -551,7 +612,6 @@ class LimitWidget(QtGui.QWidget):
             self.state.append(box.checkState())
         self.send_signal()
 
-
     def init_checkbox(self):
         while numpy.alen(self.state) - self.state.sum() > 2:
              index = numpy.where(self.state == False)[-1]
@@ -584,9 +644,7 @@ if __name__ == '__main__':
 
     main = Window()
     main.resize(1000, 600)
-    #main.newcollection('demo_1720-1721.hdf5')
-    #main.load_hdf5file('demo_1726-1727.hdf5')
-    #main.load_hdf5file('demo_1737-1738.hdf5')
+    main.loadproject('test.proj')
     main.show()
 
     sys.exit(app.exec_())
