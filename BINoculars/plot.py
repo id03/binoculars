@@ -134,6 +134,9 @@ def plot(space, fig, ax, log=True, clipping=0.0, fit=None, norm=None,  **plotopt
         else:
             im = ax.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm = norm,  **plotopts)
 
+        if hasattr(fig, 'im'):
+            fig.im.append(im)
+
         ax.set_xlabel(space.axes[0].label)
         ax.set_ylabel(space.axes[1].label)
         cbarwidget = fig.colorbar(im)

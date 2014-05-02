@@ -258,11 +258,14 @@ class ProjectWidget(QtGui.QWidget):
         self.toolbar = HiddenToolbar(self.canvas)
         self.error = QtGui.QErrorMessage()
 
-        self.log = QtGui.QCheckBox('nolog', self)
+        self.log = QtGui.QCheckBox('log', self)
         self.log.setChecked(True)
+        self.log.connect(self.log, QtCore.SIGNAL("stateChanged(int)"), self.plot)
 
         self.samerange = QtGui.QCheckBox('same intensity range', self)
         self.samerange.setChecked(False)
+        self.samerange.connect(self.samerange, QtCore.SIGNAL("stateChanged(int)"), self.update_colorbar)
+
 
         self.datarange = RangeSlider(Qt.Qt.Horizontal)
         self.datarange.setMinimum(0)
@@ -270,7 +273,7 @@ class ProjectWidget(QtGui.QWidget):
         self.datarange.setLow(0)
         self.datarange.setHigh(self.datarange.maximum())
         self.datarange.setTickPosition(QtGui.QSlider.TicksBelow)
-        self.datarange.connect(self.datarange,QtCore.SIGNAL('sliderReleased()'), self.plot)
+        QtCore.QObject.connect(self.datarange, QtCore.SIGNAL('sliderMoved(int)'), self.update_colorbar)
 
         self.filelist = filelist
         self.key = key
@@ -279,9 +282,6 @@ class ProjectWidget(QtGui.QWidget):
         hbox = QtGui.QHBoxLayout() 
         left = QtGui.QVBoxLayout()
         right = QtGui.QVBoxLayout()
-
-        self.button_plot = QtGui.QPushButton('plot')
-        self.button_plot.clicked.connect(self.plot)
 
         self.button_save = QtGui.QPushButton('save')
         self.button_save.clicked.connect(self.save)
@@ -292,7 +292,6 @@ class ProjectWidget(QtGui.QWidget):
         self.limitwidget.connect(self.limitwidget, QtCore.SIGNAL("keydict"), self.update_key)
         self.limitwidget.connect(self.limitwidget, QtCore.SIGNAL("rangechange"), self.update_figure_range)
 
-        left.addWidget(self.button_plot)
         left.addWidget(self.button_save)
 
         radiobox =  QtGui.QHBoxLayout() 
@@ -330,8 +329,10 @@ class ProjectWidget(QtGui.QWidget):
 
         if len(self.limitwidget.sliders) - len(self.projection) == 1:
             self.datarange.setDisabled(True)
+            self.samerange.setDisabled(True)
         elif len(self.limitwidget.sliders) - len(self.projection) == 2:
             self.datarange.setEnabled(True)
+            self.samerange.setEnabled(True)
 
         self.plot()
 
@@ -339,11 +340,12 @@ class ProjectWidget(QtGui.QWidget):
     def restricted_key(key, axes):
         return tuple(ax.restrict(s) for s, ax in zip(key, axes))
 
-    def get_colorscale(self):
+    def get_norm(self, mi, ma):
         log = self.log.checkState()
-        same = self.samerange.CheckState()
 
-    def get_norm(self,log, mi, ma, rangemin, rangemax):
+        rangemin = self.datarange.low() * 1.0 / self.datarange.maximum()
+        rangemax = self.datarange.high() * 1.0 / self.datarange.maximum()
+
         if log:
             power = 3
             vmin = mi + (ma - mi) * rangemin ** power
@@ -357,33 +359,22 @@ class ProjectWidget(QtGui.QWidget):
         else:
             return matplotlib.colors.Normalize(vmin, vmax)
 
-    def get_norm_list(self, spaces):
+    def get_normlist(self):
         log = self.log.checkState()
         same = self.samerange.checkState()
 
-        rangemin = self.datarange.low() * 1.0 / self.datarange.maximum()
-        rangemax = self.datarange.high() * 1.0 / self.datarange.maximum()
-
-        datamin = []
-        datamax = []
-        for space in spaces:
-            data = space.get_masked().compressed()
-            if log:
-                data = data[data > 0]
-            datamin.append(data.min())
-            datamax.append(data.max())
-
         if same:
-            return [self.get_norm(log, min(datamin), max(datamax), rangemin, rangemax)] * len(spaces)
-
+            return [self.get_norm(min(self.datamin), max(self.datamax))] * len(self.datamin)
         else:
             norm = []
-            for i, space in enumerate(spaces):
-                norm.append(self.get_norm(log, datamin[i], datamax[i], rangemin, rangemax))
+            for i in range(len(self.datamin)):
+                norm.append(self.get_norm(self.datamin[i], self.datamax[i]))
             return norm
 
     def plot(self):
         self.figure.clear()
+        self.figure.im = []
+        log = self.log.checkState()
 
         plotcount = len(self.filelist)
         plotcolumns = int(numpy.ceil(numpy.sqrt(plotcount)))
@@ -403,7 +394,15 @@ class ProjectWidget(QtGui.QWidget):
                 self.error.showMessage('choose suitable number of projections, plotting only in 1D and 2D')
             spaces.append(space)
 
-        norm = self.get_norm_list(spaces)
+        self.datamin = []
+        self.datamax = []
+        for space in spaces:
+            data = space.get_masked().compressed()
+            if log:
+                data = data[data > 0]
+            self.datamin.append(data.min())
+            self.datamax.append(data.max())
+        norm = self.get_normlist()
 
         for i,space in enumerate(spaces):
             if plotcount > 1:
@@ -421,7 +420,7 @@ class ProjectWidget(QtGui.QWidget):
 
             if plotoption == 'grid':
                 self.ax = self.figure.add_subplot(plotrows, plotcolumns, i+1)
-            BINoculars.plot.plot(space,self.figure, self.ax, log = self.log.checkState(),label = basename, norm = norm[i])
+            BINoculars.plot.plot(space,self.figure, self.ax, log = log,label = basename, norm = norm[i])
 
         #if plotcount > 1 and plotoption == 'stack':
         #    self.figure.legend()
@@ -438,7 +437,13 @@ class ProjectWidget(QtGui.QWidget):
                 yindex = self.plotaxes.index(ylabel)
                 ax.set_ylim(key[yindex][0], key[yindex][1])
         self.canvas.draw()
-            
+
+    def update_colorbar(self,value):
+        normlist = self.get_normlist()
+        for im,norm in zip(self.figure.im, normlist):
+            im.set_norm(norm)
+        self.canvas.draw()
+
     @staticmethod
     def key_to_str(key):
         return list([s.start, s.stop] for s in key)
