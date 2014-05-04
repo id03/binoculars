@@ -229,7 +229,7 @@ class Window(QtGui.QDialog):
 
     def newproject(self, filename = None):
         if not filename:
-            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open mesh', '.', '*.hdf5'))
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open space', '.', '*.hdf5'))
         widget = ProjectWidget([filename])
         self.tab_widget.addTab(widget, 'New Project')
         self.setLayout(self.vbox)
@@ -238,16 +238,20 @@ class Window(QtGui.QDialog):
         if not filename:
             filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open project', '.', '*.proj'))
         widget = ProjectWidget.fromfile(filename)
-        self.tab_widget.addTab(widget, 'Open Project')
+        self.tab_widget.addTab(widget, short_filename(filename))
         self.setLayout(self.vbox)
 
     def saveproject(self):
         widget = self.tab_widget.currentWidget()
-        widget.tofile()
+        filename = str(QtGui.QFileDialog.getSaveFileName(self, 'Save Project', '.', '*.proj'))
+        index = self.tab_widget.currentIndex()
+        self.tab_widget.setTabText(index, short_filename(filename))
+        widget.tofile(filename)
 
     def add_to_project(self):
         widget = self.tab_widget.currentWidget()
-        widget.addspace(str(QtGui.QFileDialog.getOpenFileName(self, 'Open mesh', '.', '*.hdf5')))
+        widget.addspace(str(QtGui.QFileDialog.getOpenFileName(self, 'Open space', '.', '*.hdf5')))
+
 
 class ProjectWidget(QtGui.QWidget):
     def __init__(self, filelist, key = None, projection = None, parent = None):
@@ -256,15 +260,14 @@ class ProjectWidget(QtGui.QWidget):
         self.figure = matplotlib.figure.Figure()
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.toolbar = HiddenToolbar(self.canvas)
-        self.error = QtGui.QErrorMessage()
 
         self.log = QtGui.QCheckBox('log', self)
         self.log.setChecked(True)
-        self.log.connect(self.log, QtCore.SIGNAL("stateChanged(int)"), self.plot)
+        QtCore.QObject.connect(self.log, QtCore.SIGNAL("stateChanged(int)"), self.plot)
 
         self.samerange = QtGui.QCheckBox('same intensity range', self)
         self.samerange.setChecked(False)
-        self.samerange.connect(self.samerange, QtCore.SIGNAL("stateChanged(int)"), self.update_colorbar)
+        QtCore.QObject.connect(self.samerange, QtCore.SIGNAL("stateChanged(int)"), self.update_colorbar)
 
 
         self.datarange = RangeSlider(Qt.Qt.Horizontal)
@@ -275,7 +278,9 @@ class ProjectWidget(QtGui.QWidget):
         self.datarange.setTickPosition(QtGui.QSlider.TicksBelow)
         QtCore.QObject.connect(self.datarange, QtCore.SIGNAL('sliderMoved(int)'), self.update_colorbar)
 
-        self.filelist = filelist
+        self.table = TableWidget(filelist)
+        QtCore.QObject.connect(self.table, QtCore.SIGNAL('selectionError'), self.selectionerror)
+
         self.key = key
         self.projection = projection
 
@@ -286,11 +291,11 @@ class ProjectWidget(QtGui.QWidget):
         self.button_save = QtGui.QPushButton('save')
         self.button_save.clicked.connect(self.save)
 
-        self.plotaxes = self.set_plotaxes()
-
-        self.limitwidget = LimitWidget(self.plotaxes)
-        self.limitwidget.connect(self.limitwidget, QtCore.SIGNAL("keydict"), self.update_key)
-        self.limitwidget.connect(self.limitwidget, QtCore.SIGNAL("rangechange"), self.update_figure_range)
+        self.limitwidget = LimitWidget(self.table.plotaxes)
+        QtCore.QObject.connect(self.limitwidget, QtCore.SIGNAL("keydict"), self.update_key)
+        QtCore.QObject.connect(self.limitwidget, QtCore.SIGNAL("rangechange"), self.update_figure_range)
+        QtCore.QObject.connect(self.table, QtCore.SIGNAL('plotaxesChanged'), self.plotaxes_changed)
+        
 
         left.addWidget(self.button_save)
 
@@ -308,6 +313,9 @@ class ProjectWidget(QtGui.QWidget):
         left.addLayout(radiobox)
         left.addLayout(datarangebox)
         left.addWidget(self.datarange)
+
+        left.addWidget(self.table)
+
         left.addWidget(self.limitwidget)
         right.addWidget(self.canvas)
 
@@ -316,13 +324,14 @@ class ProjectWidget(QtGui.QWidget):
 
         self.setLayout(hbox)
 
-        self.limitwidget.send_signal()
-  
-    def set_plotaxes(self):
-        axes = tuple(BINoculars.space.Axes.fromfile(filename) for filename in self.filelist)
-        first = axes[0]
-        return BINoculars.space.Axes(tuple(BINoculars.space.union_unequal_axes(ax[i] for ax in axes) for i in range(first.dimension)))
-    
+    def selectionerror(self, message):
+        self.limitwidget.setDisabled(True)
+        self.errormessage(message)
+
+    def plotaxes_changed(self, plotaxes):
+        self.limitwidget.setEnabled(True)
+        self.limitwidget.axes_update(plotaxes)
+
     def update_key(self, input):
         self.key = input['key']
         self.projection = input['project']
@@ -333,7 +342,6 @@ class ProjectWidget(QtGui.QWidget):
         elif len(self.limitwidget.sliders) - len(self.projection) == 2:
             self.datarange.setEnabled(True)
             self.samerange.setEnabled(True)
-
         self.plot()
 
     @staticmethod
@@ -376,7 +384,7 @@ class ProjectWidget(QtGui.QWidget):
         self.figure.im = []
         log = self.log.checkState()
 
-        plotcount = len(self.filelist)
+        plotcount = len(self.table.selection)
         plotcolumns = int(numpy.ceil(numpy.sqrt(plotcount)))
         plotrows = int(numpy.ceil(float(plotcount) / plotcolumns))
         plotoption = None
@@ -384,14 +392,14 @@ class ProjectWidget(QtGui.QWidget):
             plotoption = self.group.checkedButton().text()
         
         spaces = []
-        for i, filename in enumerate(self.filelist):
+        for i, filename in enumerate(self.table.selection):
             axes = BINoculars.space.Axes.fromfile(filename)
             space = BINoculars.space.Space.fromfile(filename, key = self.restricted_key(self.key, axes))
             projection = [ax for ax in self.projection if ax in space.axes]
             if projection:
                 space = space.project(*projection)
             if len(space.axes) > 2 or len(space.axes) == 0:
-                self.error.showMessage('choose suitable number of projections, plotting only in 1D and 2D')
+                self.errormessage('choose suitable number of projections, plotting only in 1D and 2D')
             spaces.append(space)
 
         self.datamin = []
@@ -427,14 +435,19 @@ class ProjectWidget(QtGui.QWidget):
 
         self.canvas.draw()
 
+    def errormessage(self, message):
+        self.figure.clear()
+        self.figure.text(0.5, 0.5, 'Error: {0}'.format(message), horizontalalignment='center')
+        self.canvas.draw()
+
     def update_figure_range(self, key):
         for ax in self.figure.axes:
             xlabel, ylabel = ax.get_xlabel(), ax.get_ylabel()
-            if xlabel in self.plotaxes:
-                xindex = self.plotaxes.index(xlabel)
+            if xlabel in self.table.plotaxes:
+                xindex = self.table.plotaxes.index(xlabel)
                 ax.set_xlim(key[xindex][0], key[xindex][1])
-            if ylabel in self.plotaxes:
-                yindex = self.plotaxes.index(ylabel)
+            if ylabel in self.table.plotaxes:
+                yindex = self.table.plotaxes.index(ylabel)
                 ax.set_ylim(key[yindex][0], key[yindex][1])
         self.canvas.draw()
 
@@ -454,7 +467,7 @@ class ProjectWidget(QtGui.QWidget):
 
     def tofile(self, filename = None):
         dict = {}
-        dict['filelist'] = self.filelist
+        dict['filelist'] = self.table.filelist
         dict['key'] = self.key_to_str(self.key)
         dict['projection'] = self.projection
 
@@ -467,7 +480,7 @@ class ProjectWidget(QtGui.QWidget):
     @classmethod
     def fromfile(cls, filename = None):
         if filename == None:
-            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.col'))        
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.proj'))        
         try:
             with open(filename, 'r') as fp:
                 dict = json.load(fp)
@@ -481,16 +494,99 @@ class ProjectWidget(QtGui.QWidget):
     def addspace(self,filename = None):
         if filename == None:
             filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.hdf5'))
-        self.filelist.append(filename)
+        self.table.addspace(filename)
 
     def save(self):
         self.figure.savefig(str(QtGui.QFileDialog.getSaveFileName(self, 'Save Project', '.')))
                 
+
+def short_filename(filename):
+    return filename.split('/')[-1].split('.')[0]
+
+class TableWidget(QtGui.QWidget):
+    def __init__(self, filelist = [],parent=None):
+        super(TableWidget, self).__init__(parent)
+
+        hbox = QtGui.QHBoxLayout()
+        self.plotaxes = None
+
+        self.table = QtGui.QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(['filename','labels', 'remove'])
+        
+        for index, width in enumerate([150,50,70]):
+            self.table.setColumnWidth(index, width)
+
+        for filename in filelist:
+            self.addspace(filename, True)
+
+        hbox.addWidget(self.table)
+        self.setLayout(hbox)
+
+    def addspace(self, filename, add = False):
+        def remove_callback(filename):
+            return lambda: self.remove(filename)
+
+        index = self.table.rowCount()
+        self.table.insertRow(index)
+
+        axes = BINoculars.space.Axes.fromfile(filename) 
+
+        checkboxwidget = QtGui.QCheckBox(short_filename(filename))
+        checkboxwidget.setChecked(add)
+        checkboxwidget.filename = filename
+        checkboxwidget.clicked.connect(self.select)
+        self.table.setCellWidget(index,0, checkboxwidget)
+
+        item = QtGui.QTableWidgetItem(','.join(list(ax.label.lower() for ax in axes)))
+        self.table.setItem(index, 1, item)
+
+        buttonwidget = QtGui.QPushButton('remove')
+        buttonwidget.clicked.connect(remove_callback(filename))
+        self.table.setCellWidget(index,2, buttonwidget)
+        self.select()
+
+    def remove(self, filename):
+        table_filenames = list(self.table.cellWidget(index, 0).filename for index in range(self.table.rowCount()))
+        for index, label in enumerate(table_filenames):
+            if filename == label:
+                self.table.removeRow(index)
+        self.select()
+        print 'removed: {0}'.format(filename)
+
+    def select(self):
+        self.selection = []
+        for index in range(self.table.rowCount()):
+            checkbox = self.table.cellWidget(index, 0)
+            if checkbox.checkState():
+                self.selection.append(checkbox.filename)
+
+        if len(self.selection) > 0:
+            axeslist = list(BINoculars.space.Axes.fromfile(filename) for filename in self.selection)
+            first = axeslist[0]
+            if all(set(ax.label for ax in first) == set(ax.label for ax in axes) for axes in axeslist):
+                self.plotaxes = BINoculars.space.Axes(tuple(BINoculars.space.union_unequal_axes(ax[i] for ax in axeslist) for i in range(first.dimension)))
+                self.emit(QtCore.SIGNAL('plotaxesChanged'), self.plotaxes)
+            else:
+                self.selection = []
+                self.emit(QtCore.SIGNAL('selectionError'), 'labels of selected spaces not matching')
+        else:
+            self.emit(QtCore.SIGNAL('selectionError'), 'no spaces selected')
+
+            
+    @property
+    def filelist(self):
+        return list(self.table.cellWidget(index, 0).filename for index in range(self.table.rowCount()))
+
+
 class LimitWidget(QtGui.QWidget):
     def __init__(self, axes, parent=None):
         super(LimitWidget, self).__init__(parent)
-        
+
+        self.initUI(axes)
+
+    def initUI(self, axes):
         self.axes = axes
+
         self.sliders = list()
         self.qlabels = list()
         self.leftindicator = list()
@@ -524,8 +620,8 @@ class LimitWidget(QtGui.QWidget):
 
         for label in labels:
             self.qlabels.append(QtGui.QLabel(self))
-            self.leftindicator.append(QtGui.QLineEdit())
-            self.rightindicator.append(QtGui.QLineEdit())             
+            self.leftindicator.append(QtGui.QLineEdit(self))
+            self.rightindicator.append(QtGui.QLineEdit(self))             
             self.sliders.append(RangeSlider(Qt.Qt.Horizontal))
 
         for index, label in enumerate(labels):
@@ -563,7 +659,8 @@ class LimitWidget(QtGui.QWidget):
         for line in self.rightindicator:
             line.editingFinished.connect(self.update_sliders_right)
 
-        self.setLayout(vbox)
+        if self.layout() == None:
+            self.setLayout(vbox)
 
     def update_lines(self, value = 0 ):
         for index, slider in enumerate(self.sliders):
@@ -624,24 +721,29 @@ class LimitWidget(QtGui.QWidget):
         for box, state in zip(self.checkbox,self.state):
             box.setChecked(state)
 
-    def update(self, axes):
-        low = tuple(self.axes[index][slider.low()] for index, slider in enumerate(self.sliders))
-        high = tuple(self.axes[index][slider.high()] for index, slider in enumerate(self.sliders))
+    def axes_update(self, axes):
+        if not set(ax.label for ax in self.axes) == set(ax.label for ax in axes):
+            QtGui.QWidget().setLayout(self.layout())
+            self.initUI(axes)
+            self.send_signal()
+        else:
+            low = tuple(self.axes[index][slider.low()] for index, slider in enumerate(self.sliders))
+            high = tuple(self.axes[index][slider.high()] for index, slider in enumerate(self.sliders))
 
-        for index, ax in enumerate(axes):
-            self.sliders[index].setMinimum(0)
-            self.sliders[index].setMaximum(len(ax) - 1)
+            for index, ax in enumerate(axes):
+                self.sliders[index].setMinimum(0)
+                self.sliders[index].setMaximum(len(ax) - 1)
 
-        self.axes = axes
+            self.axes = axes
 
-        for index, slider in enumerate(self.sliders):
-            self.leftindicator[index].setText(str(low[index]))
-            self.rightindicator[index].setText(str(high[index]))
+            for index, slider in enumerate(self.sliders):
+                self.leftindicator[index].setText(str(low[index]))
+                self.rightindicator[index].setText(str(high[index]))
 
-        self.update_sliders_left()
-        self.update_sliders_right()
+            self.update_sliders_left()
+            self.update_sliders_right()
 
-        self.send_signal()
+            self.send_signal()
             
     
 if __name__ == '__main__':
