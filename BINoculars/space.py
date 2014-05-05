@@ -319,9 +319,14 @@ class Space(object):
         if isinstance(key, numbers.Number):
             if not len(self.axes) == 1:
                 raise IndexError('dimension mismatch')
+            newkey = self.axes[0].get_index(key)
+            return self.photons[newkey] / self.contributions[newkey]
         elif isinstance(key, tuple) or isinstance(key, list):
             newkey = tuple(ax.get_index(k) for k, ax in zip(key, self.axes))
             return self.photons[newkey] / self.contributions[newkey]
+        else:
+            raise ValueError('invalid key: {0}'.format(key))
+
 
     def project(self, axis, *more_axes):
         index = self.axes.index(axis)

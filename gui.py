@@ -191,9 +191,6 @@ class RangeSlider(QtGui.QSlider):
                                              opt.upsideDown)
 
 
-class HiddenToolbar(NavigationToolbar2QTAgg):
-    def __init__(self, canvas):
-        NavigationToolbar2QTAgg.__init__(self, canvas, None)
 
 class Window(QtGui.QDialog):
     def __init__(self, parent=None):
@@ -218,48 +215,110 @@ class Window(QtGui.QDialog):
         file.addAction(saveproject)
         file.addAction(addspace) 
 
-        self.tab_widget = QtGui.QTabWidget()
+        self.tab_widget = QtGui.QTabWidget(self)
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.tabCloseRequested.connect(self.tab_widget.removeTab)
 
+        self.statusbar	= QtGui.QStatusBar()
+
         self.vbox = QtGui.QVBoxLayout()
         self.vbox.addWidget(menu_bar) 
-        self.vbox.addWidget(self.tab_widget) 
-        self.setLayout(self.vbox) 
-
-    def newproject(self, filename = None):
-        if not filename:
-            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open space', '.', '*.hdf5'))
-        widget = ProjectWidget([filename])
-        self.tab_widget.addTab(widget, 'New Project')
+        self.vbox.addWidget(self.tab_widget)
+        self.vbox.addWidget(self.statusbar) 
         self.setLayout(self.vbox)
+
+    def newproject(self):
+        dialog = QtGui.QFileDialog(self, "Add spaces to new project");
+        dialog.setFilter('BINoculars space file (*.hdf5)');
+        dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
+        dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
+        if not dialog.exec_():
+            return
+        fname = dialog.selectedFiles()
+        if not fname:
+            return
+        try:
+            widget = ProjectWidget(list(str(file) for file in fname), parent = self)
+            self.tab_widget.addTab(widget, 'New Project')
+        except Exception as e:
+            QtGui.QMessageBox.critical(self, 'Save project', 'Unable to add files to {}: {}'.format(fname, e))
+
             
     def loadproject(self, filename = None):
         if not filename:
-            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open project', '.', '*.proj'))
-        widget = ProjectWidget.fromfile(filename)
-        self.tab_widget.addTab(widget, short_filename(filename))
-        self.setLayout(self.vbox)
+            dialog = QtGui.QFileDialog(self, "Load project");
+            dialog.setFilter('BINoculars project file (*.proj)');
+            dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
+            dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
+            if not dialog.exec_():
+                return
+            fname = dialog.selectedFiles()
+            if not fname:
+                return
+            for name in fname:
+                try:
+                    widget = ProjectWidget.fromfile(str(name), parent = self)
+                    self.tab_widget.addTab(widget, short_filename(str(name)))
+                except Exception as e:
+                    QtGui.QMessageBox.critical(self, 'Load project', 'Unable to load project from {}: {}'.format(fname, e))
+        else:
+            widget = ProjectWidget.fromfile(filename, parent = self)
+            self.tab_widget.addTab(widget, short_filename(filename))
 
     def saveproject(self):
         widget = self.tab_widget.currentWidget()
-        filename = str(QtGui.QFileDialog.getSaveFileName(self, 'Save Project', '.', '*.proj'))
-        index = self.tab_widget.currentIndex()
-        self.tab_widget.setTabText(index, short_filename(filename))
-        widget.tofile(filename)
+        dialog = QtGui.QFileDialog(self, "Save project");
+        dialog.setFilter('BINoculars project file (*.proj)');
+        dialog.setDefaultSuffix('proj');
+        dialog.setFileMode(QtGui.QFileDialog.AnyFile);
+        dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
+        if not dialog.exec_():
+            return
+        fname = dialog.selectedFiles()[0]
+        if not fname:
+            return
+        try:
+            index = self.tab_widget.currentIndex()
+            self.tab_widget.setTabText(index, short_filename(fname))
+            widget.tofile(fname)
+        except Exception as e:
+            QtGui.QMessageBox.critical(self, 'Save project', 'Unable to save project to {}: {}'.format(fname, e))
 
     def add_to_project(self):
-        widget = self.tab_widget.currentWidget()
-        widget.addspace(str(QtGui.QFileDialog.getOpenFileName(self, 'Open space', '.', '*.hdf5')))
+        dialog = QtGui.QFileDialog(self, "Import spaces");
+        dialog.setFilter('BINoculars space file (*.hdf5)');
+        dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
+        dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
+        if not dialog.exec_():
+            return
+        fname = dialog.selectedFiles()
+        if not fname:
+            return
+        for name in fname:
+            try:
+                widget = self.tab_widget.currentWidget()
+                widget.addspace(str(name))
+            except Exception as e:
+                QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(fname, e))
+
+
+class HiddenToolbar(NavigationToolbar2QTAgg):
+    def __init__(self, show_coords, canvas):
+        NavigationToolbar2QTAgg.__init__(self, canvas, None)
+        self.show_coords = show_coords
+
+    def mouse_move(self, event):
+        self.show_coords(event)
 
 
 class ProjectWidget(QtGui.QWidget):
     def __init__(self, filelist, key = None, projection = None, parent = None):
         super(ProjectWidget, self).__init__(parent)
+        self.parent = parent
 
         self.figure = matplotlib.figure.Figure()
         self.canvas = FigureCanvasQTAgg(self.figure)
-        self.toolbar = HiddenToolbar(self.canvas)
+        self.toolbar = HiddenToolbar(self.show_coords, self.canvas)
 
         self.log = QtGui.QCheckBox('log', self)
         self.log.setChecked(True)
@@ -288,7 +347,7 @@ class ProjectWidget(QtGui.QWidget):
         left = QtGui.QVBoxLayout()
         right = QtGui.QVBoxLayout()
 
-        self.button_save = QtGui.QPushButton('save')
+        self.button_save = QtGui.QPushButton('save image')
         self.button_save.clicked.connect(self.save)
 
         self.limitwidget = LimitWidget(self.table.plotaxes)
@@ -296,7 +355,6 @@ class ProjectWidget(QtGui.QWidget):
         QtCore.QObject.connect(self.limitwidget, QtCore.SIGNAL("rangechange"), self.update_figure_range)
         QtCore.QObject.connect(self.table, QtCore.SIGNAL('plotaxesChanged'), self.plotaxes_changed)
         
-
         left.addWidget(self.button_save)
 
         radiobox =  QtGui.QHBoxLayout() 
@@ -323,6 +381,28 @@ class ProjectWidget(QtGui.QWidget):
         hbox.addLayout(right)
 
         self.setLayout(hbox)
+        self.table.select()
+
+        
+    def show_coords(self, event):
+        plot = event.inaxes
+        if hasattr(plot, 'space'):
+            if plot.space.dimension == 2:
+                labels = numpy.array([plot.get_xlabel(), plot.get_ylabel()])
+                order = [plot.space.axes.index(label) for label in labels]
+                labels = labels[order]                
+                coords = numpy.array([event.xdata, event.ydata])[order] 
+                rounded_coords = [ax[ax.get_index(coord)] for ax, coord in zip(plot.space.axes, coords)]
+                intensity = '{:.2e}'.format(plot.space.get_value(list(coords)))
+                self.parent.statusbar.showMessage('{0} = {1}, {2} = {3}, Intensity = {4}'.format(labels[0], rounded_coords[0] ,labels[1], rounded_coords[1], intensity))
+            if plot.space.dimension == 1:
+                xaxis = plot.space.axes[plot.space.axes.index(plot.get_xlabel())]
+                if event.xdata in xaxis:
+                     xcoord =  xaxis[xaxis.get_index(event.xdata)]
+                     intensity = '{:.2e}'.format(event.ydata)
+                     self.parent.statusbar.showMessage('{0} = {1}, Intensity = {2}'.format(xaxis.label, xcoord, intensity))
+
+        
 
     def selectionerror(self, message):
         self.limitwidget.setDisabled(True)
@@ -381,6 +461,8 @@ class ProjectWidget(QtGui.QWidget):
 
     def plot(self):
         self.figure.clear()
+        self.parent.statusbar.clearMessage()
+
         self.figure.im = []
         log = self.log.checkState()
 
@@ -428,6 +510,7 @@ class ProjectWidget(QtGui.QWidget):
 
             if plotoption == 'grid':
                 self.ax = self.figure.add_subplot(plotrows, plotcolumns, i+1)
+            self.ax.space = space
             BINoculars.plot.plot(space,self.figure, self.ax, log = log,label = basename, norm = norm[i])
 
         #if plotcount > 1 and plotoption == 'stack':
@@ -437,8 +520,8 @@ class ProjectWidget(QtGui.QWidget):
 
     def errormessage(self, message):
         self.figure.clear()
-        self.figure.text(0.5, 0.5, 'Error: {0}'.format(message), horizontalalignment='center')
         self.canvas.draw()
+        self.parent.statusbar.showMessage(message)
 
     def update_figure_range(self, key):
         for ax in self.figure.axes:
@@ -478,7 +561,7 @@ class ProjectWidget(QtGui.QWidget):
             json.dump(dict, fp)
 
     @classmethod
-    def fromfile(cls, filename = None):
+    def fromfile(cls, filename = None, parent = None):
         if filename == None:
             filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.proj'))        
         try:
@@ -487,7 +570,7 @@ class ProjectWidget(QtGui.QWidget):
         except IOError as e:
             raise self.error.showMessage("unable to open '{0}' as project file (original error: {1!r})".format(filename, e))
 
-        widget = cls(dict['filelist'], cls.str_to_key(dict['key']), dict['projection'])
+        widget = cls(dict['filelist'], cls.str_to_key(dict['key']), dict['projection'], parent = parent)
 
         return widget
     
@@ -497,8 +580,20 @@ class ProjectWidget(QtGui.QWidget):
         self.table.addspace(filename)
 
     def save(self):
-        self.figure.savefig(str(QtGui.QFileDialog.getSaveFileName(self, 'Save Project', '.')))
-                
+        dialog = QtGui.QFileDialog(self, "Save image");
+        dialog.setFilter('Portable Network Graphics (*.png);;Portable Document Format (*.pdf)');
+        dialog.setDefaultSuffix('png');
+        dialog.setFileMode(QtGui.QFileDialog.AnyFile);
+        dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
+        if not dialog.exec_():
+            return
+        fname = dialog.selectedFiles()[0]
+        if not fname:
+            return
+        try:
+            self.figure.savefig(str(fname))
+        except Exception as e:
+            QtGui.QMessageBox.critical(self, 'Save image', 'Unable to save image to {}: {}'.format(fname, e))                
 
 def short_filename(filename):
     return filename.split('/')[-1].split('.')[0]
