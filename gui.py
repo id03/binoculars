@@ -192,7 +192,7 @@ class RangeSlider(QtGui.QSlider):
 
 
 
-class Window(QtGui.QDialog):
+class Window(QtGui.QWidget):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
 
@@ -228,21 +228,7 @@ class Window(QtGui.QDialog):
         self.setLayout(self.vbox)
 
     def newproject(self):
-        dialog = QtGui.QFileDialog(self, "Add spaces to new project");
-        dialog.setFilter('BINoculars space file (*.hdf5)');
-        dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
-        dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
-        if not dialog.exec_():
-            return
-        fname = dialog.selectedFiles()
-        if not fname:
-            return
-        try:
-            widget = ProjectWidget(list(str(file) for file in fname), parent = self)
-            self.tab_widget.addTab(widget, 'New Project')
-        except Exception as e:
-            QtGui.QMessageBox.critical(self, 'Save project', 'Unable to add files to {}: {}'.format(fname, e))
-
+        self.tab_widget.addTab(ProjectWidget([], parent=self), 'New Project')
             
     def loadproject(self, filename = None):
         if not filename:
@@ -603,7 +589,7 @@ class TableWidget(QtGui.QWidget):
         super(TableWidget, self).__init__(parent)
 
         hbox = QtGui.QHBoxLayout()
-        self.plotaxes = None
+        self.plotaxes = []
 
         self.table = QtGui.QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(['filename','labels', 'remove'])
@@ -627,7 +613,7 @@ class TableWidget(QtGui.QWidget):
         axes = BINoculars.space.Axes.fromfile(filename) 
 
         checkboxwidget = QtGui.QCheckBox(short_filename(filename))
-        checkboxwidget.setChecked(add)
+        checkboxwidget.setChecked(add or index == 0)
         checkboxwidget.filename = filename
         checkboxwidget.clicked.connect(self.select)
         self.table.setCellWidget(index,0, checkboxwidget)
@@ -846,7 +832,7 @@ if __name__ == '__main__':
 
     main = Window()
     main.resize(1000, 600)
-    main.loadproject('test.proj')
+    main.newproject()
     main.show()
 
     sys.exit(app.exec_())
