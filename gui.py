@@ -192,7 +192,7 @@ class RangeSlider(QtGui.QSlider):
 
 
 
-class Window(QtGui.QWidget):
+class Window(QtGui.QMainWindow):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
 
@@ -221,11 +221,9 @@ class Window(QtGui.QWidget):
 
         self.statusbar	= QtGui.QStatusBar()
 
-        self.vbox = QtGui.QVBoxLayout()
-        self.vbox.addWidget(menu_bar) 
-        self.vbox.addWidget(self.tab_widget)
-        self.vbox.addWidget(self.statusbar) 
-        self.setLayout(self.vbox)
+        self.setCentralWidget(self.tab_widget)
+        self.setMenuBar(menu_bar)
+        self.setStatusBar(self.statusbar)
 
     def newproject(self):
         self.tab_widget.addTab(ProjectWidget([], parent=self), 'New Project')
