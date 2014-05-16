@@ -419,7 +419,7 @@ class Space(object):
             factors = [factors] * len(self.axes)
         elif len(factors) != len(self.axes):
             raise ValueError('dimension mismatch between factors and axes')
-        if not all(isinstance(factor, int) for factor in factors) or not all(factor % 2 == 0 for factor in factors):
+        if not all(isinstance(factor, int) for factor in factors) or not all(factor == 1 or factor % 2 == 0 for factor in factors):
             raise ValueError('binning factors must be even integers')
 
         lefts, rights, newaxes = zip(*[ax.rebin(factor) for ax, factor in zip(self.axes, factors)])
