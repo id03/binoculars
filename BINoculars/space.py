@@ -409,7 +409,7 @@ class Space(object):
         mask = self.contributions > 0
         lims = (numpy.flatnonzero(sum_onto(mask, i)) for (i, ax) in enumerate(self.axes))
         lims = tuple((i.min(), i.max()) for i in lims)
-        self.axes = tuple(ax.rebound(min + ax.imin, max + ax.imax) for (ax, (min, max)) in zip(self.axes, lims))
+        self.axes = Axes(ax.rebound(min + ax.imin, max + ax.imin) for (ax, (min, max)) in zip(self.axes, lims))
         slices = tuple(slice(min, max+1) for (min, max) in lims)
         self.photons = self.photons[slices].copy()
         self.contributions = self.contributions[slices].copy()
