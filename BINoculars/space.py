@@ -311,8 +311,8 @@ class Space(object):
         if not newaxes:
             raise ValueError('zero-dimensional spaces are not supported')
         newspace = self.__class__(newaxes)
-        newspace.photons = self.photons[newkey]
-        newspace.contributions = self.contributions[newkey]
+        newspace.photons = self.photons[newkey].copy()
+        newspace.contributions = self.contributions[newkey].copy()
         return newspace
 
     def get_value(self, key):
