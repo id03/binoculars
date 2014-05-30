@@ -64,6 +64,13 @@ class FitBase(object):
 
 
 class PeakFitBase(FitBase):
+    def __init__(self, space, guess = None, loc = None):
+        if loc != None:
+            self.argmax = tuple(loc)
+        else:
+            self.argmax = None
+        super(PeakFitBase, self).__init__(space, guess)
+
     def _guess(self):
         maximum = self.cydata.max() # for background determination
 
@@ -72,8 +79,12 @@ class PeakFitBase(FitBase):
 
         simbackground = linparams[-1] + numpy.sum(numpy.vstack(param * grid.flatten() for (param, grid) in zip(linparams[:-1], self.cxdata)) , axis = 0)
         signal = self.cydata - simbackground
+
+        if self.argmax != None:
+            argmax = self.argmax
+        else:
+            argmax = tuple((signal * grid).sum() / signal.sum() for grid in self.cxdata)
         
-        argmax = tuple((signal * grid).sum() / signal.sum() for grid in self.cxdata)
         argmax_bkg = linparams[-1] + numpy.sum(numpy.vstack(param * grid.flatten() for (param, grid) in zip(linparams[:-1], argmax)))
         maximum = self.space.get_value(argmax) - argmax_bkg
         

@@ -83,6 +83,8 @@ def get_clipped_norm(data, clipping=0.0, log=True):
 
     if log:
         data = data[data > 0]
+        if numpy.alen(data) == 0:
+            return matplotlib.colors.LogNorm(1, 10)
 
     if clipping:
         chop = int(round(data.size * clipping))
