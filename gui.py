@@ -287,13 +287,22 @@ class Window(QtGui.QMainWindow):
 
 
 class HiddenToolbar(NavigationToolbar2QTAgg):
-    def __init__(self, show_coords, canvas):
+    def __init__(self, show_coords, update_sliders, canvas):
         NavigationToolbar2QTAgg.__init__(self, canvas, None)
         self.show_coords = show_coords
+        self.update_sliders = update_sliders
+        self.zoom()
 
     def mouse_move(self, event):
         self.show_coords(event)
 
+    def press_zoom(self, event):
+        super(HiddenToolbar, self).press_zoom(event)
+        self.plotaxes = event.inaxes
+
+    def release_zoom(self, event):
+        super(HiddenToolbar, self).release_zoom(event)
+        self.update_sliders(self.plotaxes)
 
 class ProjectWidget(QtGui.QWidget):
     def __init__(self, filelist, key = None, projection = None, parent = None):
@@ -302,7 +311,7 @@ class ProjectWidget(QtGui.QWidget):
 
         self.figure = matplotlib.figure.Figure()
         self.canvas = FigureCanvasQTAgg(self.figure)
-        self.toolbar = HiddenToolbar(self.show_coords, self.canvas)
+        self.toolbar = HiddenToolbar(self.show_coords,self.update_sliders, self.canvas)
 
         self.log = QtGui.QCheckBox('log', self)
         self.log.setChecked(True)
@@ -369,25 +378,37 @@ class ProjectWidget(QtGui.QWidget):
 
         
     def show_coords(self, event):
-        plot = event.inaxes
-        if hasattr(plot, 'space'):
-            if plot.space.dimension == 2:
-                labels = numpy.array([plot.get_xlabel(), plot.get_ylabel()])
-                order = [plot.space.axes.index(label) for label in labels]
+        plotaxes = event.inaxes
+        if hasattr(plotaxes, 'space'):
+            if plotaxes.space.dimension == 2:
+                labels = numpy.array([plotaxes.get_xlabel(), plotaxes.get_ylabel()])
+                order = [plotaxes.space.axes.index(label) for label in labels]
                 labels = labels[order]                
                 coords = numpy.array([event.xdata, event.ydata])[order] 
-                rounded_coords = [ax[ax.get_index(coord)] for ax, coord in zip(plot.space.axes, coords)]
-                intensity = '{:.2e}'.format(plot.space.get_value(list(coords)))
+                rounded_coords = [ax[ax.get_index(coord)] for ax, coord in zip(plotaxes.space.axes, coords)]
+                intensity = '{:.2e}'.format(plotaxes.space.get_value(list(coords)))
                 self.parent.statusbar.showMessage('{0} = {1}, {2} = {3}, Intensity = {4}'.format(labels[0], rounded_coords[0] ,labels[1], rounded_coords[1], intensity))
-            if plot.space.dimension == 1:
-                xaxis = plot.space.axes[plot.space.axes.index(plot.get_xlabel())]
+            elif plotaxes.space.dimension == 1:
+                xaxis = plotaxes.space.axes[plotaxes.space.axes.index(plotaxes.get_xlabel())]
                 if event.xdata in xaxis:
                      xcoord =  xaxis[xaxis.get_index(event.xdata)]
                      intensity = '{:.2e}'.format(event.ydata)
                      self.parent.statusbar.showMessage('{0} = {1}, Intensity = {2}'.format(xaxis.label, xcoord, intensity))
 
-        
-
+    def update_sliders(self, plotaxes):
+        space = plotaxes.space
+        if hasattr(plotaxes, 'space'):
+            if space.dimension == 2:
+                labels = numpy.array([plotaxes.get_xlabel(), plotaxes.get_ylabel()])
+                limits = list(lim for lim in [plotaxes.get_xlim(), plotaxes.get_ylim()])          
+            elif space.dimension == 1:
+                labels = [plotaxes.get_xlabel()]
+                limits = [plotaxes.get_xlim()]
+        keydict = dict()
+        for key, value in zip(labels, limits):
+            keydict[key] = value
+        self.limitwidget.update_from_zoom(keydict)
+             
     def selectionerror(self, message):
         self.limitwidget.setDisabled(True)
         self.errormessage(message)
@@ -596,7 +617,7 @@ class TableWidget(QtGui.QWidget):
             self.table.setColumnWidth(index, width)
 
         for filename in filelist:
-            self.addspace(filename, True)
+            self.addspace(filename)
 
         hbox.addWidget(self.table)
         self.setLayout(hbox)
@@ -824,6 +845,17 @@ class LimitWidget(QtGui.QWidget):
 
             self.send_signal()
             
+    def update_from_zoom(self, keydict):
+        for key in keydict:
+            index = self.axes.index(key)
+            self.leftindicator[index].setText(str(keydict[key][0]))
+            self.rightindicator[index].setText(str(keydict[key][1]))
+        self.update_sliders_left()
+        self.update_sliders_right()
+        self.send_signal()
+
+
+
     
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
