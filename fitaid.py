@@ -3,22 +3,32 @@ import os
 from PyQt4 import QtGui, QtCore, Qt
 import BINoculars.main, BINoculars.space, BINoculars.plot, BINoculars.fit
 import numpy
+import json
 import inspect
 
 
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationToolbar2QTAgg
 import matplotlib.figure, matplotlib.image
+from matplotlib.pyplot import Rectangle
 
 class Window(QtGui.QMainWindow):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
 
-        load_hdf5file = QtGui.QAction("Load mesh", self)  
-        load_hdf5file.triggered.connect(self.load_hdf5file)
+        newproject = QtGui.QAction("New project", self)  
+        newproject.triggered.connect(self.newproject)
+
+        loadproject = QtGui.QAction("Open project", self)  
+        loadproject.triggered.connect(self.loadproject)
+
+        saveproject = QtGui.QAction("Save project", self)  
+        saveproject.triggered.connect(self.saveproject)
 
         menu_bar = QtGui.QMenuBar() 
         file = menu_bar.addMenu("&File") 
-        file.addAction(load_hdf5file) 
+        file.addAction(newproject)
+        file.addAction(loadproject)
+        file.addAction(saveproject) 
 
         self.tab_widget = QtGui.QTabWidget(self)
         self.tab_widget.setTabsClosable(True)
@@ -31,11 +41,67 @@ class Window(QtGui.QMainWindow):
         self.setMenuBar(menu_bar)
         self.setStatusBar(self.statusbar)
 
-    def load_hdf5file(self, filename = False):
+    def newproject(self, filename = None):
         if not filename:
-            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open file', '.', '*.hdf5'))
-        self.plot_widget = FitWidget(filename)
-        self.tab_widget.addTab(self.plot_widget, '{0}'.format(filename.split('/')[-1]))
+            dialog = QtGui.QFileDialog(self, "Load space");
+            dialog.setFilter('BINoculars space file (*.hdf5)');
+            dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
+            dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
+            if not dialog.exec_():
+                return
+            fname = dialog.selectedFiles()
+            if not fname:
+                return
+            for name in fname:
+                #try:
+                widget = FitWidget(str(name), parent = self)
+                self.tab_widget.addTab(widget, short_filename(str(name)))
+                #except Exception as e:
+                #    QtGui.QMessageBox.critical(self, 'Load space', 'Unable to load space from {}: {}'.format(fname, e))
+        else:
+            widget = FitWidget(filename, parent = self)
+            self.tab_widget.addTab(widget, short_filename(filename))
+            
+    def loadproject(self, filename = None):
+        if not filename:
+            dialog = QtGui.QFileDialog(self, "Load project");
+            dialog.setFilter('BINoculars fit file (*.fit)');
+            dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
+            dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
+            if not dialog.exec_():
+                return
+            fname = dialog.selectedFiles()
+            if not fname:
+                return
+            for name in fname:
+                #try:
+                widget = FitWidget.fromfile(str(name), parent = self)
+                self.tab_widget.addTab(widget, short_filename(str(name)))
+                #except Exception as e:
+                #    QtGui.QMessageBox.critical(self, 'Load project', 'Unable to load project from {}: {}'.format(fname, e))
+        else:
+            widget = FitWidget.fromfile(filename, parent = self)
+            self.tab_widget.addTab(widget, short_filename(filename))
+
+    def saveproject(self):
+        widget = self.tab_widget.currentWidget()
+        dialog = QtGui.QFileDialog(self, "Save project");
+        dialog.setFilter('BINoculars fit file (*.fit)');
+        dialog.setDefaultSuffix('fit');
+        dialog.setFileMode(QtGui.QFileDialog.AnyFile);
+        dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
+        if not dialog.exec_():
+            return
+        fname = dialog.selectedFiles()[0]
+        if not fname:
+            return
+        #try:
+        index = self.tab_widget.currentIndex()
+        self.tab_widget.setTabText(index, short_filename(fname))
+        widget.tofile(fname)
+        #except Exception as e:
+        #    QtGui.QMessageBox.critical(self, 'Save project', 'Unable to save project to {}: {}'.format(fname, e))
+
        
 class ButtonedSlider(QtGui.QWidget):
     def __init__(self,parent=None):
@@ -99,6 +165,99 @@ class ButtonedSlider(QtGui.QWidget):
     def index(self):
         return self.navigation_slider.value()
 
+class IntegrateWidget(QtGui.QGroupBox):
+    def __init__(self,title , axes,parent=None):
+        super(IntegrateWidget, self).__init__(title,parent)
+
+        self.axes = axes
+
+        integratebox = QtGui.QVBoxLayout()
+        intensitybox = QtGui.QHBoxLayout()
+        backgroundbox = QtGui.QHBoxLayout()
+
+        self.hsize = QtGui.QDoubleSpinBox()
+        self.vsize = QtGui.QDoubleSpinBox()
+
+        QtCore.QObject.connect(self.hsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
+        QtCore.QObject.connect(self.vsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
+
+        intensitybox.addWidget(QtGui.QLabel('area size:'))
+        intensitybox.addWidget(self.hsize)
+        intensitybox.addWidget(self.vsize)
+
+        self.left = QtGui.QDoubleSpinBox()
+        self.right = QtGui.QDoubleSpinBox()
+        self.top = QtGui.QDoubleSpinBox()
+        self.bottom = QtGui.QDoubleSpinBox()
+
+        QtCore.QObject.connect(self.left, QtCore.SIGNAL("valueChanged(double)"), self.send)
+        QtCore.QObject.connect(self.right, QtCore.SIGNAL("valueChanged(double)"), self.send)
+        QtCore.QObject.connect(self.top, QtCore.SIGNAL("valueChanged(double)"), self.send)
+        QtCore.QObject.connect(self.bottom, QtCore.SIGNAL("valueChanged(double)"), self.send)
+
+        backgroundbox.addWidget(QtGui.QLabel('background'))
+        backgroundbox.addWidget(self.left)
+        backgroundbox.addWidget(self.right)
+        backgroundbox.addWidget(self.top)
+        backgroundbox.addWidget(self.bottom)
+        
+        self.integratebutton = QtGui.QPushButton('integrate')
+        self.integratebutton.clicked.connect(self.integrate)
+        
+        integratebox.addLayout(intensitybox)
+        integratebox.addLayout(backgroundbox)
+        integratebox.addWidget(self.integratebutton)        
+        self.setLayout(integratebox)
+
+    def set_axis(self, axis):
+        indices = range(self.axes.dimension)
+        indices.pop(self.axes.index(axis))        
+        
+        self.newaxes = BINoculars.space.Axes(self.axes[index] for index in indices)
+
+        self.hsize.setSingleStep(self.newaxes[1].res)
+        self.hsize.setDecimals(len(str(self.newaxes[1].res)) - 2)
+        self.vsize.setSingleStep(self.newaxes[0].res)
+        self.vsize.setDecimals(len(str(self.newaxes[0].res)) - 2)
+        self.left.setSingleStep(self.newaxes[1].res)
+        self.left.setDecimals(len(str(self.newaxes[1].res)) - 2)
+        self.right.setSingleStep(self.newaxes[1].res)
+        self.right.setDecimals(len(str(self.newaxes[1].res)) - 2)
+        self.top.setSingleStep(self.newaxes[0].res)
+        self.top.setDecimals(len(str(self.newaxes[0].res)) - 2)
+        self.bottom.setSingleStep(self.newaxes[0].res)
+        self.bottom.setDecimals(len(str(self.newaxes[0].res)) - 2)
+
+    def send(self):
+        self.emit(QtCore.SIGNAL("valueChanged"))
+
+    def integrate(self):
+        self.emit(QtCore.SIGNAL("integrate"))
+    
+    def intkey(self, coords):
+        vsize = self.vsize.value() / 2
+        hsize = self.hsize.value() / 2
+        return tuple(ax.restrict(slice(coord - size, coord + size)) for ax, coord, size in zip(self.newaxes, coords, [vsize, hsize]))
+
+    def bkgkeys(self, coords):
+        key = self.intkey(coords)
+
+        vsize = self.vsize.value() / 2
+        hsize = self.hsize.value() / 2
+
+        leftkey = (key[0], self.newaxes[1].restrict(slice(coords[1] - hsize - self.left.value(), coords[1] - hsize)))
+        rightkey = (key[0], self.newaxes[1].restrict(slice(coords[1] + hsize, coords[1] + hsize + self.right.value())))
+        topkey = (self.newaxes[0].restrict(slice(coords[0] - vsize - self.top.value(), coords[0] - vsize)), key[1])
+        bottomkey =  (self.newaxes[0].restrict(slice(coords[0] + vsize, coords[0] + vsize  + self.bottom.value())), key[1])
+
+        return leftkey, rightkey, topkey, bottomkey
+
+    def tolist(self):
+        return [self.hsize.value(), self.vsize.value(), self.left.value() ,self.right.value() ,self.top.value(),   self.bottom.value()]
+
+    def values_from_list(self, values):
+        for box, value in zip([self.hsize, self.vsize, self.left, self.right, self.top, self.bottom], values):
+            box.setValue(value)
 
 class ControlWidget(QtGui.QWidget):
     def __init__(self, axes ,parent=None):
@@ -106,7 +265,6 @@ class ControlWidget(QtGui.QWidget):
 
         self.parent = parent
         self.axes = axes
-
 
         self.resolution_axis = QtGui.QComboBox()
         for ax in self.axes:
@@ -138,14 +296,23 @@ class ControlWidget(QtGui.QWidget):
         self.resolution_line.setMaximumWidth(50)
         QtCore.QObject.connect(self.resolution_line, QtCore.SIGNAL("editingFinished()"), parent.set_res)
 
+
         self.button_save = QtGui.QPushButton('save')
         self.button_save.clicked.connect(parent.save)
+
 
         self.fit_all = QtGui.QPushButton('fit all')
         self.fit_all.clicked.connect(parent.fit_all)
 
         self.fit = QtGui.QPushButton('fit')
         self.fit.clicked.connect(parent.fit)
+
+        self.fitting = QtGui.QGroupBox('Fitting')
+        flayout = QtGui.QHBoxLayout()
+        flayout.addWidget(self.function_box)
+        flayout.addWidget(self.fit_all)
+        flayout.addWidget(self.fit)
+        self.fitting.setLayout(flayout)
 
         self.nav = ButtonedSlider()
         self.nav.connect(self.nav, QtCore.SIGNAL('slice_index'), parent.index_callback)
@@ -157,12 +324,14 @@ class ControlWidget(QtGui.QWidget):
         self.button_show = QtGui.QPushButton('show')
         self.button_show.clicked.connect(parent.log_changed)
 
+        self.integrate = IntegrateWidget('Integration', axes)
+        QtCore.QObject.connect(self.integrate, QtCore.SIGNAL("valueChanged"), parent.plot_box)
+        QtCore.QObject.connect(self.integrate, QtCore.SIGNAL("integrate"), parent.integrate)
 
         vbox = QtGui.QVBoxLayout() 
         vbox.addWidget(self.button_save)
-        vbox.addWidget(self.function_box)
-        vbox.addWidget(self.fit_all)
-        vbox.addWidget(self.fit)
+        vbox.addWidget(self.fitting)
+        vbox.addWidget(self.integrate)
 
         smallbox = QtGui.QHBoxLayout() 
         smallbox.addWidget(self.resolution_axis)
@@ -247,37 +416,76 @@ class FitWidget(QtGui.QWidget):
     def plot(self):
         self.figure.clear()
         space = self.rod.get_space()
-        fit = self.rod.get_slice().fit
+        self.figure.space_axes = space.axes
+        fitslice = self.rod.get_slice()
+
+        if hasattr(fitslice, 'fitdata'):
+            fitdata = fitslice.fitdata
+        elif hasattr(fitslice, 'result'):
+            xdata, ydata, cxdata, cydata = self.rod.function._prepare(space)
+            fitdata = numpy.ma.array(self.rod.function.func(xdata, fitslice.result), mask=ydata.mask)
+        else:
+            fitdata = None
+
         self.control_widget.succesbox.setChecked(self.rod.get_slice().succes)
 
-        if fit is not None:
+        if fitdata is not None:
             if space.dimension == 1:
                 self.ax = self.figure.add_subplot(111)
-                BINoculars.plot.plot(space, self.figure, self.ax, fit = fit.fitdata)
+                BINoculars.plot.plot(space, self.figure, self.ax, fit = fitdata)
             elif space.dimension == 2:
                 self.ax = self.figure.add_subplot(121)
                 BINoculars.plot.plot(space, self.figure, self.ax, fit = None)
                 self.ax = self.figure.add_subplot(122)
-                BINoculars.plot.plot(space, self.figure, self.ax, fit = fit.fitdata)
+                BINoculars.plot.plot(space, self.figure, self.ax, fit = fitdata)
         else:
             self.ax = self.figure.add_subplot(111)
-            BINoculars.plot.plot(space, self.figure, self.ax)  
-        self.canvas.draw()
+            BINoculars.plot.plot(space, self.figure, self.ax)
 
+        self.canvas.draw()
+        self.plot_box()
+
+    def plot_box(self):
+        ax = self.figure.get_axes()[0]
+        axes = self.figure.space_axes
+        fitslice = self.rod.get_slice()
+        if fitslice.loc != None:
+            key = self.control_widget.integrate.intkey(fitslice.loc)
+            bkgkey = self.control_widget.integrate.bkgkeys(fitslice.loc)
+
+            ax.patches = []
+            rect = Rectangle((key[0].start, key[1].start), key[0].stop - key[0].start, key[1].stop - key[1].start, alpha = 0.2,color =  'k')
+            ax.add_patch(rect)
+            for k in bkgkey:
+                bkg = Rectangle((k[0].start, k[1].start), k[0].stop - k[0].start, k[1].stop - k[1].start, alpha = 0.2,color =  'r')
+                ax.add_patch(bkg)
+        self.canvas.draw()
+          
     def plot_overview(self, index):
-        x = list()
-        y = list()
-        for fitslice in self.rod.slices:
-            if fitslice.succes:
-                x.append(fitslice.coord)
-                y.append(fitslice.fit.result[index])
+        curves = []
+        curves.append(numpy.vstack(numpy.array([fitslice.coord, fitslice.result[index]]) for fitslice in self.rod.succesful()))
+        param = str(self.control_widget.parambox.currentText())
+        if param.startswith('loc'):
+            self.fit_loc()
+            curves.append(numpy.vstack(numpy.array([fitslice.coord, fitslice.loc[int(param.split('loc')[-1])] ]) for fitslice in self.rod.slices))
+        elif param.startswith('I'):
+            if hasattr(self.rod.slices[0], 'intensity'):
+                curves.append(numpy.vstack(numpy.array([fitslice.coord,fitslice.intensity]) for fitslice in self.rod.slices))
 
         self.figure.clear()
         self.ax = self.figure.add_subplot(111)
-        self.ax.plot(x,y,'+')
+        for curve in curves:
+            self.ax.plot(curve[:,0], curve[:,1], '+')
         if self.control_widget.log.checkState():
             self.ax.semilogy()
         self.canvas.draw()
+
+    def fit_loc(self):
+        indices = []
+        for index, param in enumerate(inspect.getargspec(self.control_widget.fitclass.func).args[1]):
+            if param.startswith('loc'):
+                indices.append(index)
+        self.rod.fit_loc(indices)
 
     def log_changed(self, log):
         self.plot_overview(self.control_widget.parambox.currentIndex())
@@ -312,6 +520,7 @@ class FitWidget(QtGui.QWidget):
             self.roddict[key] = self.rod
 
         self.control_widget.set_length(len(self.rod.slices))
+        self.control_widget.integrate.set_axis(axis)
         self.fitfunction_callback()
         self.plot()
                     
@@ -320,6 +529,7 @@ class FitWidget(QtGui.QWidget):
             fitslice = self.rod.get_slice()
             fitslice.loc = numpy.array([x, y])
             self.fit()
+            self.plot_box()
 
     def index_callback(self, index):
         self.rod.set_index(index)
@@ -332,15 +542,96 @@ class FitWidget(QtGui.QWidget):
         fitslice = self.rod.get_slice()
         fitslice.succes = bool(state)
 
+    def integrate(self):
+        pd = QtGui.QProgressDialog('Integrating...', 'Cancel', 0, len(self.rod.slices))
+        pd.setWindowModality(QtCore.Qt.WindowModal)
+        pd.show()
+        def progress(i, fitslice):
+            pd.setValue(i)
+            if pd.wasCanceled():
+                raise KeyboardInterrupt
+            QtGui.QApplication.processEvents()
+            space = self.rod.get_space(index)
+            key = self.control_widget.integrate.intkey(fitslice.loc)
+            bkgkey = self.control_widget.integrate.bkgkeys(fitslice.loc)
+            fitslice.intensity = self.rod.integrate(fitslice, space, key, bkgkey)
+        for index, fitslice in enumerate(self.rod.slices):
+             progress(index, fitslice)
+        pd.close()
+
     def fit(self):
         if self.rod:
             self.rod.fit()
             self.plot()
 
     def fit_all(self):
-        if self.rod:
-            self.rod.fit_all()
-            self.plot()
+        pd = QtGui.QProgressDialog('Performing fit...', 'Cancel', 0, len(self.rod.slices))
+        pd.setWindowModality(QtCore.Qt.WindowModal)
+        pd.show()
+        def progress(i):
+            pd.setValue(i)
+            if pd.wasCanceled():
+                raise KeyboardInterrupt
+            QtGui.QApplication.processEvents()
+            self.rod.fit(i)
+        for index in range(len(self.rod.slices)):
+             progress(index)
+        pd.close()
+        self.plot()
+
+
+    def tofile(self, filename):
+        outdict = dict()
+        outdict['filename'] = self.filename
+        outdict['keys'] = list()
+        outdict['values'] = list()
+        outdict['variance'] = list()
+        outdict['succes'] = list()
+        outdict['loc'] = list()
+        outdict['fitfunction'] = self.control_widget.function_box.currentIndex()
+        outdict['roi'] = self.control_widget.integrate.tolist()
+
+        for key in self.roddict:
+           outdict['keys'].append(key)
+           result, succes, locs, variance = self.roddict[key].tolist()
+           outdict['values'].append(result)
+           outdict['variance'].append(variance)
+           outdict['succes'].append(succes)
+           outdict['loc'].append(locs)
+
+
+        with open(filename, 'w') as fp:
+            json.dump(outdict, fp)
+
+    @classmethod
+    def fromfile(cls, filename = None, parent = None):
+        if filename == None:
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.fit'))        
+        try:
+            with open(filename, 'r') as fp:
+                dict = json.load(fp)
+        except IOError as e:
+            raise self.error.showMessage("unable to open '{0}' as project file (original error: {1!r})".format(filename, e))
+
+        widget = cls(dict['filename'], parent = parent)
+        for keyindex, key in enumerate(dict['keys']):
+            widget.roddict[tuple(key)] = FitRod(dict['filename'], key[1], key[0])
+            for sliceindex, fitslice in enumerate(widget.roddict[tuple(key)].slices):
+                if dict['values'][keyindex][sliceindex] != None:
+                    fitslice.result = numpy.array(dict['values'][keyindex][sliceindex])
+                if dict['variance'][keyindex][sliceindex] != None:
+                    fitslice.variance = numpy.array(dict['variance'][keyindex][sliceindex])
+                fitslice.succes = dict['succes'][keyindex][sliceindex]
+                fitslice.loc = dict['loc'][keyindex][sliceindex]
+                
+        widget.control_widget.function_box.setCurrentIndex(dict['fitfunction'])
+        widget.control_widget.fitfunctionchanged(dict['fitfunction'])
+        widget.control_widget.resolution_axis.setCurrentIndex(key[1])
+        widget.control_widget.resolution_line.setText(key[0])
+        widget.control_widget.integrate.values_from_list(dict['roi'])
+        widget.set_res()
+
+        return widget
 
 class FitRod(object):
     def __init__(self, filename, axis, resolution):
@@ -366,8 +657,11 @@ class FitRod(object):
             coord = (start + stop) / 2
             self.slices.append(FitSlice(k, coord))
 
-    def get_space(self):
-        return BINoculars.space.Space.fromfile(self.filename, self.slices[self.index].key).project(self.axis)
+    def get_space(self, index = None):
+        if index == None:
+            return BINoculars.space.Space.fromfile(self.filename, self.slices[self.index].key).project(self.axis)
+        else:
+            return BINoculars.space.Space.fromfile(self.filename, self.slices[index].key).project(self.axis)
 
     def get_slice(self):
         return self.slices[self.index]
@@ -378,19 +672,24 @@ class FitRod(object):
     def set_function(self, function):
         self.function = function
 
-    def fit_all(self):
-        pd = QtGui.QProgressDialog('Performing fit...', 'Cancel', 0, len(self.slices))
-        pd.setWindowModality(QtCore.Qt.WindowModal)
-        pd.show()
-        def progress(i):
-            pd.setValue(i)
-            if pd.wasCanceled():
-                raise KeyboardInterrupt
-            QtGui.QApplication.processEvents()
-            return self.fit(i)
-        for index in range(len(self.slices)):
-             progress(index)
-        pd.close()
+    def succesful(self):
+        succesful = list()
+        for fitslice in self.slices:
+            if fitslice.succes:
+                succesful.append(fitslice)
+        return succesful
+
+    def integrate(self, fitslice, space,  key, bkgkeys):        
+        if fitslice.loc != None:
+            bkgs = list()
+            intensity = space[key].get_masked()
+            for bkgkey in bkgkeys:
+                bkg = space[bkgkey].get_masked()
+                if not 0 in bkg.shape:
+                    bkgs.append(bkg)
+            area_correction = numpy.invert(intensity.mask).sum() / (1.0 * numpy.sum(numpy.invert(bkg.mask).sum() for bkg in bkgs))
+            corrected_intensity = intensity.sum() - numpy.nan_to_num(area_correction) * numpy.sum(bkg.sum() for bkg in bkgs)
+        return corrected_intensity
 
     def fit(self, index = None):
         if not index:
@@ -399,23 +698,73 @@ class FitRod(object):
             fitslice = self.slices[index]
 
         space = BINoculars.space.Space.fromfile(self.filename, fitslice.key).project(self.axis)
-        fitslice.fit = self.function(space, loc = fitslice.loc)
+        fit = self.function(space, loc = fitslice.loc)
+        fitslice.fitdata = fit.fitdata
+        fitslice.variance = fit.variance
+        fitslice.result = fit.result
         fitslice.succes = True
+
+    def tolist(self):
+        results = list()
+        succes = list()
+        locs = list()
+        variance = list()
+        for fitslice in self.slices:
+            if hasattr(fitslice, 'result'):
+                results.append(list(fitslice.result))
+                variance.append(list(fitslice.variance))
+                succes.append(fitslice.succes)
+            else:
+                results.append(None)
+                variance.append(None)
+                succes.append(False)
+
+        for fitslice in self.slices:
+            locs.append(fitslice.loc)
+        return results, succes, locs, variance
+
+    def fit_loc(self, indices):
+        deg = 3
+        locdict = {}
+        locx = list(fitslice.coord for fitslice in self.slices)
+        for index in indices:
+            x = list()
+            y = list()
+            w = list()
+            for fitslice in self.succesful():
+                x.append(fitslice.coord)
+                y.append(fitslice.result[index])
+                w.append(numpy.log(1 / fitslice.variance[index]))
+            w = numpy.array(w)
+            w[w == numpy.inf] = 0
+            w = numpy.nan_to_num(w)
+            w[w < 0] = 0
+            if len(x) > 0:
+                c = numpy.polynomial.polynomial.polyfit(x, y, deg, w = w)
+                newy = numpy.polynomial.polynomial.polyval(locx, c)
+                locdict[index] = newy
+        if len(locdict) > 0:
+            for i, fitslice in enumerate(self.slices):
+                fitslice.loc = list(locdict[index][i] for index in indices)
+            
+
 
 class FitSlice(object):
     def __init__(self, key, coord):
         self.key = key
         self.coord = coord
-        self.fit = None
         self.loc = None
         self.succes = False
+
+def short_filename(filename):
+    return filename.split('/')[-1].split('.')[0]
 
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
 
     main = Window()
     main.resize(1000, 600)
-    main.load_hdf5file('rod_217.hdf5')
+    #main.loadproject('/home/willem/Documents/PhD/hc1151/analysis/highresrod/test4.fit')
     #main.plot_widget.set_res(axis = 'l')
     main.show()
 

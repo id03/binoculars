@@ -62,7 +62,6 @@ class FitBase(object):
     def __str__(self):
         return '{0.__class__.__name__} fit on {1}\n{2}\n{3}'.format(self, self.space, self.message, self.summary)
 
-
 class PeakFitBase(FitBase):
     def __init__(self, space, guess = None, loc = None):
         if loc != None:
