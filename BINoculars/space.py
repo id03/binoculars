@@ -311,8 +311,8 @@ class Space(object):
         if not newaxes:
             raise ValueError('zero-dimensional spaces are not supported')
         newspace = self.__class__(newaxes)
-        newspace.photons = self.photons[newkey]
-        newspace.contributions = self.contributions[newkey]
+        newspace.photons = self.photons[newkey].copy()
+        newspace.contributions = self.contributions[newkey].copy()
         return newspace
 
     def get_value(self, key):
@@ -409,7 +409,7 @@ class Space(object):
         mask = self.contributions > 0
         lims = (numpy.flatnonzero(sum_onto(mask, i)) for (i, ax) in enumerate(self.axes))
         lims = tuple((i.min(), i.max()) for i in lims)
-        self.axes = tuple(ax.rebound(min + ax.imin, max + ax.imax) for (ax, (min, max)) in zip(self.axes, lims))
+        self.axes = Axes(ax.rebound(min + ax.imin, max + ax.imin) for (ax, (min, max)) in zip(self.axes, lims))
         slices = tuple(slice(min, max+1) for (min, max) in lims)
         self.photons = self.photons[slices].copy()
         self.contributions = self.contributions[slices].copy()
@@ -419,7 +419,7 @@ class Space(object):
             factors = [factors] * len(self.axes)
         elif len(factors) != len(self.axes):
             raise ValueError('dimension mismatch between factors and axes')
-        if not all(isinstance(factor, int) for factor in factors) or not all(factor % 2 == 0 for factor in factors):
+        if not all(isinstance(factor, int) for factor in factors) or not all(factor == 1 or factor % 2 == 0 for factor in factors):
             raise ValueError('binning factors must be even integers')
 
         lefts, rights, newaxes = zip(*[ax.rebin(factor) for ax, factor in zip(self.axes, factors)])

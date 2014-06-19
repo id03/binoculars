@@ -10,7 +10,7 @@ import BINoculars.space, BINoculars.util
 ### INFO
 def command_info(args):
     parser = argparse.ArgumentParser(prog='binoculars info')
-    parser.add_argument('infile', nargs='+', help='input files, must be .zpi')
+    parser.add_argument('infile', nargs='+', help='input files, must be .hdf5')
 
     args = parser.parse_args(args)
     
@@ -36,8 +36,8 @@ def command_convert(args):
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
     BINoculars.util.argparse_common_arguments(parser, 'project', 'slice', 'pslice', 'rebin', 'transform', 'subtract')
     parser.add_argument('--read-trusted-zpi', action='store_true', help='read legacy .zpi files, ONLY FROM A TRUSTED SOURCE!')
-    parser.add_argument('infile', help='input file, must be a .zpi')
-    parser.add_argument('outfile', help='output file, can be .zpi or .edf or .txt')
+    parser.add_argument('infile', help='input file, must be a .hdf5')
+    parser.add_argument('outfile', help='output file, can be .hdf5 or .edf or .txt')
 
     args = parser.parse_args(args)
     
@@ -68,7 +68,7 @@ def command_convert(args):
         BINoculars.util.space_to_txt(space, args.outfile)
         print 'saved at {0}'.format(args.outfile)
 
-    elif ext == '.zpi' or ext == '.hdf5':
+    elif ext == '.hdf5':
         space.tofile(args.outfile)
         print 'saved at {0}'.format(args.outfile)
 
@@ -306,7 +306,7 @@ def usage(msg=''):
 available commands:
 
  convert    mathematical operations & file format conversions
- info       basic information on Space in .zpi file
+ info       basic information on Space in .hdf5 file
  fit        crystal truncation rod fitting
  plot       1D & 2D plotting (parts of) Space and basic fitting
  process    data crunching / binning

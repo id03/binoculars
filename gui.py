@@ -468,7 +468,7 @@ class ProjectWidget(QtGui.QWidget):
         self.figure.clear()
         self.parent.statusbar.clearMessage()
 
-        self.figure.im = []
+        self.figure_images = []
         log = self.log.checkState()
 
         plotcount = len(self.table.selection)
@@ -516,7 +516,8 @@ class ProjectWidget(QtGui.QWidget):
             if plotoption == 'grid':
                 self.ax = self.figure.add_subplot(plotrows, plotcolumns, i+1)
             self.ax.space = space
-            BINoculars.plot.plot(space,self.figure, self.ax, log = log,label = basename, norm = norm[i])
+            im = BINoculars.plot.plot(space,self.figure, self.ax, log = log,label = basename, norm = norm[i])
+            self.figure_images.append(im)
 
         #if plotcount > 1 and plotoption == 'stack':
         #    self.figure.legend()
@@ -541,7 +542,7 @@ class ProjectWidget(QtGui.QWidget):
 
     def update_colorbar(self,value):
         normlist = self.get_normlist()
-        for im,norm in zip(self.figure.im, normlist):
+        for im,norm in zip(self.figure_images, normlist):
             im.set_norm(norm)
         self.canvas.draw()
 
