@@ -217,7 +217,8 @@ class Window(QtGui.QMainWindow):
 
         self.tab_widget = QtGui.QTabWidget(self)
         self.tab_widget.setTabsClosable(True)
-        self.tab_widget.tabCloseRequested.connect(self.tab_widget.removeTab)
+        QtCore.QObject.connect(self.tab_widget, QtCore.SIGNAL("tabCloseRequested(int)"), self.tab_widget.removeTab)
+
 
         self.statusbar	= QtGui.QStatusBar()
 
@@ -336,10 +337,6 @@ class ProjectWidget(QtGui.QWidget):
         self.key = key
         self.projection = projection
 
-        hbox = QtGui.QHBoxLayout() 
-        left = QtGui.QVBoxLayout()
-        right = QtGui.QVBoxLayout()
-
         self.button_save = QtGui.QPushButton('save image')
         self.button_save.clicked.connect(self.save)
 
@@ -347,13 +344,23 @@ class ProjectWidget(QtGui.QWidget):
         QtCore.QObject.connect(self.limitwidget, QtCore.SIGNAL("keydict"), self.update_key)
         QtCore.QObject.connect(self.limitwidget, QtCore.SIGNAL("rangechange"), self.update_figure_range)
         QtCore.QObject.connect(self.table, QtCore.SIGNAL('plotaxesChanged'), self.plotaxes_changed)
-        
+                    
+        self.initUI()
+
+        self.table.select()
+
+    def initUI(self):
+        self.control_widget = QtGui.QWidget(self)
+        hbox = QtGui.QHBoxLayout() 
+        left = QtGui.QVBoxLayout()
+        radiobox =  QtGui.QHBoxLayout() 
+
         left.addWidget(self.button_save)
 
         radiobox =  QtGui.QHBoxLayout() 
         self.group = QtGui.QButtonGroup(self)
         for label in ['stack', 'grid']:
-            rb = QtGui.QRadioButton(label, self)
+            rb = QtGui.QRadioButton(label, self.control_widget)
             self.group.addButton(rb)
             radiobox.addWidget(rb)
 
@@ -361,22 +368,24 @@ class ProjectWidget(QtGui.QWidget):
         datarangebox.addWidget(self.log)
         datarangebox.addWidget(self.samerange)
 
+
         left.addLayout(radiobox)
         left.addLayout(datarangebox)
         left.addWidget(self.datarange)
 
         left.addWidget(self.table)
-
         left.addWidget(self.limitwidget)
-        right.addWidget(self.canvas)
+        self.control_widget.setLayout(left)
 
-        hbox.addLayout(left)
-        hbox.addLayout(right)
+        splitter = QtGui.QSplitter(QtCore.Qt.Horizontal)
 
+        splitter.addWidget(self.control_widget)
+        splitter.addWidget(self.canvas)
+
+        hbox.addWidget(splitter) 
         self.setLayout(hbox)
-        self.table.select()
 
-        
+
     def show_coords(self, event):
         plotaxes = event.inaxes
         if hasattr(plotaxes, 'space'):

@@ -32,7 +32,8 @@ class Window(QtGui.QMainWindow):
 
         self.tab_widget = QtGui.QTabWidget(self)
         self.tab_widget.setTabsClosable(True)
-        self.tab_widget.tabCloseRequested.connect(self.tab_widget.removeTab)
+        QtCore.QObject.connect(self.tab_widget, QtCore.SIGNAL("tabCloseRequested(int)"), self.tab_widget.removeTab)
+
 
         self.setMenuBar(menu_bar)
         self.statusbar	= QtGui.QStatusBar()
