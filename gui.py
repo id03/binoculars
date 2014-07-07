@@ -395,13 +395,13 @@ class ProjectWidget(QtGui.QWidget):
                 labels = labels[order]                
                 coords = numpy.array([event.xdata, event.ydata])[order] 
                 rounded_coords = [ax[ax.get_index(coord)] for ax, coord in zip(plotaxes.space.axes, coords)]
-                intensity = '{:.2e}'.format(plotaxes.space.get_value(list(coords)))
+                intensity = '{0:.2e}'.format(plotaxes.space.get_value(list(coords)))
                 self.parent.statusbar.showMessage('{0} = {1}, {2} = {3}, Intensity = {4}'.format(labels[0], rounded_coords[0] ,labels[1], rounded_coords[1], intensity))
             elif plotaxes.space.dimension == 1:
                 xaxis = plotaxes.space.axes[plotaxes.space.axes.index(plotaxes.get_xlabel())]
                 if event.xdata in xaxis:
                      xcoord =  xaxis[xaxis.get_index(event.xdata)]
-                     intensity = '{:.2e}'.format(event.ydata)
+                     intensity = '{0:.2e}'.format(event.ydata)
                      self.parent.statusbar.showMessage('{0} = {1}, Intensity = {2}'.format(xaxis.label, xcoord, intensity))
 
     def update_sliders(self, plotaxes):

@@ -24,11 +24,17 @@ class Window(QtGui.QMainWindow):
         saveproject = QtGui.QAction("Save project", self)  
         saveproject.triggered.connect(self.saveproject)
 
+        export = QtGui.QAction("Export fitdata", self)  
+        export.triggered.connect(self.export)
+
         menu_bar = QtGui.QMenuBar() 
         file = menu_bar.addMenu("&File") 
         file.addAction(newproject)
         file.addAction(loadproject)
         file.addAction(saveproject) 
+
+        edit = menu_bar.addMenu("&Edit") 
+        edit.addAction(export)
 
         self.tab_widget = QtGui.QTabWidget(self)
         self.tab_widget.setTabsClosable(True)
@@ -104,6 +110,27 @@ class Window(QtGui.QMainWindow):
         #    QtGui.QMessageBox.critical(self, 'Save project', 'Unable to save project to {}: {}'.format(fname, e))
 
        
+    def export(self):
+        widget = self.tab_widget.currentWidget()
+        dialog = QtGui.QFileDialog(self, "export fitdata");
+        dialog.setFilter('text (*.txt)');
+        dialog.setDefaultSuffix('txt');
+        dialog.setFileMode(QtGui.QFileDialog.AnyFile);
+        dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
+        if not dialog.exec_():
+            return
+        fname = dialog.selectedFiles()[0]
+        if not fname:
+            return
+        try:
+            index = self.tab_widget.currentIndex()
+            self.tab_widget.setTabText(index, short_filename(fname))
+            widget.export(fname)
+        except Exception as e:
+            QtGui.QMessageBox.critical(self, 'export fitdata', 'Unable to export fitdata to {}: {}'.format(fname, e))
+
+        widget.export(filename)
+
 class ButtonedSlider(QtGui.QWidget):
     def __init__(self,parent=None):
         super(ButtonedSlider, self).__init__(parent)
@@ -580,6 +607,13 @@ class FitWidget(QtGui.QWidget):
         pd.close()
         self.plot()
 
+
+    def export(self, filename):
+        extension = os.path.splitext(filename)[-1] 
+        if extension == '.txt':
+            pass
+        else:
+            self.error.showMessage("{0} is not a valid extension".format(extension))
 
     def tofile(self, filename):
         outdict = dict()
