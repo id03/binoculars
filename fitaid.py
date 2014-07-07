@@ -287,121 +287,6 @@ class IntegrateWidget(QtGui.QGroupBox):
         for box, value in zip([self.hsize, self.vsize, self.left, self.right, self.top, self.bottom], values):
             box.setValue(value)
 
-class ControlWidget(QtGui.QWidget):
-    def __init__(self, axes ,parent=None):
-        super(ControlWidget, self).__init__(parent)
-
-        self.parent = parent
-        self.axes = axes
-
-        self.resolution_axis = QtGui.QComboBox()
-        for ax in self.axes:
-            self.resolution_axis.addItem(ax.label)
-        QtCore.QObject.connect(self.resolution_axis, QtCore.SIGNAL("currentIndexChanged(int)"), parent.set_res)
-
-        self.functions = list()
-        self.function_box = QtGui.QComboBox()        
-        for function in dir(BINoculars.fit):
-            cls = getattr(BINoculars.fit, function)
-            if isinstance(cls, type) and issubclass(cls, BINoculars.fit.PeakFitBase):
-                self.functions.append(cls)
-                self.function_box.addItem(function)
-
-        self.parambox = QtGui.QComboBox()
-        for param in inspect.getargspec(self.fitclass.func).args[1]:
-            self.parambox.addItem(param)
-
-
-        self.log = QtGui.QCheckBox('log')
-        self.log.setChecked(True)
-        QtCore.QObject.connect(self.log, QtCore.SIGNAL("stateChanged(int)"), parent.log_changed)
-
-
-        QtCore.QObject.connect(self.function_box, QtCore.SIGNAL("activated(int)"), self.fitfunctionchanged)
-        QtCore.QObject.connect(self.parambox, QtCore.SIGNAL("activated(int)"), parent.plot_overview)
-
-        self.resolution_line = QtGui.QLineEdit(str(self.axes[0].res))
-        self.resolution_line.setMaximumWidth(50)
-        QtCore.QObject.connect(self.resolution_line, QtCore.SIGNAL("editingFinished()"), parent.set_res)
-
-
-        self.button_save = QtGui.QPushButton('save')
-        self.button_save.clicked.connect(parent.save)
-
-
-        self.fit_all = QtGui.QPushButton('fit all')
-        self.fit_all.clicked.connect(parent.fit_all)
-
-        self.fit = QtGui.QPushButton('fit')
-        self.fit.clicked.connect(parent.fit)
-
-        self.fitting = QtGui.QGroupBox('Fitting')
-        flayout = QtGui.QHBoxLayout()
-        flayout.addWidget(self.function_box)
-        flayout.addWidget(self.fit_all)
-        flayout.addWidget(self.fit)
-        self.fitting.setLayout(flayout)
-
-        self.nav = ButtonedSlider()
-        self.nav.connect(self.nav, QtCore.SIGNAL('slice_index'), parent.index_callback)
-
-        self.succesbox = QtGui.QCheckBox('fit succesful')
-        self.succesbox.setChecked(True)
-        QtCore.QObject.connect(self.succesbox, QtCore.SIGNAL("stateChanged(int)"), parent.fitsucces_changed)
-
-        self.button_show = QtGui.QPushButton('show')
-        self.button_show.clicked.connect(parent.log_changed)
-
-        self.integrate = IntegrateWidget('Integration', axes)
-        QtCore.QObject.connect(self.integrate, QtCore.SIGNAL("valueChanged"), parent.plot_box)
-        QtCore.QObject.connect(self.integrate, QtCore.SIGNAL("integrate"), parent.integrate)
-
-        vbox = QtGui.QVBoxLayout() 
-        vbox.addWidget(self.button_save)
-        vbox.addWidget(self.fitting)
-        vbox.addWidget(self.integrate)
-
-        smallbox = QtGui.QHBoxLayout() 
-        smallbox.addWidget(self.resolution_axis)
-        smallbox.addWidget(self.resolution_line)
-
-        overviewbox = QtGui.QHBoxLayout()
-        overviewbox.addWidget(self.button_show) 
-        overviewbox.addWidget(self.parambox)
-        overviewbox.addWidget(self.log)
-
-        vbox.addLayout(smallbox)
-        vbox.addWidget(self.nav)
-        vbox.addWidget(self.succesbox)        
-        vbox.addLayout(overviewbox)
-        self.setLayout(vbox) 
-
-    def fitfunctionchanged(self, index):
-        self.parent.fitfunction_callback()
-        self.parambox.clear()
-        for param in inspect.getargspec(self.fitclass.func).args[1]:
-            self.parambox.addItem(param)
-
-    @property
-    def res(self):
-        return self.resolution_line.text()
-
-    @property
-    def axis(self):
-        return str(self.resolution_axis.currentText())
-
-    @property
-    def index(self):
-        return int(self.nav.index())
-
-    @property
-    def fitclass(self):
-        return self.functions[self.function_box.currentIndex()]
-
-    def set_length(self, length):
-        self.nav.set_length(length)
-
-
 class HiddenToolbar(NavigationToolbar2QTAgg):
     def __init__(self, corner_callback, canvas):
         NavigationToolbar2QTAgg.__init__(self, canvas, None)
@@ -432,7 +317,7 @@ class FitWidget(QtGui.QWidget):
         hbox = QtGui.QHBoxLayout() 
 
         splitter = QtGui.QSplitter(QtCore.Qt.Horizontal)
-        self.control_widget = ControlWidget(self.axes, self)
+        self.make_controlwidget()
 
         splitter.addWidget(self.control_widget)
         splitter.addWidget(self.canvas)
@@ -440,6 +325,111 @@ class FitWidget(QtGui.QWidget):
         hbox.addWidget(splitter) 
         self.set_res()
         self.setLayout(hbox)  
+
+    def make_controlwidget(self):
+        self.control_widget = QtGui.QWidget()
+
+        self.resolution_axis = QtGui.QComboBox()
+        for ax in self.axes:
+            self.resolution_axis.addItem(ax.label)
+        QtCore.QObject.connect(self.resolution_axis, QtCore.SIGNAL("currentIndexChanged(int)"), self.set_res)
+
+        self.functions = list()
+        self.function_box = QtGui.QComboBox()        
+        for function in dir(BINoculars.fit):
+            cls = getattr(BINoculars.fit, function)
+            if isinstance(cls, type) and issubclass(cls, BINoculars.fit.PeakFitBase):
+                self.functions.append(cls)
+                self.function_box.addItem(function)
+
+        self.parambox = QtGui.QComboBox()
+        for param in inspect.getargspec(self.fitclass.func).args[1]:
+            self.parambox.addItem(param)
+
+        self.log = QtGui.QCheckBox('log')
+        self.log.setChecked(True)
+        QtCore.QObject.connect(self.log, QtCore.SIGNAL("stateChanged(int)"), self.log_changed)
+        QtCore.QObject.connect(self.function_box, QtCore.SIGNAL("activated(int)"), self.fitfunctionchanged)
+        QtCore.QObject.connect(self.parambox, QtCore.SIGNAL("activated(int)"), self.plot_overview)
+
+        self.resolution_line = QtGui.QLineEdit(str(self.axes[0].res))
+        self.resolution_line.setMaximumWidth(50)
+        QtCore.QObject.connect(self.resolution_line, QtCore.SIGNAL("editingFinished()"), self.set_res)
+
+        self.button_save = QtGui.QPushButton('save')
+        self.button_save.clicked.connect(self.save)
+
+        self.fit_all_button = QtGui.QPushButton('fit all')
+        self.fit_all_button.clicked.connect(self.fit_all)
+
+        self.fit_button = QtGui.QPushButton('fit')
+        self.fit_button.clicked.connect(self.fit)
+
+        self.fitting = QtGui.QGroupBox('Fitting')
+        flayout = QtGui.QHBoxLayout()
+        flayout.addWidget(self.function_box)
+        flayout.addWidget(self.fit_all_button)
+        flayout.addWidget(self.fit_button)
+        self.fitting.setLayout(flayout)
+
+        self.nav = ButtonedSlider()
+        self.nav.connect(self.nav, QtCore.SIGNAL('slice_index'), self.index_callback)
+
+        self.succesbox = QtGui.QCheckBox('fit succesful')
+        self.succesbox.setChecked(True)
+        QtCore.QObject.connect(self.succesbox, QtCore.SIGNAL("stateChanged(int)"), self.fitsucces_changed)
+
+        self.button_show = QtGui.QPushButton('show')
+        self.button_show.clicked.connect(self.log_changed)
+
+        self.intwidget = IntegrateWidget('Integration', self.axes)
+        QtCore.QObject.connect(self.intwidget, QtCore.SIGNAL("valueChanged"), self.plot_box)
+        QtCore.QObject.connect(self.intwidget, QtCore.SIGNAL("integrate"), self.integrate)
+
+        vbox = QtGui.QVBoxLayout() 
+        vbox.addWidget(self.button_save)
+        vbox.addWidget(self.fitting)
+        vbox.addWidget(self.intwidget)
+
+        smallbox = QtGui.QHBoxLayout() 
+        smallbox.addWidget(self.resolution_axis)
+        smallbox.addWidget(self.resolution_line)
+
+        overviewbox = QtGui.QHBoxLayout()
+        overviewbox.addWidget(self.button_show) 
+        overviewbox.addWidget(self.parambox)
+        overviewbox.addWidget(self.log)
+
+        vbox.addLayout(smallbox)
+        vbox.addWidget(self.nav)
+        vbox.addWidget(self.succesbox)        
+        vbox.addLayout(overviewbox)
+        self.control_widget.setLayout(vbox) 
+
+    def fitfunctionchanged(self, index):
+        self.fitfunction_callback()
+        self.parambox.clear()
+        for param in inspect.getargspec(self.fitclass.func).args[1]:
+            self.parambox.addItem(param)
+
+    @property
+    def res(self):
+        return self.resolution_line.text()
+
+    @property
+    def axis(self):
+        return str(self.resolution_axis.currentText())
+
+    @property
+    def index(self):
+        return int(self.nav.index())
+
+    @property
+    def fitclass(self):
+        return self.functions[self.function_box.currentIndex()]
+
+    def set_length(self, length):
+        self.nav.set_length(length)
 
     def plot(self):
         self.figure.clear()
@@ -455,7 +445,7 @@ class FitWidget(QtGui.QWidget):
         else:
             fitdata = None
 
-        self.control_widget.succesbox.setChecked(self.rod.get_slice().succes)
+        self.succesbox.setChecked(self.rod.get_slice().succes)
 
         if fitdata is not None:
             if space.dimension == 1:
@@ -478,8 +468,8 @@ class FitWidget(QtGui.QWidget):
         axes = self.figure.space_axes
         fitslice = self.rod.get_slice()
         if fitslice.loc != None:
-            key = self.control_widget.integrate.intkey(fitslice.loc)
-            bkgkey = self.control_widget.integrate.bkgkeys(fitslice.loc)
+            key = self.intwidget.intkey(fitslice.loc)
+            bkgkey = self.intwidget.bkgkeys(fitslice.loc)
 
             ax.patches = []
             rect = Rectangle((key[0].start, key[1].start), key[0].stop - key[0].start, key[1].stop - key[1].start, alpha = 0.2,color =  'k')
@@ -492,7 +482,7 @@ class FitWidget(QtGui.QWidget):
     def plot_overview(self, index):
         curves = []
         curves.append(numpy.vstack(numpy.array([fitslice.coord, fitslice.result[index]]) for fitslice in self.rod.succesful()))
-        param = str(self.control_widget.parambox.currentText())
+        param = str(self.parambox.currentText())
         if param.startswith('loc'):
             self.fit_loc()
             curves.append(numpy.vstack(numpy.array([fitslice.coord, fitslice.loc[int(param.split('loc')[-1])] ]) for fitslice in self.rod.slices))
@@ -504,19 +494,19 @@ class FitWidget(QtGui.QWidget):
         self.ax = self.figure.add_subplot(111)
         for curve in curves:
             self.ax.plot(curve[:,0], curve[:,1], '+')
-        if self.control_widget.log.checkState():
+        if self.log.checkState():
             self.ax.semilogy()
         self.canvas.draw()
 
     def fit_loc(self):
         indices = []
-        for index, param in enumerate(inspect.getargspec(self.control_widget.fitclass.func).args[1]):
+        for index, param in enumerate(inspect.getargspec(self.fitclass.func).args[1]):
             if param.startswith('loc'):
                 indices.append(index)
         self.rod.fit_loc(indices)
 
     def log_changed(self, log):
-        self.plot_overview(self.control_widget.parambox.currentIndex())
+        self.plot_overview(self.parambox.currentIndex())
 
     def save(self):
         dialog = QtGui.QFileDialog(self, "Save image");
@@ -536,9 +526,9 @@ class FitWidget(QtGui.QWidget):
     
     def set_res(self, axis = None, resolution = None):
         if not resolution:
-            resolution = self.control_widget.res
+            resolution = self.res
         if not axis:
-            axis = self.control_widget.axis
+            axis = self.axis
 
         key = (str(resolution), self.axes.index(axis))
         if key in self.roddict:
@@ -547,8 +537,8 @@ class FitWidget(QtGui.QWidget):
             self.rod = FitRod(self.filename, axis, resolution)
             self.roddict[key] = self.rod
 
-        self.control_widget.set_length(len(self.rod.slices))
-        self.control_widget.integrate.set_axis(axis)
+        self.set_length(len(self.rod.slices))
+        self.intwidget.set_axis(axis)
         self.fitfunction_callback()
         self.plot()
                     
@@ -564,7 +554,7 @@ class FitWidget(QtGui.QWidget):
         self.plot()
 
     def fitfunction_callback(self, index = None):
-        self.rod.set_function(self.control_widget.fitclass)
+        self.rod.set_function(self.fitclass)
 
     def fitsucces_changed(self, state):
         fitslice = self.rod.get_slice()
@@ -580,8 +570,8 @@ class FitWidget(QtGui.QWidget):
                 raise KeyboardInterrupt
             QtGui.QApplication.processEvents()
             space = self.rod.get_space(index)
-            key = self.control_widget.integrate.intkey(fitslice.loc)
-            bkgkey = self.control_widget.integrate.bkgkeys(fitslice.loc)
+            key = self.intwidget.intkey(fitslice.loc)
+            bkgkey = self.intwidget.bkgkeys(fitslice.loc)
             fitslice.intensity = self.rod.integrate(fitslice, space, key, bkgkey)
         for index, fitslice in enumerate(self.rod.slices):
              progress(index, fitslice)
@@ -623,8 +613,8 @@ class FitWidget(QtGui.QWidget):
         outdict['variance'] = list()
         outdict['succes'] = list()
         outdict['loc'] = list()
-        outdict['fitfunction'] = self.control_widget.function_box.currentIndex()
-        outdict['roi'] = self.control_widget.integrate.tolist()
+        outdict['fitfunction'] = self.function_box.currentIndex()
+        outdict['roi'] = self.intwidget.tolist()
 
         for key in self.roddict:
            outdict['keys'].append(key)
@@ -659,11 +649,11 @@ class FitWidget(QtGui.QWidget):
                 fitslice.succes = dict['succes'][keyindex][sliceindex]
                 fitslice.loc = dict['loc'][keyindex][sliceindex]
                 
-        widget.control_widget.function_box.setCurrentIndex(dict['fitfunction'])
-        widget.control_widget.fitfunctionchanged(dict['fitfunction'])
-        widget.control_widget.resolution_axis.setCurrentIndex(key[1])
-        widget.control_widget.resolution_line.setText(key[0])
-        widget.control_widget.integrate.values_from_list(dict['roi'])
+        widget.function_box.setCurrentIndex(dict['fitfunction'])
+        widget.fitfunctionchanged(dict['fitfunction'])
+        widget.resolution_axis.setCurrentIndex(key[1])
+        widget.resolution_line.setText(key[0])
+        widget.intwidget.values_from_list(dict['roi'])
         widget.set_res()
 
         return widget
