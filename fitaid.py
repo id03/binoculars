@@ -209,7 +209,7 @@ class IntegrateWidget(QtGui.QGroupBox):
         QtCore.QObject.connect(self.hsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
         QtCore.QObject.connect(self.vsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
 
-        intensitybox.addWidget(QtGui.QLabel('area size:'))
+        intensitybox.addWidget(QtGui.QLabel('roi size:'))
         intensitybox.addWidget(self.hsize)
         intensitybox.addWidget(self.vsize)
 
@@ -342,7 +342,10 @@ class FitWidget(QtGui.QWidget):
                 self.functions.append(cls)
                 self.function_box.addItem(function)
 
+        self.paramlabel = QtGui.QLabel('projection axis:')
         self.parambox = QtGui.QComboBox()
+        self.resolutionlabel = QtGui.QLabel('slice size of slice:')
+
         for param in inspect.getargspec(self.fitclass.func).args[1]:
             self.parambox.addItem(param)
 
@@ -388,19 +391,22 @@ class FitWidget(QtGui.QWidget):
 
         vbox = QtGui.QVBoxLayout() 
         vbox.addWidget(self.button_save)
+
+        smallbox = QtGui.QHBoxLayout()
+        smallbox.addWidget(self.paramlabel) 
+        smallbox.addWidget(self.resolution_axis)
+        smallbox.addWidget(self.resolutionlabel) 
+        smallbox.addWidget(self.resolution_line)
+
+        vbox.addLayout(smallbox)
         vbox.addWidget(self.fitting)
         vbox.addWidget(self.intwidget)
-
-        smallbox = QtGui.QHBoxLayout() 
-        smallbox.addWidget(self.resolution_axis)
-        smallbox.addWidget(self.resolution_line)
 
         overviewbox = QtGui.QHBoxLayout()
         overviewbox.addWidget(self.button_show) 
         overviewbox.addWidget(self.parambox)
         overviewbox.addWidget(self.log)
 
-        vbox.addLayout(smallbox)
         vbox.addWidget(self.nav)
         vbox.addWidget(self.succesbox)        
         vbox.addLayout(overviewbox)
