@@ -364,8 +364,8 @@ def transformation_from_expressions(space, exprs):
 
 
 def format_bytes(bytes):
-    units = 'kB', 'MB', 'GB'
-    exp = min(int(numpy.log(bytes) / numpy.log(1024.)), 1)
+    units = 'kB', 'MB', 'GB', 'TB'
+    exp = min(max(int(numpy.log(bytes) / numpy.log(1024.)), 1), 4)
     return '{0:.1f} {1}'.format(bytes / 1024**exp, units[exp-1])
 
 
