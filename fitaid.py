@@ -5,11 +5,34 @@ import BINoculars.main, BINoculars.space, BINoculars.plot, BINoculars.fit
 import numpy
 import json
 import inspect
-
+from scipy.interpolate import griddata
 
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationToolbar2QTAgg
 import matplotlib.figure, matplotlib.image
 from matplotlib.pyplot import Rectangle
+
+
+def interpolate(space):
+    data = space.get_masked()
+    mask = data.mask
+    grid = numpy.vstack(numpy.ma.array(g, mask=mask).compressed() for g in space.get_grid()).T
+    open = numpy.vstack(numpy.ma.array(g, mask=numpy.invert(mask)).compressed() for g in space.get_grid()).T
+    if open.shape[0] == 0:
+        return data.compressed()
+    elif grid.shape[0] == 0:
+        return data.compressed()
+    else:
+        interpolated = griddata(grid, data.compressed(), open)            
+        values = data.data.copy()
+        values[mask] = interpolated
+        mask = numpy.isnan(values)
+        if mask.sum() > 0:
+            data = numpy.ma.array(values, mask = mask)
+            grid = numpy.vstack(numpy.ma.array(g, mask=mask).compressed() for g in space.get_grid()).T
+            open = numpy.vstack(numpy.ma.array(g, mask=numpy.invert(mask)).compressed() for g in space.get_grid()).T
+            interpolated = griddata(grid, data.compressed(), open, method = 'nearest')
+            values[mask] = interpolated
+        return values
 
 class Window(QtGui.QMainWindow):
     def __init__(self, parent=None):
@@ -124,12 +147,9 @@ class Window(QtGui.QMainWindow):
             return
         try:
             index = self.tab_widget.currentIndex()
-            self.tab_widget.setTabText(index, short_filename(fname))
             widget.export(fname)
         except Exception as e:
             QtGui.QMessageBox.critical(self, 'export fitdata', 'Unable to export fitdata to {}: {}'.format(fname, e))
-
-        widget.export(filename)
 
 class ButtonedSlider(QtGui.QWidget):
     def __init__(self,parent=None):
@@ -495,6 +515,8 @@ class FitWidget(QtGui.QWidget):
         elif param.startswith('I'):
             if hasattr(self.rod.slices[0], 'intensity'):
                 curves.append(numpy.vstack(numpy.array([fitslice.coord,fitslice.intensity]) for fitslice in self.rod.slices))
+            if hasattr(self.rod.slices[0], 'sum'):
+                curves.append(numpy.vstack(numpy.array([fitslice.coord,fitslice.sum]) for fitslice in self.rod.slices))
 
         self.figure.clear()
         self.ax = self.figure.add_subplot(111)
@@ -605,11 +627,13 @@ class FitWidget(QtGui.QWidget):
 
 
     def export(self, filename):
-        extension = os.path.splitext(filename)[-1] 
-        if extension == '.txt':
-            pass
-        else:
-            self.error.showMessage("{0} is not a valid extension".format(extension))
+        self.rod.save_fit()
+        self.rod.save_int()
+        #extension = os.path.splitext(filename)[-1] 
+        #if extension == '.txt':
+        #    pass
+        #else:
+        #    self.error.showMessage("{0} is not a valid extension".format(extension))
 
     def tofile(self, filename):
         outdict = dict()
@@ -621,6 +645,7 @@ class FitWidget(QtGui.QWidget):
         outdict['loc'] = list()
         outdict['fitfunction'] = self.function_box.currentIndex()
         outdict['roi'] = self.intwidget.tolist()
+        outdict['currentkey'] = list(self.rod.key)
 
         for key in self.roddict:
            outdict['keys'].append(key)
@@ -630,6 +655,7 @@ class FitWidget(QtGui.QWidget):
            outdict['succes'].append(succes)
            outdict['loc'].append(locs)
 
+        print outdict
 
         with open(filename, 'w') as fp:
             json.dump(outdict, fp)
@@ -654,11 +680,15 @@ class FitWidget(QtGui.QWidget):
                     fitslice.variance = numpy.array(dict['variance'][keyindex][sliceindex])
                 fitslice.succes = dict['succes'][keyindex][sliceindex]
                 fitslice.loc = dict['loc'][keyindex][sliceindex]
-                
+            
+        if 'currentkey' in dict.keys():
+            currentkey = dict['currentkey']
+        else:
+            currentkey = key
         widget.function_box.setCurrentIndex(dict['fitfunction'])
         widget.fitfunctionchanged(dict['fitfunction'])
-        widget.resolution_axis.setCurrentIndex(key[1])
-        widget.resolution_line.setText(key[0])
+        widget.resolution_axis.setCurrentIndex(currentkey[1])
+        widget.resolution_line.setText(currentkey[0])
         widget.intwidget.values_from_list(dict['roi'])
         widget.set_res()
 
@@ -675,6 +705,8 @@ class FitRod(object):
         axindex = self.axes.index(axis)
         ax = self.axes[axindex]
         axlabel = ax.label
+        self.key = (str(resolution), axindex)
+
 
         if float(resolution) < ax.res:
             raise ValueError('interval {0} to low, minimum interval is {1}'.format(resolution, ax.res))
@@ -712,15 +744,12 @@ class FitRod(object):
 
     def integrate(self, fitslice, space,  key, bkgkeys):        
         if fitslice.loc != None:
-            bkgs = list()
-            intensity = space[key].get_masked()
-            for bkgkey in bkgkeys:
-                bkg = space[bkgkey].get_masked()
-                if not 0 in bkg.shape:
-                    bkgs.append(bkg)
-            area_correction = numpy.invert(intensity.mask).sum() / (1.0 * numpy.sum(numpy.invert(bkg.mask).sum() for bkg in bkgs))
-            corrected_intensity = intensity.sum() - numpy.nan_to_num(area_correction) * numpy.sum(bkg.sum() for bkg in bkgs)
-        return corrected_intensity
+            intensity = interpolate(space[key]).flatten()
+            bkg = numpy.hstack(space[bkgkey].get_masked().compressed() for bkgkey in bkgkeys)
+            if numpy.alen(bkg) == 0 or numpy.alen(intensity) == 0:
+                return numpy.nan
+            else:
+                return intensity.sum() - numpy.alen(intensity) / numpy.alen(bkg) * bkg.sum()
 
     def fit(self, index = None):
         if not index:
@@ -729,11 +758,20 @@ class FitRod(object):
             fitslice = self.slices[index]
 
         space = BINoculars.space.Space.fromfile(self.filename, fitslice.key).project(self.axis)
-        fit = self.function(space, loc = fitslice.loc)
-        fitslice.fitdata = fit.fitdata
-        fitslice.variance = fit.variance
-        fitslice.result = fit.result
-        fitslice.succes = True
+        if not len(space.get_masked().compressed()) == 0:
+            fit = self.function(space, loc = fitslice.loc)
+            fitslice.fitdata = fit.fitdata
+            fitslice.variance = fit.variance
+            fitslice.result = fit.result
+            xdata, ydata, cxdata, cydata = self.function._prepare(space)
+            without_bkg = fit.result.copy()
+            without_bkg[-3:] = 0
+            nobkgdat = self.function.func(xdata, without_bkg)
+            print without_bkg
+            print nobkgdat.sum()
+            fitslice.sum = nobkgdat.sum()
+            print fitslice.sum
+            fitslice.succes = True
 
     def tolist(self):
         results = list()
@@ -755,7 +793,7 @@ class FitRod(object):
         return results, succes, locs, variance
 
     def fit_loc(self, indices):
-        deg = 3
+        deg = 4
         locdict = {}
         locx = list(fitslice.coord for fitslice in self.slices)
         for index in indices:
@@ -777,9 +815,13 @@ class FitRod(object):
         if len(locdict) > 0:
             for i, fitslice in enumerate(self.slices):
                 fitslice.loc = list(locdict[index][i] for index in indices)
+
+    def save_fit(self):
+        numpy.save('fit.npy', numpy.vstack([sl.coord, sl.sum] for sl in self.succesful()))
+
+    def save_int(self):
+        numpy.save('int.npy', numpy.vstack([sl.coord, sl.intensity] for sl in self.succesful()))
             
-
-
 class FitSlice(object):
     def __init__(self, key, coord):
         self.key = key

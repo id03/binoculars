@@ -23,6 +23,19 @@ class HKLProjection(backend.ProjectionBase):
     def get_axis_labels(self):
         return 'H', 'K', 'L'
 
+class ThetaLProjection(backend.ProjectionBase):
+    # arrays: gamma, delta
+    # scalars: theta, mu, chi, phi
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        R = SixCircle.getHKL(wavelength, UB, gamma=gamma, delta=delta, theta=theta, mu=mu, chi=chi, phi=phi)
+        shape = gamma.size, delta.size
+        L = R[2,:].reshape(shape)
+        theta_array = numpy.ones_like(L) * theta
+        return (theta_array,L)
+
+    def get_axis_labels(self):
+        return 'Theta', 'L'
+
 class SphericalQProjection(backend.ProjectionBase):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         sixc = SixCircle.SixCircle()
