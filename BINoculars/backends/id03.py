@@ -288,6 +288,11 @@ class EH1(ID03Input):
         delta_range = delta_range[self.config.xmask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
 
+        #polarisation correction
+        delta_grid, gamma_grid = numpy.meshgrid(delta_range, gamma_range)
+        Pver = 1 - numpy.sin(delta_grid)**2 * numpy.cos(gamma_grid)**2
+        intensity /= Pver
+ 
         return intensity, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
 
 
@@ -318,6 +323,12 @@ class EH2(ID03Input):
         delta_range = delta_range[self.config.ymask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
         intensity = numpy.rot90(intensity)
+
+        #polarisation correction
+        delta_grid, gamma_grid = numpy.meshgrid(delta_range, gamma_range)
+        Phor = 1 - (numpy.sin(mu) * numpy.sin(delta_grid) * numpy.cos(gamma_grid) + numpy.cos(mu) * numpy.sin(gamma_grid))**2
+        intensity /= Phor
+
 
         return intensity, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
 
