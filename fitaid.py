@@ -134,6 +134,9 @@ class Window(QtGui.QMainWindow):
 
        
     def export(self):
+        widget.export(None)
+
+        '''
         widget = self.tab_widget.currentWidget()
         dialog = QtGui.QFileDialog(self, "export fitdata");
         dialog.setFilter('text (*.txt)');
@@ -150,6 +153,7 @@ class Window(QtGui.QMainWindow):
             widget.export(fname)
         except Exception as e:
             QtGui.QMessageBox.critical(self, 'export fitdata', 'Unable to export fitdata to {}: {}'.format(fname, e))
+        '''
 
 class ButtonedSlider(QtGui.QWidget):
     def __init__(self,parent=None):
@@ -817,10 +821,10 @@ class FitRod(object):
                 fitslice.loc = list(locdict[index][i] for index in indices)
 
     def save_fit(self):
-        numpy.save('fit.npy', numpy.vstack([sl.coord, sl.sum] for sl in self.succesful()))
+        numpy.savetxt('fit.txt', numpy.vstack([sl.coord, sl.sum] for sl in self.succesful()))
 
     def save_int(self):
-        numpy.save('int.npy', numpy.vstack([sl.coord, sl.intensity] for sl in self.succesful()))
+        numpy.savetxt('int.txt', numpy.vstack([sl.coord, sl.intensity] for sl in self.succesful()))
             
 class FitSlice(object):
     def __init__(self, key, coord):

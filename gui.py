@@ -3,7 +3,7 @@ import os
 import glob
 from PyQt4 import QtGui, QtCore, Qt
 from PyMca import QSpecFileWidget, QDataSource, StackBrowser, StackSelector
-import BINoculars.main, BINoculars.space, BINoculars.plot
+import BINoculars.main, BINoculars.space, BINoculars.plot,  BINoculars.util
 import numpy
 import json
 
@@ -208,12 +208,17 @@ class Window(QtGui.QMainWindow):
         addspace = QtGui.QAction("Import space", self)  
         addspace.triggered.connect(self.add_to_project)
 
+        savespace = QtGui.QAction("Export space", self)  
+        savespace.triggered.connect(self.exportspace)
+
         menu_bar = QtGui.QMenuBar() 
         file = menu_bar.addMenu("&File") 
         file.addAction(newproject) 
         file.addAction(loadproject) 
         file.addAction(saveproject)
-        file.addAction(addspace) 
+        file.addAction(addspace)
+        file.addAction(savespace) 
+ 
 
         self.tab_widget = QtGui.QTabWidget(self)
         self.tab_widget.setTabsClosable(True)
@@ -285,6 +290,22 @@ class Window(QtGui.QMainWindow):
                 widget.addspace(str(name))
             except Exception as e:
                 QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(fname, e))
+
+    def exportspace(self):
+        widget = self.tab_widget.currentWidget()
+        dialog = QtGui.QFileDialog(self, "save mesh");
+        dialog.setFileMode(QtGui.QFileDialog.AnyFile);
+        dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
+        if not dialog.exec_():
+            return
+        fname = dialog.selectedFiles()[0]
+        if not fname:
+            return
+        try:
+            index = self.tab_widget.currentIndex()
+            widget.space_to_file(str(fname))
+        except Exception as e:
+            QtGui.QMessageBox.critical(self, 'export fitdata', 'Unable to save mesh to {}: {}'.format(fname, e))
 
 
 class HiddenToolbar(NavigationToolbar2QTAgg):
@@ -609,6 +630,33 @@ class ProjectWidget(QtGui.QWidget):
             self.figure.savefig(str(fname))
         except Exception as e:
             QtGui.QMessageBox.critical(self, 'Save image', 'Unable to save image to {}: {}'.format(fname, e))                
+
+    def space_to_file(self, fname):
+        ext = os.path.splitext(fname)[-1]
+
+        for i, filename in enumerate(self.table.selection):
+            axes = BINoculars.space.Axes.fromfile(filename)
+            space = BINoculars.space.Space.fromfile(filename, key = self.restricted_key(self.key, axes))
+            projection = [ax for ax in self.projection if ax in space.axes]
+            if projection:
+                space = space.project(*projection)
+
+            outfile = BINoculars.util.find_unused_filename(fname)
+
+            if ext == '.edf':
+                BINoculars.util.space_to_edf(space, outfile)
+                self.parent.statusbar.showMessage('saved at {0}'.format(outfile))
+
+            elif ext == '.txt':
+                BINoculars.util.space_to_txt(space, outfile)
+                self.parent.statusbar.showMessage('saved at {0}'.format(outfile))
+
+            elif ext == '.hdf5':
+                space.tofile(outfile)
+                self.parent.statusbar.showMessage('saved at {0}'.format(outfile))
+                    
+            else:
+                self.parent.statusbar.showMessage('unknown extension {0}, unable to save!\n'.format(ext))
 
 def short_filename(filename):
     return filename.split('/')[-1].split('.')[0]
