@@ -23,6 +23,7 @@ class HKLProjection(backend.ProjectionBase):
     def get_axis_labels(self):
         return 'H', 'K', 'L'
 
+
 class ThetaLProjection(backend.ProjectionBase):
     # arrays: gamma, delta
     # scalars: theta, mu, chi, phi
@@ -61,9 +62,7 @@ class TwoThetaProjection(SphericalQProjection):
 class GammaDeltaTheta(HKLProjection):#just passing on the coordinates, makes it easy to accurately test the theta correction
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         delta,gamma = numpy.meshgrid(delta,gamma)
-        delta = delta.flatten()
-        gamma = gamma.flatten()
-        theta = numpy.array([theta] * gamma.shape[0])
+        theta = theta * numpy.ones_like(delta)
         return (gamma,delta,theta)        
 
     def get_axis_labels(self):
@@ -290,7 +289,7 @@ class EH1(ID03Input):
 
         #polarisation correction
         delta_grid, gamma_grid = numpy.meshgrid(delta_range, gamma_range)
-        Pver = 1 - numpy.sin(delta_grid)**2 * numpy.cos(gamma_grid)**2
+        Pver = 1 - numpy.sin(delta_grid * numpy.pi / 180.)**2 * numpy.cos(gamma_grid * numpy.pi / 180.)**2
         intensity /= Pver
  
         return intensity, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
@@ -303,7 +302,7 @@ class EH2(ID03Input):
         super(EH2, self).parse_config(config)
         
     def process_image(self, scanparams, pointparams, image):
-        gamma, delta, theta, mu, chi, phi, mon, transm = pointparams
+        gamma, delta, theta, chi, phi, mu, mon, transm = pointparams
         wavelength, UB = scanparams
         data = image / mon / transm
 
@@ -315,18 +314,18 @@ class EH2(ID03Input):
         pixelsize = numpy.array(self.config.pixelsize)
         app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
         centralpixel = self.config.centralpixel # (row, column) = (delta, gamma)
-        gamma_range = app[1] * (numpy.arange(data.shape[1]) - centralpixel[1]) + gamma
+        gamma_range = -app[1] * (numpy.arange(data.shape[1]) - centralpixel[1]) + gamma
         delta_range = app[0] * (numpy.arange(data.shape[0]) - centralpixel[0]) + delta
 
         # masking
         gamma_range = gamma_range[self.config.xmask]
         delta_range = delta_range[self.config.ymask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
-        intensity = numpy.rot90(intensity)
+        intensity = numpy.rot90(intensity, 3)
 
         #polarisation correction
         delta_grid, gamma_grid = numpy.meshgrid(delta_range, gamma_range)
-        Phor = 1 - (numpy.sin(mu) * numpy.sin(delta_grid) * numpy.cos(gamma_grid) + numpy.cos(mu) * numpy.sin(gamma_grid))**2
+        Phor = 1 - (numpy.sin(mu * numpy.pi / 180.) * numpy.sin(delta_grid * numpy.pi / 180.) * numpy.cos(gamma_grid* numpy.pi / 180.) + numpy.cos(mu* numpy.pi / 180.) * numpy.sin(gamma_grid* numpy.pi / 180.))**2
         intensity /= Phor
 
 
