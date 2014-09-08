@@ -315,14 +315,14 @@ class EH2(ID03Input):
         app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
         centralpixel = self.config.centralpixel # (row, column) = (delta, gamma)
         gamma_range = -app[1] * (numpy.arange(data.shape[1]) - centralpixel[1]) + gamma
-        delta_range = app[0] * (numpy.arange(data.shape[0]) - centralpixel[0]) + delta
+        delta_range = -app[0] * (numpy.arange(data.shape[0]) - centralpixel[0]) + delta
 
         # masking
         gamma_range = gamma_range[self.config.xmask]
         delta_range = delta_range[self.config.ymask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
         intensity = numpy.rot90(intensity, 3)
-
+        
         #polarisation correction
         delta_grid, gamma_grid = numpy.meshgrid(delta_range, gamma_range)
         Phor = 1 - (numpy.sin(mu * numpy.pi / 180.) * numpy.sin(delta_grid * numpy.pi / 180.) * numpy.cos(gamma_grid* numpy.pi / 180.) + numpy.cos(mu* numpy.pi / 180.) * numpy.sin(gamma_grid* numpy.pi / 180.))**2

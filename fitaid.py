@@ -134,6 +134,7 @@ class Window(QtGui.QMainWindow):
 
        
     def export(self):
+        widget = self.tab_widget.currentWidget()
         widget.export(None)
 
         '''
