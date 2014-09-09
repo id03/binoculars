@@ -23,7 +23,6 @@ class HKLProjection(backend.ProjectionBase):
     def get_axis_labels(self):
         return 'H', 'K', 'L'
 
-
 class ThetaLProjection(backend.ProjectionBase):
     # arrays: gamma, delta
     # scalars: theta, mu, chi, phi
@@ -37,12 +36,24 @@ class ThetaLProjection(backend.ProjectionBase):
     def get_axis_labels(self):
         return 'Theta', 'L'
 
-class SphericalQProjection(backend.ProjectionBase):
+class QProjection(backend.ProjectionBase):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        shape = gamma.size, delta.size
         sixc = SixCircle.SixCircle()
         sixc.setLambda(wavelength)
         sixc.setUB(UB)
-        qx,qy,qz = sixc.getQSurface(gamma=gamma, delta=delta, theta=theta, mu=mu, chi=chi, phi=phi)
+        R = sixc.getQSurface(gamma=gamma, delta=delta, theta=theta, mu=mu, chi=chi, phi=phi)
+        qx = R[0,:].reshape(shape)
+        qy = R[1,:].reshape(shape)
+        qz = R[2,:].reshape(shape)
+        return (qx, qy, qz)
+
+    def get_axis_labels(self):
+        return 'qx', 'qy', 'qz'
+
+class SphericalQProjection(backend.ProjectionBase):
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        qx, qy, qz = super(SphericalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
         q = numpy.sqrt(qx**2 + qy**2 + qz**2)
         theta = numpy.arccos(qz / q)
         phi = numpy.arctan2(qy, qx)
@@ -59,6 +70,15 @@ class TwoThetaProjection(SphericalQProjection):
     def get_axis_labels(self):
         return 'TwoTheta'
 
+class Qpp(QProjection):
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        qx, qy, qz = super(Qpp, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
+        qpar = numpy.sign(qx) * numpy.sqrt(qx**2 + qy**2)
+        return (qpar, qz)
+
+    def get_axis_labels(self):
+        return 'Qpar', 'Qz'
+
 class GammaDeltaTheta(HKLProjection):#just passing on the coordinates, makes it easy to accurately test the theta correction
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         delta,gamma = numpy.meshgrid(delta,gamma)
@@ -67,6 +87,15 @@ class GammaDeltaTheta(HKLProjection):#just passing on the coordinates, makes it 
 
     def get_axis_labels(self):
         return 'Gamma','Delta','Theta'
+
+class GammaDeltaMu(HKLProjection):#just passing on the coordinates, makes it easy to accurately test the theta correction
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        delta,gamma = numpy.meshgrid(delta,gamma)
+        mu = mu * numpy.ones_like(delta)
+        return (gamma,delta,mu)        
+
+    def get_axis_labels(self):
+        return 'Gamma','Delta','Mu'
 
 class ID03Input(backend.InputBase):
     # OFFICIAL API
@@ -184,7 +213,6 @@ class ID03Input(backend.InputBase):
         params = numpy.zeros((last - first + 1, 8)) # gamma delta theta chi phi mu mon transm
         params[:, CHI] = scan.motorpos('Chi')
         params[:, PHI] = scan.motorpos('Phi')
-        params[:, MU] = scan.motorpos('Mu')
 
         if self.is_zap(scan):
             th = scan.datacol('th')
@@ -192,8 +220,9 @@ class ID03Input(backend.InputBase):
             th -= (th[1] - th[0]) / 2
             params[:, TH] = th[sl]
 
-            params[:, GAM] = scan.motorpos('Gamidd')
-            params[:, DEL] = scan.motorpos('Deltaidd')
+            params[:, GAM] = scan.motorpos('Gam')
+            params[:, DEL] = scan.motorpos('Delta')
+            params[:, MU] = scan.motorpos('Mu')
 
             params[:, MON] = scan.datacol('zap_mon')[sl]
 
@@ -202,10 +231,11 @@ class ID03Input(backend.InputBase):
             params[:, TRANSM] = transm[sl]
         else:
             params[:, TH] = scan.datacol('thcnt')[sl]
-            params[:, GAM] = scan.datacol('gamcnt')[sl] + scan.motorpos('Gamidd') - scan.motorpos('Gam')
-            params[:, DEL] = scan.datacol('delcnt')[sl] + scan.motorpos('Deltaidd') - scan.motorpos('Delta')
+            params[:, GAM] = scan.datacol('gamcnt')[sl]
+            params[:, DEL] = scan.datacol('delcnt')[sl]
             params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
             params[:, TRANSM] = scan.datacol('transm')[sl]
+            params[:, MU] = scan.datacol('mucnt')[sl]
         
         return params
 
@@ -268,9 +298,11 @@ class EH1(ID03Input):
     monitor_counter = 'mon'
 
     def process_image(self, scanparams, pointparams, image):
-        gamma, delta, theta, mu, chi, phi, mon, transm = pointparams
+        gamma, delta, theta, chi, phi, mu, mon, transm = pointparams
         wavelength, UB = scanparams
         data = image / mon / transm
+
+        print gamma, delta, mu
 
         # pixels to angles
         pixelsize = numpy.array(self.config.pixelsize)
@@ -279,8 +311,8 @@ class EH1(ID03Input):
         app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
 
         centralpixel = self.config.centralpixel # (column, row) = (delta, gamma)
-        gamma_range= -app[1] * (numpy.arange(data.shape[0]) - centralpixel[1]) + gamma
-        delta_range= app[0] * (numpy.arange(data.shape[1]) - centralpixel[0]) + delta
+        gamma_range= -app[1] * (numpy.arange(data.shape[1]) - centralpixel[1]) + gamma
+        delta_range= app[0] * (numpy.arange(data.shape[0]) - centralpixel[0]) + delta
 
         # masking
         gamma_range = gamma_range[self.config.ymask]
@@ -306,6 +338,8 @@ class EH2(ID03Input):
         wavelength, UB = scanparams
         data = image / mon / transm
 
+        print gamma, delta
+
         # area correction
         sdd = self.config.sdd / numpy.cos(gamma * numpy.pi / 180)
         data *= (self.config.sdd / sdd)**2
@@ -313,15 +347,17 @@ class EH2(ID03Input):
         # pixels to angles
         pixelsize = numpy.array(self.config.pixelsize)
         app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
-        centralpixel = self.config.centralpixel # (row, column) = (delta, gamma)
-        gamma_range = -app[1] * (numpy.arange(data.shape[1]) - centralpixel[1]) + gamma
-        delta_range = -app[0] * (numpy.arange(data.shape[0]) - centralpixel[0]) + delta
+
+        centralpixel = self.config.centralpixel # (row, column) = (gamma, delta)
+        gamma_range = - 1 * app[0] * (numpy.arange(data.shape[0]) - centralpixel[0]) + gamma
+        delta_range = app[1] * (numpy.arange(data.shape[1]) - centralpixel[1]) + delta
 
         # masking
         gamma_range = gamma_range[self.config.xmask]
         delta_range = delta_range[self.config.ymask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
-        intensity = numpy.rot90(intensity, 3)
+        intensity = numpy.fliplr(intensity)
+        intensity = numpy.rot90(intensity)
         
         #polarisation correction
         delta_grid, gamma_grid = numpy.meshgrid(delta_range, gamma_range)
@@ -338,8 +374,8 @@ class EH2(ID03Input):
         params = numpy.zeros((last - first + 1, 8)) # gamma delta theta chi phi mu mon transm
         params[:, CHI] = scan.motorpos('Chi')
         params[:, PHI] = scan.motorpos('Phi')
-        params[:, MU] = scan.motorpos('Mu')
-
+ 
+        
         if self.is_zap(scan):
             th = scan.datacol('th')
             # correction for difference between back and forth in th motor
@@ -348,6 +384,8 @@ class EH2(ID03Input):
 
             params[:, GAM] = scan.motorpos('Gamma')
             params[:, DEL] = scan.motorpos('Delta')
+            params[:, MU] = scan.motorpos('Mu')
+
 
             params[:, MON] = scan.datacol('zap_mon')[sl]
 
@@ -360,6 +398,7 @@ class EH2(ID03Input):
             params[:, DEL] = scan.datacol('delcnt')[sl]
             params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
             params[:, TRANSM] = scan.datacol('transm')[sl]
+            params[:, MU] = scan.datacol('mucnt')[sl]
         return params
 
 
