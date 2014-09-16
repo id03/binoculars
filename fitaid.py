@@ -660,8 +660,6 @@ class FitWidget(QtGui.QWidget):
            outdict['succes'].append(succes)
            outdict['loc'].append(locs)
 
-        print outdict
-
         with open(filename, 'w') as fp:
             json.dump(outdict, fp)
 
@@ -772,10 +770,7 @@ class FitRod(object):
             without_bkg = fit.result.copy()
             without_bkg[-3:] = 0
             nobkgdat = self.function.func(xdata, without_bkg)
-            print without_bkg
-            print nobkgdat.sum()
             fitslice.sum = nobkgdat.sum()
-            print fitslice.sum
             fitslice.succes = True
 
     def tolist(self):
@@ -798,7 +793,7 @@ class FitRod(object):
         return results, succes, locs, variance
 
     def fit_loc(self, indices):
-        deg = 4
+        deg = 2
         locdict = {}
         locx = list(fitslice.coord for fitslice in self.slices)
         for index in indices:
@@ -813,6 +808,8 @@ class FitRod(object):
             w[w == numpy.inf] = 0
             w = numpy.nan_to_num(w)
             w[w < 0] = 0
+            w[w < numpy.median(w)] = 0
+            print w
             if len(x) > 0:
                 c = numpy.polynomial.polynomial.polyfit(x, y, deg, w = w)
                 newy = numpy.polynomial.polynomial.polyval(locx, c)

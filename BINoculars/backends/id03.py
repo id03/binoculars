@@ -4,7 +4,12 @@ import itertools
 import glob
 import numpy
 
-from PyMca import SixCircle, specfilewrapper, specfile, EdfFile
+from PyMca import SixCircle, specfile
+
+try:
+    from PyMca import specfilewrapper, EdfFile
+except ImportError:
+    from PyMca.PyMcaIO import specfilewrapper, EdfFile
 
 from .. import backend, errors, util
 
@@ -51,7 +56,7 @@ class QProjection(backend.ProjectionBase):
     def get_axis_labels(self):
         return 'qx', 'qy', 'qz'
 
-class SphericalQProjection(backend.ProjectionBase):
+class SphericalQProjection(QProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         qx, qy, qz = super(SphericalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
         q = numpy.sqrt(qx**2 + qy**2 + qz**2)
@@ -62,6 +67,32 @@ class SphericalQProjection(backend.ProjectionBase):
     def get_axis_labels(self):
         return 'Q', 'Theta', 'Phi'
 
+class CylindricalQProjection(QProjection):
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        qx, qy, qz = super(CylindricalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
+        qpar = numpy.sqrt(qx**2 + qy**2)
+        phi = numpy.arctan2(qy, qx)
+        return (qpar, qz, phi)
+
+    def get_axis_labels(self):
+        return 'qpar', 'qz', 'Phi'
+
+class nrQProjection(backend.ProjectionBase):
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        k0 = 2 * numpy.pi / wavelength
+        delta, gamma = numpy.meshgrid(delta, gamma)
+        mu *= numpy.pi/180
+        delta *= numpy.pi/180
+        gamma *= numpy.pi/180
+
+        qx = k0 * (numpy.cos(gamma) * numpy.cos(delta) - numpy.cos(mu))
+        qy = k0 * (numpy.cos(gamma) * numpy.sin(delta))
+        qz = k0 * (numpy.sin(gamma) + numpy.sin(mu))
+        return (qx, qy, qz)
+
+    def get_axis_labels(self):
+        return 'qx', 'qy', 'qz'
+
 class TwoThetaProjection(SphericalQProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         q, theta, phi = super(TwoThetaProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
@@ -70,7 +101,7 @@ class TwoThetaProjection(SphericalQProjection):
     def get_axis_labels(self):
         return 'TwoTheta'
 
-class Qpp(QProjection):
+class Qpp(nrQProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         qx, qy, qz = super(Qpp, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
         qpar = numpy.sign(qx) * numpy.sqrt(qx**2 + qy**2)
@@ -83,7 +114,7 @@ class GammaDeltaTheta(HKLProjection):#just passing on the coordinates, makes it 
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         delta,gamma = numpy.meshgrid(delta,gamma)
         theta = theta * numpy.ones_like(delta)
-        return (gamma,delta,theta)        
+        return (gamma, delta, theta)        
 
     def get_axis_labels(self):
         return 'Gamma','Delta','Theta'
@@ -92,7 +123,7 @@ class GammaDeltaMu(HKLProjection):#just passing on the coordinates, makes it eas
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         delta,gamma = numpy.meshgrid(delta,gamma)
         mu = mu * numpy.ones_like(delta)
-        return (gamma,delta,mu)        
+        return (gamma, delta, mu)        
 
     def get_axis_labels(self):
         return 'Gamma','Delta','Mu'
@@ -302,7 +333,7 @@ class EH1(ID03Input):
         wavelength, UB = scanparams
         data = image / mon / transm
 
-        print gamma, delta, mu
+        print 'gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu)
 
         # pixels to angles
         pixelsize = numpy.array(self.config.pixelsize)
@@ -338,7 +369,7 @@ class EH2(ID03Input):
         wavelength, UB = scanparams
         data = image / mon / transm
 
-        print gamma, delta
+        print gamma, delta, theta, mu
 
         # area correction
         sdd = self.config.sdd / numpy.cos(gamma * numpy.pi / 180)
