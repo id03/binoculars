@@ -23,10 +23,18 @@ class HKLProjection(backend.ProjectionBase):
         H = R[0,:].reshape(shape)
         K = R[1,:].reshape(shape)
         L = R[2,:].reshape(shape)
-        return (H,K,L)
+        return (H, K, L)
 
     def get_axis_labels(self):
         return 'H', 'K', 'L'
+
+class HKProjection(HKLProjection):
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        H, K, L = super(HKProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
+        return (H, K)
+
+    def get_axis_labels(self):
+        return 'H', 'K'
 
 class ThetaLProjection(backend.ProjectionBase):
     # arrays: gamma, delta
@@ -85,8 +93,8 @@ class nrQProjection(backend.ProjectionBase):
         delta *= numpy.pi/180
         gamma *= numpy.pi/180
 
-        qx = k0 * (numpy.cos(gamma) * numpy.cos(delta) - numpy.cos(mu))
-        qy = k0 * (numpy.cos(gamma) * numpy.sin(delta))
+        qy = k0 * (numpy.cos(gamma) * numpy.cos(delta) - numpy.cos(mu)) ## definition of qx, and qy same as spec at theta = 0
+        qx = k0 * (numpy.cos(gamma) * numpy.sin(delta))
         qz = k0 * (numpy.sin(gamma) + numpy.sin(mu))
         return (qx, qy, qz)
 
@@ -104,7 +112,8 @@ class TwoThetaProjection(SphericalQProjection):
 class Qpp(nrQProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         qx, qy, qz = super(Qpp, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
-        qpar = numpy.sign(qx) * numpy.sqrt(qx**2 + qy**2)
+        qpar = numpy.sqrt(qx**2 + qy**2)
+        qpar[numpy.sign(qx) == -1] *= -1
         return (qpar, qz)
 
     def get_axis_labels(self):

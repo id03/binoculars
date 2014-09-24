@@ -85,7 +85,11 @@ class PeakFitBase(FitBase):
             argmax = tuple((signal * grid).sum() / signal.sum() for grid in self.cxdata)
         
         argmax_bkg = linparams[-1] + numpy.sum(numpy.vstack(param * grid.flatten() for (param, grid) in zip(linparams[:-1], argmax)))
-        maximum = self.space.get_value(argmax) - argmax_bkg
+
+        try:
+            maximum = self.space.get_value(argmax) - argmax_bkg
+        except ValueError:
+            maximum = self.cydata.max() 
         
         if numpy.isnan(maximum):
             maximum = self.cydata.max() 

@@ -233,6 +233,7 @@ class Window(QtGui.QMainWindow):
 
     def newproject(self):
         self.tab_widget.addTab(ProjectWidget([], parent=self), 'New Project')
+        self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
             
     def loadproject(self, filename = None):
         if not filename:
@@ -757,9 +758,11 @@ class LimitWidget(QtGui.QWidget):
 
         self.projectionlabel = QtGui.QLabel(self)
         self.projectionlabel.setText('projection along axis')
-        
-        vbox.addWidget(self.projectionlabel)
+        self.refreshbutton = QtGui.QPushButton('all')
+        self.refreshbutton.clicked.connect(self.refresh)
 
+        vbox.addWidget(self.projectionlabel)
+       
         self.checkbox = list()
         self.state = list()
 
@@ -775,7 +778,6 @@ class LimitWidget(QtGui.QWidget):
 
         vbox.addLayout(hbox)
         
-
         for label in labels:
             self.qlabels.append(QtGui.QLabel(self))
             self.leftindicator.append(QtGui.QLineEdit(self))
@@ -817,8 +819,18 @@ class LimitWidget(QtGui.QWidget):
         for line in self.rightindicator:
             line.editingFinished.connect(self.update_sliders_right)
 
+        vbox.addWidget(self.refreshbutton)
+
         if self.layout() == None:
             self.setLayout(vbox)
+
+    def refresh(self):
+        for slider in self.sliders:
+            slider.setLow(slider.minimum())
+            slider.setHigh(slider.maximum())
+
+        self.update_lines()
+        self.send_signal()
 
     def update_lines(self, value = 0 ):
         for index, slider in enumerate(self.sliders):

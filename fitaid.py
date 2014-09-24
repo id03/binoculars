@@ -1,38 +1,16 @@
+import h5py
 import sys
-import os
+import numpy
+import os.path
 from PyQt4 import QtGui, QtCore, Qt
 import BINoculars.main, BINoculars.space, BINoculars.plot, BINoculars.fit
-import numpy
-import json
-import inspect
 from scipy.interpolate import griddata
 
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationToolbar2QTAgg
 import matplotlib.figure, matplotlib.image
 from matplotlib.pyplot import Rectangle
+import itertools
 
-
-def interpolate(space):
-    data = space.get_masked()
-    mask = data.mask
-    grid = numpy.vstack(numpy.ma.array(g, mask=mask).compressed() for g in space.get_grid()).T
-    open = numpy.vstack(numpy.ma.array(g, mask=numpy.invert(mask)).compressed() for g in space.get_grid()).T
-    if open.shape[0] == 0:
-        return data.compressed()
-    elif grid.shape[0] == 0:
-        return data.compressed()
-    else:
-        interpolated = griddata(grid, data.compressed(), open)            
-        values = data.data.copy()
-        values[mask] = interpolated
-        mask = numpy.isnan(values)
-        if mask.sum() > 0:
-            data = numpy.ma.array(values, mask = mask)
-            grid = numpy.vstack(numpy.ma.array(g, mask=mask).compressed() for g in space.get_grid()).T
-            open = numpy.vstack(numpy.ma.array(g, mask=numpy.invert(mask)).compressed() for g in space.get_grid()).T
-            interpolated = griddata(grid, data.compressed(), open, method = 'nearest')
-            values[mask] = interpolated
-        return values
 
 class Window(QtGui.QMainWindow):
     def __init__(self, parent=None):
@@ -44,54 +22,43 @@ class Window(QtGui.QMainWindow):
         loadproject = QtGui.QAction("Open project", self)  
         loadproject.triggered.connect(self.loadproject)
 
-        saveproject = QtGui.QAction("Save project", self)  
-        saveproject.triggered.connect(self.saveproject)
-
-        export = QtGui.QAction("Export fitdata", self)  
-        export.triggered.connect(self.export)
+        addspace = QtGui.QAction("Import space", self)  
+        addspace.triggered.connect(self.add_to_project)
 
         menu_bar = QtGui.QMenuBar() 
         file = menu_bar.addMenu("&File") 
         file.addAction(newproject)
         file.addAction(loadproject)
-        file.addAction(saveproject) 
+        file.addAction(addspace)
 
-        edit = menu_bar.addMenu("&Edit") 
-        edit.addAction(export)
+        self.setMenuBar(menu_bar)
+        self.statusbar	= QtGui.QStatusBar()
 
         self.tab_widget = QtGui.QTabWidget(self)
         self.tab_widget.setTabsClosable(True)
         QtCore.QObject.connect(self.tab_widget, QtCore.SIGNAL("tabCloseRequested(int)"), self.tab_widget.removeTab)
 
-
-        self.setMenuBar(menu_bar)
-        self.statusbar	= QtGui.QStatusBar()
-
         self.setCentralWidget(self.tab_widget)
         self.setMenuBar(menu_bar)
         self.setStatusBar(self.statusbar)
 
-    def newproject(self, filename = None):
-        if not filename:
-            dialog = QtGui.QFileDialog(self, "Load space");
-            dialog.setFilter('BINoculars space file (*.hdf5)');
-            dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
-            dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
-            if not dialog.exec_():
-                return
-            fname = dialog.selectedFiles()
-            if not fname:
-                return
-            for name in fname:
-                #try:
-                widget = FitWidget(str(name), parent = self)
-                self.tab_widget.addTab(widget, short_filename(str(name)))
-                #except Exception as e:
-                #    QtGui.QMessageBox.critical(self, 'Load space', 'Unable to load space from {}: {}'.format(fname, e))
-        else:
-            widget = FitWidget(filename, parent = self)
-            self.tab_widget.addTab(widget, short_filename(filename))
-            
+    def newproject(self):
+        dialog = QtGui.QFileDialog(self, "project filename");
+        dialog.setFilter('BINoculars project file (*.fit)');
+        dialog.setDefaultSuffix('fit');
+        dialog.setFileMode(QtGui.QFileDialog.AnyFile);
+        dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
+        if not dialog.exec_():
+            return
+        fname = dialog.selectedFiles()[0]
+        if not fname:
+            return
+        #try:
+        self.tab_widget.addTab(TopWidget(str(fname), parent=self), 'New Project')
+        self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
+        #except Exception as e:
+        #    QtGui.QMessageBox.critical(self, 'Save project', 'Unable to save project to {}: {}'.format(fname, e))
+
     def loadproject(self, filename = None):
         if not filename:
             dialog = QtGui.QFileDialog(self, "Load project");
@@ -105,56 +72,768 @@ class Window(QtGui.QMainWindow):
                 return
             for name in fname:
                 #try:
-                widget = FitWidget.fromfile(str(name), parent = self)
-                self.tab_widget.addTab(widget, short_filename(str(name)))
+                self.tab_widget.addTab(TopWidget(str(fname), parent=self), 'New Project')
+                self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
                 #except Exception as e:
                 #    QtGui.QMessageBox.critical(self, 'Load project', 'Unable to load project from {}: {}'.format(fname, e))
         else:
-            widget = FitWidget.fromfile(filename, parent = self)
-            self.tab_widget.addTab(widget, short_filename(filename))
+            self.tab_widget.addTab(TopWidget(filename, parent=self), 'New Project')
+            self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
 
-    def saveproject(self):
-        widget = self.tab_widget.currentWidget()
-        dialog = QtGui.QFileDialog(self, "Save project");
-        dialog.setFilter('BINoculars fit file (*.fit)');
-        dialog.setDefaultSuffix('fit');
-        dialog.setFileMode(QtGui.QFileDialog.AnyFile);
-        dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
+    def add_to_project(self):
+        dialog = QtGui.QFileDialog(self, "Import spaces");
+        dialog.setFilter('BINoculars space file (*.hdf5)');
+        dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
+        dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
         if not dialog.exec_():
             return
-        fname = dialog.selectedFiles()[0]
+        fname = dialog.selectedFiles()
         if not fname:
             return
-        #try:
-        index = self.tab_widget.currentIndex()
-        self.tab_widget.setTabText(index, short_filename(fname))
-        widget.tofile(fname)
-        #except Exception as e:
-        #    QtGui.QMessageBox.critical(self, 'Save project', 'Unable to save project to {}: {}'.format(fname, e))
+        for name in fname:
+            try:
+                widget = self.tab_widget.currentWidget()
+                widget.addspace(str(name))
+            except Exception as e:
+                QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(fname, e))
 
-       
-    def export(self):
-        widget = self.tab_widget.currentWidget()
-        widget.export(None)
+class TopWidget(QtGui.QWidget):
+    def __init__(self, filename , parent=None):
+        super(TopWidget, self).__init__(parent)
 
-        '''
-        widget = self.tab_widget.currentWidget()
-        dialog = QtGui.QFileDialog(self, "export fitdata");
-        dialog.setFilter('text (*.txt)');
-        dialog.setDefaultSuffix('txt');
-        dialog.setFileMode(QtGui.QFileDialog.AnyFile);
-        dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
-        if not dialog.exec_():
-            return
-        fname = dialog.selectedFiles()[0]
-        if not fname:
-            return
-        try:
-            index = self.tab_widget.currentIndex()
-            widget.export(fname)
-        except Exception as e:
-            QtGui.QMessageBox.critical(self, 'export fitdata', 'Unable to export fitdata to {}: {}'.format(fname, e))
-        '''
+        hbox = QtGui.QHBoxLayout() 
+        vbox = QtGui.QVBoxLayout() 
+        minihbox =  QtGui.QHBoxLayout() 
+        minihbox2 =  QtGui.QHBoxLayout() 
+
+        self.database = FitData(filename)
+        self.table = TableWidget(self.database)
+        self.nav = ButtonedSlider()
+        self.nav.connect(self.nav, QtCore.SIGNAL('slice_index'), self.index_change)
+        self.table.trigger.connect(self.active_change)
+        self.table.check_changed.connect(self.refresh_plot)
+        self.tab_widget = QtGui.QTabWidget()
+
+        self.fitwidget = FitWidget(self.database)
+        self.integratewidget = IntegrateWidget(self.database)
+        self.plotwidget = OverviewWidget(self.database)
+
+        self.tab_widget.addTab(self.fitwidget, 'Fit')
+        self.tab_widget.addTab(self.integratewidget, 'Integrate')
+        self.tab_widget.addTab(self.plotwidget, 'plot')
+
+        self.emptywidget = QtGui.QWidget()
+        self.emptywidget.setLayout(vbox) 
+
+        vbox.addWidget(self.table)
+        vbox.addWidget(self.nav)
+
+        self.functions = list()
+        self.function_box = QtGui.QComboBox()        
+        for function in dir(BINoculars.fit):
+            cls = getattr(BINoculars.fit, function)
+            if isinstance(cls, type) and issubclass(cls, BINoculars.fit.PeakFitBase):
+                self.functions.append(cls)
+                self.function_box.addItem(function)
+
+        vbox.addWidget(self.function_box)
+        vbox.addLayout(minihbox)
+        vbox.addLayout(minihbox2)
+        
+        self.all_button = QtGui.QPushButton('fit all')
+        self.rod_button = QtGui.QPushButton('fit rod')
+        self.slice_button = QtGui.QPushButton('fit slice')
+
+        self.all_button.clicked.connect(self.fit_all)
+        self.rod_button.clicked.connect(self.fit_rod)
+        self.slice_button.clicked.connect(self.fit_slice)
+
+        minihbox.addWidget(self.all_button)
+        minihbox.addWidget(self.rod_button)
+        minihbox.addWidget(self.slice_button)
+
+        self.allint_button = QtGui.QPushButton('int all')
+        self.rodint_button = QtGui.QPushButton('int rod')
+        self.sliceint_button = QtGui.QPushButton('int slice')
+
+        self.allint_button.clicked.connect(self.int_all)
+        self.rodint_button.clicked.connect(self.int_rod)
+        self.sliceint_button.clicked.connect(self.int_slice)
+
+        minihbox2.addWidget(self.allint_button)
+        minihbox2.addWidget(self.rodint_button)
+        minihbox2.addWidget(self.sliceint_button)
+
+        splitter = QtGui.QSplitter(QtCore.Qt.Horizontal)
+
+        splitter.addWidget(self.emptywidget)
+        splitter.addWidget(self.tab_widget)
+        self.tab_widget.currentChanged.connect(self.tab_change)
+
+        hbox.addWidget(splitter) 
+        self.setLayout(hbox) 
+
+    def tab_change(self, index):
+        if index == 2:
+            self.refresh_plot()
+
+    def addspace(self,filename = None):
+        if filename == None:
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.hdf5'))
+        self.table.addspace(filename)
+
+    def active_change(self):
+        rodkey, axis, resolution = self.table.currentkey()
+        newdatabase = RodData(self.database.filename, rodkey, axis, resolution)
+        self.integratewidget.database = newdatabase
+        self.integratewidget.set_axis()
+        self.fitwidget.database = newdatabase
+        self.nav.set_length(newdatabase.rodlength())
+        index = newdatabase.load('index')
+        if index == None:
+            index = 0
+        self.nav.set_index(index)
+        self.index_change(index)
+
+    def index_change(self, index):
+        if index == None:
+            index = 0
+        self.fitwidget.database.save('index', self.nav.index())
+        self.fitwidget.plot(index)
+        self.integratewidget.plot(index)
+
+    def refresh_plot(self):
+        self.plotwidget.refresh(list(RodData(self.database.filename, rodkey, axis, resolution) for rodkey, axis, resolution in self.table.checked()))
+
+
+    @property
+    def fitclass(self):
+        return self.functions[self.function_box.currentIndex()]
+
+    def fit_slice(self):
+        index = self.nav.index()
+        space = self.fitwidget.database.space_from_index(index)
+        self.fitwidget.fit(index, space, self.fitclass)
+        self.fit_loc(self.fitwidget.database)
+        self.fitwidget.plot(index)
+
+    def fit_rod(self):
+        def function(index, space):
+            self.fitwidget.fit(index, space, self.fitclass)
+        self.progressbox(self.fitwidget.database.rodkey, function, enumerate(self.fitwidget.database), self.fitwidget.database.rodlength())
+        self.fit_loc(self.fitwidget.database)
+
+    def fit_all(self):
+        def function(index, space):
+            self.fitwidget.fit(index, space, self.fitclass)
+
+        for rodkey, axis, resolution in self.table.checked():
+            self.fitwidget.database = RodData(self.database.filename, rodkey, axis, resolution)
+            self.progressbox(self.fitwidget.database.rodkey, function, enumerate(self.fitwidget.database), self.fitwidget.database.rodlength())
+            self.fit_loc(self.fitwidget.database)
+
+
+    def int_slice(self):
+        index = self.nav.index()
+        space = self.fitwidget.database.space_from_index(index)
+        self.integratewidget.integrate(index, space)
+        self.integratewidget.plot(index)
+
+    def int_rod(self):
+        self.progressbox(self.integratewidget.database.rodkey,self.integratewidget.integrate, enumerate(self.integratewidget.database), self.integratewidget.database.rodlength())
+
+    def int_all(self):
+        for rodkey, axis, resolution in self.table.checked():
+            self.integratewidget.database = RodData(self.database.filename, rodkey, axis, resolution)
+            self.progressbox(self.integratewidget.database.rodkey,self.integratewidget.integrate, enumerate(self.integratewidget.database), self.integratewidget.database.rodlength())
+                
+    def fit_loc(self, database):
+        deg = 2
+        for param in database.all_attrkeys():
+            if param.startswith('loc'):
+                x, y = database.all_from_key(param)
+                x, yvar = database.all_from_key('var_{0}'.format(param))
+                indices, yvar = database.all_from_key_indexed('var_{0}'.format(param))
+                w = numpy.log(1 / yvar)
+                w[w == numpy.inf] = 0
+                w = numpy.nan_to_num(w)
+                w[w < 0] = 0
+                w[w < numpy.median(w)] = 0
+                if len(x) > 0:
+                    c = numpy.polynomial.polynomial.polyfit(x, y, deg, w = w)
+                    newy = numpy.polynomial.polynomial.polyval(x, c)
+                    for index, newval in zip(indices, newy):
+                        database.save_sliceattr(index, 'guessloc{0}'.format(param.lstrip('loc')) , newval)
+
+    def progressbox(self, rodkey , function, iterator, length):
+        pd = QtGui.QProgressDialog('Processing {0}'.format(rodkey), 'Cancel', 0, length)
+        pd.setWindowModality(QtCore.Qt.WindowModal)
+        pd.show()
+        def progress(index, item):
+            pd.setValue(index)
+            if pd.wasCanceled():
+                raise KeyboardInterrupt
+            QtGui.QApplication.processEvents()
+            function(*item)
+        for index, item in enumerate(iterator):
+            progress(index, item)
+        pd.close()
+
+class TableWidget(QtGui.QWidget):
+    trigger = QtCore.pyqtSignal()
+    check_changed = QtCore.pyqtSignal()
+
+    def __init__(self, database, parent=None):
+        super(TableWidget, self).__init__(parent)
+
+        hbox = QtGui.QHBoxLayout()
+        self.database = database
+
+        self.activeindex = 0
+
+        self.table = QtGui.QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(['','filename', 'axis', 'res', 'remove'])
+        
+        self.table.cellClicked.connect(self.setlength)
+
+        for index, width in enumerate([25,150,40,50,70]):
+            self.table.setColumnWidth(index, width)
+
+        for filename in database.filelist:
+            self.addspace(filename)
+
+        hbox.addWidget(self.table)
+        self.setLayout(hbox)
+
+    def addspace(self, filename, add = False):
+        def remove_callback(rodkey):
+            return lambda: self.remove(rodkey)
+
+        rodkey = short_filename(filename)
+        
+        old_axis, old_resolution = self.database.load(rodkey, 'axis'), self.database.load(rodkey, 'resolution')
+        self.database.create_rod(rodkey, filename)
+        index = self.table.rowCount()
+        self.table.insertRow(index)
+
+        axes = BINoculars.space.Axes.fromfile(filename) 
+
+        checkboxwidget = QtGui.QCheckBox()
+        checkboxwidget.rodkey = rodkey
+        checkboxwidget.setChecked(add or index == 0)
+        self.table.setCellWidget(index,0, checkboxwidget)
+        checkboxwidget.clicked.connect(self.check_changed)
+
+        item = QtGui.QTableWidgetItem(rodkey)
+        self.table.setItem(index, 1, item)
+
+        axis = QtGui.QComboBox()
+        for ax in axes:
+            axis.addItem(ax.label)
+        self.table.setCellWidget(index, 2, axis)
+        if not old_axis == None:
+            self.table.cellWidget(index, 2).setCurrentIndex(axes.index(old_axis))
+        elif index > 0:
+            self.table.cellWidget(0, 2).setCurrentIndex(self.table.cellWidget(0,2).currentIndex())
+
+        resolution = QtGui.QLineEdit()
+        if not old_resolution == None:
+            resolution.setText(str(old_resolution))
+        elif index > 0:
+            resolution.setText(self.table.cellWidget(0,3).text())
+        else:
+            resolution.setText(str(axes[axes.index(str(axis.currentText()))].res))
+        
+        self.table.setCellWidget(index, 3, resolution)
+        
+        buttonwidget = QtGui.QPushButton('remove')
+        buttonwidget.clicked.connect(remove_callback(rodkey))
+        self.table.setCellWidget(index,4, buttonwidget)
+
+    def remove(self, rodkey):
+        table_rodkeys = list(self.table.cellWidget(index, 0).rodkey for index in range(self.table.rowCount()))
+        for index, label in enumerate(table_rodkeys):
+            if rodkey == label:
+                self.table.removeRow(index)
+        self.database.delete_rod(rodkey)
+        print 'removed: {0}'.format(rodkey)
+
+    def setlength(self, y, x):
+        if x == 1:
+            self.activeindex = y
+            rodkey, axis, resolution = self.currentkey()
+            self.database.save(rodkey, 'axis', axis)
+            self.database.save(rodkey, 'resolution', resolution)
+            self.trigger.emit()
+
+    def currentkey(self):
+        rodkey = self.table.cellWidget(self.activeindex, 0).rodkey
+        axis = str(self.table.cellWidget(self.activeindex,2).currentText())
+        resolution = float(self.table.cellWidget(self.activeindex,3).text())
+        return rodkey, axis, resolution
+
+    def checked(self):
+        selection = []
+        for index in range(self.table.rowCount()):
+            checkbox = self.table.cellWidget(index, 0)
+            if checkbox.checkState():
+                rodkey = self.table.cellWidget(index, 0).rodkey
+                axis = str(self.table.cellWidget(index,2).currentText())
+                resolution = float(self.table.cellWidget(index,3).text())
+                selection.append((rodkey, axis, resolution))
+        return selection
+
+
+class FitData(object):
+    def __init__(self, filename):
+        self.filename = filename
+
+    def create_rod(self, rodkey, filename):
+        with h5py.File(self.filename,'a') as db:
+            if rodkey not in db.keys():
+                db.create_group(rodkey)
+                db[rodkey].attrs['filename'] =  filename
+
+    def delete_rod(self, rodkey):
+        with h5py.File(self.filename,'a') as db:
+            del db[rodkey]
+
+    def rods(self):
+        with h5py.File(self.filename,'a') as db:
+            rods = db.keys()
+        return rods
+
+    @property
+    def filelist(self):
+        filelist = []
+        with h5py.File(self.filename,'a') as db:
+            for key in db.iterkeys():
+                filelist.append(db[key].attrs['filename'])
+        return filelist
+
+    def save(self, rodkey, key, value):
+        with h5py.File(self.filename,'a') as db:
+             db[rodkey].attrs[str(key)] = value
+
+    def load(self, rodkey, key):
+        with h5py.File(self.filename,'a') as db:
+            if rodkey in db:
+                if key in db[rodkey].attrs:
+                    return db[rodkey].attrs[str(key)]                         
+            else:
+                return None
+
+class RodData(FitData):
+    def __init__(self, filename, rodkey, axis, resolution):
+        self.filename = filename
+        self.rodkey = rodkey
+        self.slicekey = '{0}_{1}'.format(axis, resolution)
+        self.axis = axis
+        self.resolution = resolution
+
+        with h5py.File(self.filename,'a') as db:
+            if rodkey in db:
+                if self.slicekey not in db[rodkey]:
+                    db[rodkey].create_group(self.slicekey)
+
+    def save(self, key, value):
+        super(RodData, self).save(self.rodkey, key, value)
+
+    def load(self, key):
+        return super(RodData, self).load(self.rodkey, key)
+
+    def slices(self):
+        s = list()
+
+        with h5py.File(self.filename,'a') as db:
+             filename = db[self.rodkey].attrs['filename']
+
+        self.axes = BINoculars.space.Axes.fromfile(filename)
+
+        axindex = self.axes.index(self.axis)
+        ax = self.axes[axindex]
+        axlabel = ax.label
+
+        if float(self.resolution) < ax.res:
+            raise ValueError('interval {0} to low, minimum interval is {1}'.format(self.resolution, ax.res))
+
+        mi, ma = ax.min, ax.max
+        bins = numpy.linspace(mi, ma, numpy.ceil(1 / numpy.float(self.resolution) * (ma - mi)) + 1)
+
+        self.x =  (bins[:-1] + bins[1:]) / 2
+
+        for start, stop in zip(bins[:-1], bins[1:]):
+            k = [slice(None) for i in self.axes]
+            k[axindex] = slice(start, stop)
+            s.append(k)
+
+        return s
+
+    def rodlength(self):     
+        return len(self.slices())
+
+    def space_from_index(self, index):
+        with h5py.File(self.filename,'a') as db:
+             filename = db[self.rodkey].attrs['filename']
+
+        key = self.slices()[index]
+        return BINoculars.space.Space.fromfile(filename, key).project(self.axis)
+
+    def save_fitdata(self, index, fit):
+        if fit is not None:
+            fitdata = fit.fitdata
+            
+            with h5py.File(self.filename,'a') as db:
+                id = '{0}_fitdata'.format(int(index))
+                mid = '{0}_maskdata'.format(int(index))
+                if id in db[self.rodkey][self.slicekey].keys():
+                    del db[self.rodkey][self.slicekey][id]
+                    del db[self.rodkey][self.slicekey][mid]
+                    db[self.rodkey][self.slicekey].create_dataset(id, fitdata.shape, dtype=fitdata.dtype, compression='gzip').write_direct(fitdata)
+                    db[self.rodkey][self.slicekey].create_dataset(mid, fitdata.shape, dtype=fitdata.mask.dtype, compression='gzip').write_direct(fitdata.mask)
+                else:
+                    db[self.rodkey][self.slicekey].create_dataset(id, fitdata.shape, dtype=fitdata.dtype, compression='gzip').write_direct(fitdata)
+                    db[self.rodkey][self.slicekey].create_dataset(mid, fitdata.shape, dtype=fitdata.mask.dtype, compression='gzip').write_direct(fitdata.mask)
+
+    def load_fitdata(self, index):   
+        with h5py.File(self.filename,'a') as db:
+             id = '{0}_fitdata'.format(int(index))
+             mid = '{0}_maskdata'.format(int(index))
+             if id in db[self.rodkey][self.slicekey].keys() and mid in db[self.rodkey][self.slicekey].keys():
+                 
+                 return numpy.ma.array(db[self.rodkey][self.slicekey][id][...], mask = db[self.rodkey][self.slicekey][mid][...])
+             else:
+                 return None
+
+    def save_sliceattr(self, index, key, value):
+        with h5py.File(self.filename,'a') as db:
+            id = '{0}_attrs'.format(int(index))
+            if not id in db[self.rodkey][self.slicekey]:
+                db[self.rodkey][self.slicekey].create_dataset(id, (1, 1))
+            db[self.rodkey][self.slicekey][id].attrs[key] = value
+
+    def load_sliceattr(self, index, key):
+        with h5py.File(self.filename,'a') as db:
+            id = '{0}_attrs'.format(int(index))
+            if self.rodkey in db:
+                if self.slicekey in db[self.rodkey]:
+                    if id in db[self.rodkey][self.slicekey].keys():
+                        if key in db[self.rodkey][self.slicekey][id].attrs:
+                            return db[self.rodkey][self.slicekey][id].attrs[str(key)]                         
+            return None
+
+    def all_attrkeys(self):
+        paramlist = list()
+        with h5py.File(self.filename,'a') as db:
+            for attrs in db[self.rodkey][self.slicekey]:
+                if attrs.endswith('attrs'):
+                    for param in db[self.rodkey][self.slicekey][attrs].attrs:
+                        if param not in paramlist:
+                            paramlist.append(param)
+        return paramlist
+
+    def all_from_key(self, key):
+        self.slices()
+        s = list()
+        y = list()
+        with h5py.File(self.filename,'a') as db:
+            for attrs in db[self.rodkey][self.slicekey]:
+                if attrs.endswith('attrs'):
+                    if key in db[self.rodkey][self.slicekey][attrs].attrs.keys():
+                        s.append(int(attrs.split('_')[0]))
+                        y.append(db[self.rodkey][self.slicekey][attrs].attrs[key])
+        return numpy.array(self.x)[s], numpy.array(y)
+
+    def all_from_key_indexed(self, key):
+        self.slices()
+        s = list()
+        y = list()
+        with h5py.File(self.filename,'a') as db:
+            for attrs in db[self.rodkey][self.slicekey]:
+                if attrs.endswith('attrs'):
+                    if key in db[self.rodkey][self.slicekey][attrs].attrs.keys():
+                        s.append(int(attrs.split('_')[0]))
+                        y.append(db[self.rodkey][self.slicekey][attrs].attrs[key])
+        return s, numpy.array(y)
+                 
+    def load_loc(self, index):
+        loc = list()   
+        with h5py.File(self.filename,'a') as db:
+             count = itertools.count()
+             key = 'guessloc{0}'.format(count.next())
+             while self.load_sliceattr(index, key) != None:
+                 loc.append(self.load_sliceattr(index, key))
+                 key = 'guessloc{0}'.format(count.next())
+             if len(loc) > 0:
+                 return loc
+             else:
+                 count = itertools.count()
+                 key = 'loc{0}'.format(count.next())
+                 while self.load_sliceattr(index, key) != None:
+                     loc.append(self.load_sliceattr(index, key))
+                     key = 'loc{0}'.format(count.next())
+                 if len(loc) > 0:
+                     return loc
+                 else:
+                     return None
+
+    def save_loc(self, index, loc):
+        for i, value in enumerate(loc):
+            self.save_sliceattr(index, 'guessloc{0}'.format(i), value) 
+
+    def __iter__(self):
+        for index in range(self.rodlength()):
+            yield self.space_from_index(index)
+
+def short_filename(filename):
+    return filename.split('/')[-1].split('.')[0]
+
+class HiddenToolbar(NavigationToolbar2QTAgg):
+    def __init__(self, corner_callback, canvas):
+        NavigationToolbar2QTAgg.__init__(self, canvas, None)
+        self._corner_callback = corner_callback
+        self.zoom()
+
+    def press(self, event):
+        self._corner_preclick = self._views()
+        
+    def release(self, event):
+        if self._corner_preclick == self._views():
+            self._corner_callback(event.xdata, event.ydata)
+        self._corner_preclick = None
+                
+class FitWidget(QtGui.QWidget):
+    def __init__(self, database ,parent=None):
+        super(FitWidget, self).__init__(parent)
+
+        self.database = database
+        vbox = QtGui.QHBoxLayout() 
+
+        self.figure = matplotlib.figure.Figure()
+        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.toolbar = HiddenToolbar(self.loc_callback, self.canvas)
+
+        vbox.addWidget(self.canvas)
+        self.setLayout(vbox)
+
+    def loc_callback(self, x, y):
+        if self.ax:
+            self.database.save_loc(self.currentindex(), numpy.array([x, y]))
+            
+
+    def plot(self, index):
+        space = self.database.space_from_index(index)
+        fitdata = self.database.load_fitdata(index)
+
+        self.figure.clear()
+        self.figure.space_axes = space.axes
+
+        if fitdata is not None:
+            if space.dimension == 1:
+                self.ax = self.figure.add_subplot(111)
+                BINoculars.plot.plot(space, self.figure, self.ax, fit = fitdata)
+            elif space.dimension == 2:
+                self.ax = self.figure.add_subplot(121)
+                BINoculars.plot.plot(space, self.figure, self.ax, fit = None)
+                self.ax = self.figure.add_subplot(122)
+                BINoculars.plot.plot(space, self.figure, self.ax, fit = fitdata)
+        else:
+            self.ax = self.figure.add_subplot(111)
+            BINoculars.plot.plot(space, self.figure, self.ax)
+
+        self.canvas.draw()
+
+    def fit(self, index, space, function):
+        if not len(space.get_masked().compressed()) == 0:
+            fit = function(space, loc = self.database.load_loc(index))
+            fit.fitdata.mask = space.get_masked().mask
+            self.database.save_fitdata(index, fit)
+            params = list(line.split(':')[0] for line in fit.summary.split('\n'))
+            for key, value in zip(params, fit.result):
+                self.database.save_sliceattr(index, key, value)
+            for key, value in zip(params, fit.variance):
+                self.database.save_sliceattr(index, 'var_{0}'.format(key), value)
+
+    def currentindex(self):
+        index = self.database.load('index')
+        if index == None:
+            return 0
+        else:
+            return index
+
+class IntegrateWidget(QtGui.QWidget):
+    def __init__(self, database, parent = None):
+        super(IntegrateWidget, self).__init__(parent)
+        self.database = database
+
+        self.figure = matplotlib.figure.Figure()
+        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.toolbar = HiddenToolbar(self.loc_callback, self.canvas)
+
+        hbox = QtGui.QHBoxLayout() 
+
+        splitter = QtGui.QSplitter(QtCore.Qt.Vertical)
+        self.make_controlwidget()
+
+        splitter.addWidget(self.canvas)
+        splitter.addWidget(self.control_widget)
+
+        hbox.addWidget(splitter) 
+        self.setLayout(hbox)  
+
+    def make_controlwidget(self):
+        self.control_widget = QtGui.QWidget()
+
+        integratebox = QtGui.QVBoxLayout()
+        intensitybox = QtGui.QHBoxLayout()
+        backgroundbox = QtGui.QHBoxLayout()
+
+        self.hsize = QtGui.QDoubleSpinBox()
+        self.vsize = QtGui.QDoubleSpinBox()
+
+        QtCore.QObject.connect(self.hsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
+        QtCore.QObject.connect(self.vsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
+
+        intensitybox.addWidget(QtGui.QLabel('roi size:'))
+        intensitybox.addWidget(self.hsize)
+        intensitybox.addWidget(self.vsize)
+
+        self.left = QtGui.QDoubleSpinBox()
+        self.right = QtGui.QDoubleSpinBox()
+        self.top = QtGui.QDoubleSpinBox()
+        self.bottom = QtGui.QDoubleSpinBox()
+
+        QtCore.QObject.connect(self.left, QtCore.SIGNAL("valueChanged(double)"), self.send)
+        QtCore.QObject.connect(self.right, QtCore.SIGNAL("valueChanged(double)"), self.send)
+        QtCore.QObject.connect(self.top, QtCore.SIGNAL("valueChanged(double)"), self.send)
+        QtCore.QObject.connect(self.bottom, QtCore.SIGNAL("valueChanged(double)"), self.send)
+
+        backgroundbox.addWidget(QtGui.QLabel('background'))
+        backgroundbox.addWidget(self.left)
+        backgroundbox.addWidget(self.right)
+        backgroundbox.addWidget(self.top)
+        backgroundbox.addWidget(self.bottom)
+                
+        integratebox.addLayout(intensitybox)
+        integratebox.addLayout(backgroundbox)
+        self.control_widget.setLayout(integratebox)
+
+    def set_axis(self):
+        roi = self.database.load('roi')
+        if roi is not None:
+             for box, value in zip([self.hsize, self.vsize, self.left, self.right, self.top, self.bottom], roi):
+                box.setValue(value)
+
+        axes = self.database.space_from_index(0).axes    
+
+        self.hsize.setSingleStep(axes[1].res)
+        self.hsize.setDecimals(len(str(axes[1].res)) - 2)
+        self.vsize.setSingleStep(axes[0].res)
+        self.vsize.setDecimals(len(str(axes[0].res)) - 2)
+        self.left.setSingleStep(axes[1].res)
+        self.left.setDecimals(len(str(axes[1].res)) - 2)
+        self.right.setSingleStep(axes[1].res)
+        self.right.setDecimals(len(str(axes[1].res)) - 2)
+        self.top.setSingleStep(axes[0].res)
+        self.top.setDecimals(len(str(axes[0].res)) - 2)
+        self.bottom.setSingleStep(axes[0].res)
+        self.bottom.setDecimals(len(str(axes[0].res)) - 2)
+           
+    def send(self):
+        roi = [self.hsize.value(), self.vsize.value(), self.left.value() ,self.right.value() ,self.top.value(), self.bottom.value()]
+        self.database.save('roi', roi)
+        self.plot_box()
+
+    def integrate(self, index, space):
+        loc = self.database.load_loc(index)
+        if loc != None:
+            axes = space.axes
+            intensity = interpolate(space[self.intkey(loc, axes)]).flatten()
+            bkg = numpy.hstack(space[bkgkey].get_masked().compressed() for bkgkey in self.bkgkeys(loc, axes))
+
+            if numpy.alen(bkg) == 0:
+                structurefactor = intensity.sum()
+                print structurefactor
+            elif numpy.alen(intensity) == 0:
+                structurefactor = numpy.nan
+            else:
+                structurefactor = intensity.sum() - numpy.alen(intensity) * 1.0 / numpy.alen(bkg) * bkg.sum()        
+                print index, structurefactor, intensity.sum(), numpy.alen(intensity) * 1.0 / numpy.alen(bkg) * bkg.sum() 
+            self.database.save_sliceattr(index, 'sf', structurefactor)
+
+    def intkey(self, coords, axes):
+
+        vsize = self.vsize.value() / 2
+        hsize = self.hsize.value() / 2
+        return tuple(ax.restrict(slice(coord - size, coord + size)) for ax, coord, size in zip(axes, coords, [vsize, hsize]))
+
+    def bkgkeys(self, coords, axes):
+
+        key = self.intkey(coords, axes)
+
+        vsize = self.vsize.value() / 2
+        hsize = self.hsize.value() / 2
+
+        leftkey = (key[0], axes[1].restrict(slice(coords[1] - hsize - self.left.value(), coords[1] - hsize)))
+        rightkey = (key[0], axes[1].restrict(slice(coords[1] + hsize, coords[1] + hsize + self.right.value())))
+        topkey = (axes[0].restrict(slice(coords[0] - vsize - self.top.value(), coords[0] - vsize)), key[1])
+        bottomkey =  (axes[0].restrict(slice(coords[0] + vsize, coords[0] + vsize  + self.bottom.value())), key[1])
+
+        return leftkey, rightkey, topkey, bottomkey
+
+    def loc_callback(self, x, y):
+        if self.ax:
+            self.database.save_loc(self.currentindex(), numpy.array([x, y]))
+            self.plot_box()
+
+    def plot(self, index):
+        space = self.database.space_from_index(index)
+        interdata = None
+
+        self.figure.clear()
+        self.figure.space_axes = space.axes
+
+        if interdata is not None:
+            if space.dimension == 1:
+                self.ax = self.figure.add_subplot(111)
+                BINoculars.plot.plot(space, self.figure, self.ax, fit = interdata)
+            elif space.dimension == 2:
+                self.ax = self.figure.add_subplot(121)
+                BINoculars.plot.plot(space, self.figure, self.ax, fit = None)
+                self.ax = self.figure.add_subplot(122)
+                BINoculars.plot.plot(space, self.figure, self.ax, fit = interdata)
+        else:
+            self.ax = self.figure.add_subplot(111)
+            BINoculars.plot.plot(space, self.figure, self.ax)
+
+        loc = self.database.load_loc(index)
+        if loc is not None:
+            self.plot_box(loc)
+
+        self.canvas.draw()
+
+    def plot_box(self, loc = None):
+        if loc is None:
+            loc = self.database.load_loc(self.currentindex())
+        if len(self.figure.get_axes()) != 0: 
+            ax = self.figure.get_axes()[0]
+            axes = self.figure.space_axes
+            key = self.intkey(loc, axes)
+            bkgkey = self.bkgkeys(loc, axes)
+            ax.patches = []
+            rect = Rectangle((key[0].start, key[1].start), key[0].stop - key[0].start, key[1].stop - key[1].start, alpha = 0.2,color =  'k')
+            ax.add_patch(rect)
+            for k in bkgkey:
+                bkg = Rectangle((k[0].start, k[1].start), k[0].stop - k[0].start, k[1].stop - k[1].start, alpha = 0.2,color =  'r')
+                ax.add_patch(bkg)
+            self.canvas.draw()
+
+    def currentindex(self):
+        index = self.database.load('index')
+        if index == None:
+            return 0
+        else:
+            return index
 
 class ButtonedSlider(QtGui.QWidget):
     def __init__(self,parent=None):
@@ -218,629 +897,145 @@ class ButtonedSlider(QtGui.QWidget):
     def index(self):
         return self.navigation_slider.value()
 
-class IntegrateWidget(QtGui.QGroupBox):
-    def __init__(self,title , axes,parent=None):
-        super(IntegrateWidget, self).__init__(title,parent)
+    def set_index(self, index):
+        self.navigation_slider.setValue(index)
 
-        self.axes = axes
-
-        integratebox = QtGui.QVBoxLayout()
-        intensitybox = QtGui.QHBoxLayout()
-        backgroundbox = QtGui.QHBoxLayout()
-
-        self.hsize = QtGui.QDoubleSpinBox()
-        self.vsize = QtGui.QDoubleSpinBox()
-
-        QtCore.QObject.connect(self.hsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
-        QtCore.QObject.connect(self.vsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
-
-        intensitybox.addWidget(QtGui.QLabel('roi size:'))
-        intensitybox.addWidget(self.hsize)
-        intensitybox.addWidget(self.vsize)
-
-        self.left = QtGui.QDoubleSpinBox()
-        self.right = QtGui.QDoubleSpinBox()
-        self.top = QtGui.QDoubleSpinBox()
-        self.bottom = QtGui.QDoubleSpinBox()
-
-        QtCore.QObject.connect(self.left, QtCore.SIGNAL("valueChanged(double)"), self.send)
-        QtCore.QObject.connect(self.right, QtCore.SIGNAL("valueChanged(double)"), self.send)
-        QtCore.QObject.connect(self.top, QtCore.SIGNAL("valueChanged(double)"), self.send)
-        QtCore.QObject.connect(self.bottom, QtCore.SIGNAL("valueChanged(double)"), self.send)
-
-        backgroundbox.addWidget(QtGui.QLabel('background'))
-        backgroundbox.addWidget(self.left)
-        backgroundbox.addWidget(self.right)
-        backgroundbox.addWidget(self.top)
-        backgroundbox.addWidget(self.bottom)
-        
-        self.integratebutton = QtGui.QPushButton('integrate')
-        self.integratebutton.clicked.connect(self.integrate)
-        
-        integratebox.addLayout(intensitybox)
-        integratebox.addLayout(backgroundbox)
-        integratebox.addWidget(self.integratebutton)        
-        self.setLayout(integratebox)
-
-    def set_axis(self, axis):
-        indices = range(self.axes.dimension)
-        indices.pop(self.axes.index(axis))        
-        
-        self.newaxes = BINoculars.space.Axes(self.axes[index] for index in indices)
-
-        self.hsize.setSingleStep(self.newaxes[1].res)
-        self.hsize.setDecimals(len(str(self.newaxes[1].res)) - 2)
-        self.vsize.setSingleStep(self.newaxes[0].res)
-        self.vsize.setDecimals(len(str(self.newaxes[0].res)) - 2)
-        self.left.setSingleStep(self.newaxes[1].res)
-        self.left.setDecimals(len(str(self.newaxes[1].res)) - 2)
-        self.right.setSingleStep(self.newaxes[1].res)
-        self.right.setDecimals(len(str(self.newaxes[1].res)) - 2)
-        self.top.setSingleStep(self.newaxes[0].res)
-        self.top.setDecimals(len(str(self.newaxes[0].res)) - 2)
-        self.bottom.setSingleStep(self.newaxes[0].res)
-        self.bottom.setDecimals(len(str(self.newaxes[0].res)) - 2)
-
-    def send(self):
-        self.emit(QtCore.SIGNAL("valueChanged"))
-
-    def integrate(self):
-        self.emit(QtCore.SIGNAL("integrate"))
-    
-    def intkey(self, coords):
-        vsize = self.vsize.value() / 2
-        hsize = self.hsize.value() / 2
-        return tuple(ax.restrict(slice(coord - size, coord + size)) for ax, coord, size in zip(self.newaxes, coords, [vsize, hsize]))
-
-    def bkgkeys(self, coords):
-        key = self.intkey(coords)
-
-        vsize = self.vsize.value() / 2
-        hsize = self.hsize.value() / 2
-
-        leftkey = (key[0], self.newaxes[1].restrict(slice(coords[1] - hsize - self.left.value(), coords[1] - hsize)))
-        rightkey = (key[0], self.newaxes[1].restrict(slice(coords[1] + hsize, coords[1] + hsize + self.right.value())))
-        topkey = (self.newaxes[0].restrict(slice(coords[0] - vsize - self.top.value(), coords[0] - vsize)), key[1])
-        bottomkey =  (self.newaxes[0].restrict(slice(coords[0] + vsize, coords[0] + vsize  + self.bottom.value())), key[1])
-
-        return leftkey, rightkey, topkey, bottomkey
-
-    def tolist(self):
-        return [self.hsize.value(), self.vsize.value(), self.left.value() ,self.right.value() ,self.top.value(),   self.bottom.value()]
-
-    def values_from_list(self, values):
-        for box, value in zip([self.hsize, self.vsize, self.left, self.right, self.top, self.bottom], values):
-            box.setValue(value)
-
-class HiddenToolbar(NavigationToolbar2QTAgg):
-    def __init__(self, corner_callback, canvas):
+class HiddenToolbar2(NavigationToolbar2QTAgg):
+    def __init__(self, canvas):
         NavigationToolbar2QTAgg.__init__(self, canvas, None)
-        self._corner_callback = corner_callback
         self.zoom()
 
-    def press(self, event):
-        self._corner_preclick = self._views()
-        
-    def release(self, event):
-        if self._corner_preclick == self._views():
-            self._corner_callback(event.xdata, event.ydata)
-        self._corner_preclick = None
-                
-class FitWidget(QtGui.QWidget):
-    def __init__(self, filename ,parent=None):
-        super(FitWidget, self).__init__(parent)
+class OverviewWidget(QtGui.QWidget):
+    def __init__(self, database, parent = None):
+        super(OverviewWidget, self).__init__(parent)
+
+        self.databaselist = list()
 
         self.figure = matplotlib.figure.Figure()
         self.canvas = FigureCanvasQTAgg(self.figure)
-        self.toolbar = HiddenToolbar(self.loc_callback, self.canvas)
+        self.toolbar = HiddenToolbar2(self.canvas)
 
-        self.roddict = dict()
+        self.table = QtGui.QTableWidget(0,2)
+        self.make_table()
 
-        self.filename = filename
-        self.axes = BINoculars.space.Axes.fromfile(filename)
+        self.table.cellClicked.connect(self.plot)
 
         hbox = QtGui.QHBoxLayout() 
 
         splitter = QtGui.QSplitter(QtCore.Qt.Horizontal)
-        self.make_controlwidget()
 
-        splitter.addWidget(self.control_widget)
         splitter.addWidget(self.canvas)
+        splitter.addWidget(self.control_widget)
 
         hbox.addWidget(splitter) 
-        self.set_res()
         self.setLayout(hbox)  
 
-    def make_controlwidget(self):
+    def select(self):
+        selection = []
+        for index in range(self.table.rowCount()):
+            checkbox = self.table.cellWidget(index, 0)
+            if checkbox.checkState():
+                selection.append(str(self.table.cellWidget(index,1).text()))
+        return selection
+
+
+    def make_table(self):
         self.control_widget = QtGui.QWidget()
+        vbox = QtGui.QVBoxLayout()
+        minibox = QtGui.QHBoxLayout()
 
-        self.resolution_axis = QtGui.QComboBox()
-        for ax in self.axes:
-            self.resolution_axis.addItem(ax.label)
-        QtCore.QObject.connect(self.resolution_axis, QtCore.SIGNAL("currentIndexChanged(int)"), self.set_res)
-
-        self.functions = list()
-        self.function_box = QtGui.QComboBox()        
-        for function in dir(BINoculars.fit):
-            cls = getattr(BINoculars.fit, function)
-            if isinstance(cls, type) and issubclass(cls, BINoculars.fit.PeakFitBase):
-                self.functions.append(cls)
-                self.function_box.addItem(function)
-
-        self.paramlabel = QtGui.QLabel('projection axis:')
-        self.parambox = QtGui.QComboBox()
-        self.resolutionlabel = QtGui.QLabel('slice size of slice:')
-
-        for param in inspect.getargspec(self.fitclass.func).args[1]:
-            self.parambox.addItem(param)
-
+        vbox.addWidget(self.table)
+        self.table.setHorizontalHeaderLabels(['','param'])
+        for index, width in enumerate([25,50]):
+            self.table.setColumnWidth(index, width)
         self.log = QtGui.QCheckBox('log')
-        self.log.setChecked(True)
-        QtCore.QObject.connect(self.log, QtCore.SIGNAL("stateChanged(int)"), self.log_changed)
-        QtCore.QObject.connect(self.function_box, QtCore.SIGNAL("activated(int)"), self.fitfunctionchanged)
-        QtCore.QObject.connect(self.parambox, QtCore.SIGNAL("activated(int)"), self.plot_overview)
+        self.log.clicked.connect(self.plot)
+        self.export_button = QtGui.QPushButton('export curves')
 
-        self.resolution_line = QtGui.QLineEdit(str(self.axes[0].res))
-        self.resolution_line.setMaximumWidth(50)
-        QtCore.QObject.connect(self.resolution_line, QtCore.SIGNAL("editingFinished()"), self.set_res)
+        self.export_button.clicked.connect(self.export)
 
-        self.button_save = QtGui.QPushButton('save')
-        self.button_save.clicked.connect(self.save)
-
-        self.fit_all_button = QtGui.QPushButton('fit all')
-        self.fit_all_button.clicked.connect(self.fit_all)
-
-        self.fit_button = QtGui.QPushButton('fit')
-        self.fit_button.clicked.connect(self.fit)
-
-        self.fitting = QtGui.QGroupBox('Fitting')
-        flayout = QtGui.QHBoxLayout()
-        flayout.addWidget(self.function_box)
-        flayout.addWidget(self.fit_all_button)
-        flayout.addWidget(self.fit_button)
-        self.fitting.setLayout(flayout)
-
-        self.nav = ButtonedSlider()
-        self.nav.connect(self.nav, QtCore.SIGNAL('slice_index'), self.index_callback)
-
-        self.succesbox = QtGui.QCheckBox('fit succesful')
-        self.succesbox.setChecked(True)
-        QtCore.QObject.connect(self.succesbox, QtCore.SIGNAL("stateChanged(int)"), self.fitsucces_changed)
-
-        self.button_show = QtGui.QPushButton('show')
-        self.button_show.clicked.connect(self.log_changed)
-
-        self.intwidget = IntegrateWidget('Integration', self.axes)
-        QtCore.QObject.connect(self.intwidget, QtCore.SIGNAL("valueChanged"), self.plot_box)
-        QtCore.QObject.connect(self.intwidget, QtCore.SIGNAL("integrate"), self.integrate)
-
-        vbox = QtGui.QVBoxLayout() 
-        vbox.addWidget(self.button_save)
-
-        smallbox = QtGui.QHBoxLayout()
-        smallbox.addWidget(self.paramlabel) 
-        smallbox.addWidget(self.resolution_axis)
-        smallbox.addWidget(self.resolutionlabel) 
-        smallbox.addWidget(self.resolution_line)
-
-        vbox.addLayout(smallbox)
-        vbox.addWidget(self.fitting)
-        vbox.addWidget(self.intwidget)
-
-        overviewbox = QtGui.QHBoxLayout()
-        overviewbox.addWidget(self.button_show) 
-        overviewbox.addWidget(self.parambox)
-        overviewbox.addWidget(self.log)
-
-        vbox.addWidget(self.nav)
-        vbox.addWidget(self.succesbox)        
-        vbox.addLayout(overviewbox)
+        minibox.addWidget(self.log)
+        minibox.addWidget(self.export_button)
+        vbox.addLayout(minibox)
         self.control_widget.setLayout(vbox) 
 
-    def fitfunctionchanged(self, index):
-        self.fitfunction_callback()
-        self.parambox.clear()
-        for param in inspect.getargspec(self.fitclass.func).args[1]:
-            self.parambox.addItem(param)
+    def export(self):
+        folder =  str(QtGui.QFileDialog.getExistingDirectory(self, "Select directory to save curves"))
+        params = self.select()
+        for param in params:
+            for database in self.databaselist:
+                x, y = database.all_from_key(param)
+                args = numpy.argsort(x)
+                numpy.savetxt( os.path.join(folder,'{0}_{1}.txt'.format(param, database.rodkey)), numpy.vstack(arr[args] for arr in [x, y]).T)
 
-    @property
-    def res(self):
-        return self.resolution_line.text()
+    def refresh(self, databaselist):
+        self.databaselist = databaselist
+        params = self.select()
+        while self.table.rowCount() > 0:
+            self.table.removeRow(0)
 
-    @property
-    def axis(self):
-        return str(self.resolution_axis.currentText())
+        allparams = list(database.all_attrkeys() for database in databaselist)
+        uniqueparams = numpy.unique(numpy.hstack(params for params in allparams))
 
-    @property
-    def index(self):
-        return int(self.nav.index())
+        for param in uniqueparams:
+            index = self.table.rowCount()
+            self.table.insertRow(index)
 
-    @property
-    def fitclass(self):
-        return self.functions[self.function_box.currentIndex()]
+            checkboxwidget = QtGui.QCheckBox()
+            if param in params:
+                checkboxwidget.setChecked(1)
+            else:
+                checkboxwidget.setChecked(0)
+            self.table.setCellWidget(index,0, checkboxwidget)
+            checkboxwidget.clicked.connect(self.plot)
 
-    def set_length(self, length):
-        self.nav.set_length(length)
+            item = QtGui.QLabel(param)
+            self.table.setCellWidget(index, 1, item)
+
+        self.plot()
 
     def plot(self):
+        params = self.select()
         self.figure.clear()
-        space = self.rod.get_space()
-        self.figure.space_axes = space.axes
-        fitslice = self.rod.get_slice()
 
-        if hasattr(fitslice, 'fitdata'):
-            fitdata = fitslice.fitdata
-        elif hasattr(fitslice, 'result'):
-            xdata, ydata, cxdata, cydata = self.rod.function._prepare(space)
-            fitdata = numpy.ma.array(self.rod.function.func(xdata, fitslice.result), mask=ydata.mask)
-        else:
-            fitdata = None
-
-        self.succesbox.setChecked(self.rod.get_slice().succes)
-
-        if fitdata is not None:
-            if space.dimension == 1:
-                self.ax = self.figure.add_subplot(111)
-                BINoculars.plot.plot(space, self.figure, self.ax, fit = fitdata)
-            elif space.dimension == 2:
-                self.ax = self.figure.add_subplot(121)
-                BINoculars.plot.plot(space, self.figure, self.ax, fit = None)
-                self.ax = self.figure.add_subplot(122)
-                BINoculars.plot.plot(space, self.figure, self.ax, fit = fitdata)
-        else:
-            self.ax = self.figure.add_subplot(111)
-            BINoculars.plot.plot(space, self.figure, self.ax)
-
-        self.canvas.draw()
-        self.plot_box()
-
-    def plot_box(self):
-        ax = self.figure.get_axes()[0]
-        axes = self.figure.space_axes
-        fitslice = self.rod.get_slice()
-        if fitslice.loc != None:
-            key = self.intwidget.intkey(fitslice.loc)
-            bkgkey = self.intwidget.bkgkeys(fitslice.loc)
-
-            ax.patches = []
-            rect = Rectangle((key[0].start, key[1].start), key[0].stop - key[0].start, key[1].stop - key[1].start, alpha = 0.2,color =  'k')
-            ax.add_patch(rect)
-            for k in bkgkey:
-                bkg = Rectangle((k[0].start, k[1].start), k[0].stop - k[0].start, k[1].stop - k[1].start, alpha = 0.2,color =  'r')
-                ax.add_patch(bkg)
-        self.canvas.draw()
-          
-    def plot_overview(self, index):
-        curves = []
-        curves.append(numpy.vstack(numpy.array([fitslice.coord, fitslice.result[index]]) for fitslice in self.rod.succesful()))
-        param = str(self.parambox.currentText())
-        if param.startswith('loc'):
-            self.fit_loc()
-            curves.append(numpy.vstack(numpy.array([fitslice.coord, fitslice.loc[int(param.split('loc')[-1])] ]) for fitslice in self.rod.slices))
-        elif param.startswith('I'):
-            if hasattr(self.rod.slices[0], 'intensity'):
-                curves.append(numpy.vstack(numpy.array([fitslice.coord,fitslice.intensity]) for fitslice in self.rod.slices))
-            if hasattr(self.rod.slices[0], 'sum'):
-                curves.append(numpy.vstack(numpy.array([fitslice.coord,fitslice.sum]) for fitslice in self.rod.slices))
-
-        self.figure.clear()
         self.ax = self.figure.add_subplot(111)
-        for curve in curves:
-            self.ax.plot(curve[:,0], curve[:,1], '+')
+        for param in params:
+            for database in self.databaselist:
+                x, y = database.all_from_key(param)
+                self.ax.plot(x, y, '+', label = '{0} - {1}'.format(param, database.rodkey))
+        self.ax.legend()    
         if self.log.checkState():
             self.ax.semilogy()
         self.canvas.draw()
 
-    def fit_loc(self):
-        indices = []
-        for index, param in enumerate(inspect.getargspec(self.fitclass.func).args[1]):
-            if param.startswith('loc'):
-                indices.append(index)
-        self.rod.fit_loc(indices)
+def interpolate(space):
+    data = space.get_masked()
+    mask = data.mask
+    grid = numpy.vstack(numpy.ma.array(g, mask=mask).compressed() for g in space.get_grid()).T
+    open = numpy.vstack(numpy.ma.array(g, mask=numpy.invert(mask)).compressed() for g in space.get_grid()).T
+    if open.shape[0] == 0:
+        return data.compressed()
+    elif grid.shape[0] == 0:
+        return data.compressed()
+    else:
+        interpolated = griddata(grid, data.compressed(), open)            
+        values = data.data.copy()
+        values[mask] = interpolated
+        mask = numpy.isnan(values)
+        if mask.sum() > 0:
+            data = numpy.ma.array(values, mask = mask)
+            grid = numpy.vstack(numpy.ma.array(g, mask=mask).compressed() for g in space.get_grid()).T
+            open = numpy.vstack(numpy.ma.array(g, mask=numpy.invert(mask)).compressed() for g in space.get_grid()).T
+            interpolated = griddata(grid, data.compressed(), open, method = 'nearest')
+            values[mask] = interpolated
+        return values
 
-    def log_changed(self, log):
-        self.plot_overview(self.parambox.currentIndex())
-
-    def save(self):
-        dialog = QtGui.QFileDialog(self, "Save image");
-        dialog.setFilter('Portable Network Graphics (*.png);;Portable Document Format (*.pdf)');
-        dialog.setDefaultSuffix('png');
-        dialog.setFileMode(QtGui.QFileDialog.AnyFile);
-        dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
-        if not dialog.exec_():
-            return
-        fname = dialog.selectedFiles()[0]
-        if not fname:
-            return
-        try:
-            self.figure.savefig(str(fname))
-        except Exception as e:
-            QtGui.QMessageBox.critical(self, 'Save image', 'Unable to save image to {}: {}'.format(fname, e))
-    
-    def set_res(self, axis = None, resolution = None):
-        if not resolution:
-            resolution = self.res
-        if not axis:
-            axis = self.axis
-
-        key = (str(resolution), self.axes.index(axis))
-        if key in self.roddict:
-            self.rod = self.roddict[key]
-        else:
-            self.rod = FitRod(self.filename, axis, resolution)
-            self.roddict[key] = self.rod
-
-        self.set_length(len(self.rod.slices))
-        self.intwidget.set_axis(axis)
-        self.fitfunction_callback()
-        self.plot()
-                    
-    def loc_callback(self, x, y):
-        if self.ax:
-            fitslice = self.rod.get_slice()
-            fitslice.loc = numpy.array([x, y])
-            self.fit()
-            self.plot_box()
-
-    def index_callback(self, index):
-        self.rod.set_index(index)
-        self.plot()
-
-    def fitfunction_callback(self, index = None):
-        self.rod.set_function(self.fitclass)
-
-    def fitsucces_changed(self, state):
-        fitslice = self.rod.get_slice()
-        fitslice.succes = bool(state)
-
-    def integrate(self):
-        pd = QtGui.QProgressDialog('Integrating...', 'Cancel', 0, len(self.rod.slices))
-        pd.setWindowModality(QtCore.Qt.WindowModal)
-        pd.show()
-        def progress(i, fitslice):
-            pd.setValue(i)
-            if pd.wasCanceled():
-                raise KeyboardInterrupt
-            QtGui.QApplication.processEvents()
-            space = self.rod.get_space(index)
-            key = self.intwidget.intkey(fitslice.loc)
-            bkgkey = self.intwidget.bkgkeys(fitslice.loc)
-            fitslice.intensity = self.rod.integrate(fitslice, space, key, bkgkey)
-        for index, fitslice in enumerate(self.rod.slices):
-             progress(index, fitslice)
-        pd.close()
-
-    def fit(self):
-        if self.rod:
-            self.rod.fit()
-            self.plot()
-
-    def fit_all(self):
-        pd = QtGui.QProgressDialog('Performing fit...', 'Cancel', 0, len(self.rod.slices))
-        pd.setWindowModality(QtCore.Qt.WindowModal)
-        pd.show()
-        def progress(i):
-            pd.setValue(i)
-            if pd.wasCanceled():
-                raise KeyboardInterrupt
-            QtGui.QApplication.processEvents()
-            self.rod.fit(i)
-        for index in range(len(self.rod.slices)):
-             progress(index)
-        pd.close()
-        self.plot()
-
-
-    def export(self, filename):
-        self.rod.save_fit()
-        self.rod.save_int()
-        #extension = os.path.splitext(filename)[-1] 
-        #if extension == '.txt':
-        #    pass
-        #else:
-        #    self.error.showMessage("{0} is not a valid extension".format(extension))
-
-    def tofile(self, filename):
-        outdict = dict()
-        outdict['filename'] = self.filename
-        outdict['keys'] = list()
-        outdict['values'] = list()
-        outdict['variance'] = list()
-        outdict['succes'] = list()
-        outdict['loc'] = list()
-        outdict['fitfunction'] = self.function_box.currentIndex()
-        outdict['roi'] = self.intwidget.tolist()
-        outdict['currentkey'] = list(self.rod.key)
-
-        for key in self.roddict:
-           outdict['keys'].append(key)
-           result, succes, locs, variance = self.roddict[key].tolist()
-           outdict['values'].append(result)
-           outdict['variance'].append(variance)
-           outdict['succes'].append(succes)
-           outdict['loc'].append(locs)
-
-        with open(filename, 'w') as fp:
-            json.dump(outdict, fp)
-
-    @classmethod
-    def fromfile(cls, filename = None, parent = None):
-        if filename == None:
-            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.fit'))        
-        try:
-            with open(filename, 'r') as fp:
-                dict = json.load(fp)
-        except IOError as e:
-            raise self.error.showMessage("unable to open '{0}' as project file (original error: {1!r})".format(filename, e))
-
-        widget = cls(dict['filename'], parent = parent)
-        for keyindex, key in enumerate(dict['keys']):
-            widget.roddict[tuple(key)] = FitRod(dict['filename'], key[1], key[0])
-            for sliceindex, fitslice in enumerate(widget.roddict[tuple(key)].slices):
-                if dict['values'][keyindex][sliceindex] != None:
-                    fitslice.result = numpy.array(dict['values'][keyindex][sliceindex])
-                if dict['variance'][keyindex][sliceindex] != None:
-                    fitslice.variance = numpy.array(dict['variance'][keyindex][sliceindex])
-                fitslice.succes = dict['succes'][keyindex][sliceindex]
-                fitslice.loc = dict['loc'][keyindex][sliceindex]
-            
-        if 'currentkey' in dict.keys():
-            currentkey = dict['currentkey']
-        else:
-            currentkey = key
-        widget.function_box.setCurrentIndex(dict['fitfunction'])
-        widget.fitfunctionchanged(dict['fitfunction'])
-        widget.resolution_axis.setCurrentIndex(currentkey[1])
-        widget.resolution_line.setText(currentkey[0])
-        widget.intwidget.values_from_list(dict['roi'])
-        widget.set_res()
-
-        return widget
-
-class FitRod(object):
-    def __init__(self, filename, axis, resolution):
-        self.slices = list()
-        self.filename = filename
-        self.axis = axis
-        self.axes = BINoculars.space.Axes.fromfile(filename)
-        self.index = 0
-
-        axindex = self.axes.index(axis)
-        ax = self.axes[axindex]
-        axlabel = ax.label
-        self.key = (str(resolution), axindex)
-
-
-        if float(resolution) < ax.res:
-            raise ValueError('interval {0} to low, minimum interval is {1}'.format(resolution, ax.res))
-
-        mi, ma = ax.min, ax.max
-        bins = numpy.linspace(mi, ma, numpy.ceil(1 / numpy.float(resolution) * (ma - mi)) + 1)
-
-        for start, stop in zip(bins[:-1], bins[1:]):
-            k = [slice(None) for i in self.axes]
-            k[axindex] = slice(start, stop)
-            coord = (start + stop) / 2
-            self.slices.append(FitSlice(k, coord))
-
-    def get_space(self, index = None):
-        if index == None:
-            return BINoculars.space.Space.fromfile(self.filename, self.slices[self.index].key).project(self.axis)
-        else:
-            return BINoculars.space.Space.fromfile(self.filename, self.slices[index].key).project(self.axis)
-
-    def get_slice(self):
-        return self.slices[self.index]
-
-    def set_index(self,index):
-        self.index = index
-
-    def set_function(self, function):
-        self.function = function
-
-    def succesful(self):
-        succesful = list()
-        for fitslice in self.slices:
-            if fitslice.succes:
-                succesful.append(fitslice)
-        return succesful
-
-    def integrate(self, fitslice, space,  key, bkgkeys):        
-        if fitslice.loc != None:
-            intensity = interpolate(space[key]).flatten()
-            bkg = numpy.hstack(space[bkgkey].get_masked().compressed() for bkgkey in bkgkeys)
-            if numpy.alen(bkg) == 0 or numpy.alen(intensity) == 0:
-                return numpy.nan
-            else:
-                return intensity.sum() - numpy.alen(intensity) / numpy.alen(bkg) * bkg.sum()
-
-    def fit(self, index = None):
-        if not index:
-            fitslice = self.get_slice()
-        else:
-            fitslice = self.slices[index]
-
-        space = BINoculars.space.Space.fromfile(self.filename, fitslice.key).project(self.axis)
-        if not len(space.get_masked().compressed()) == 0:
-            fit = self.function(space, loc = fitslice.loc)
-            fitslice.fitdata = fit.fitdata
-            fitslice.variance = fit.variance
-            fitslice.result = fit.result
-            xdata, ydata, cxdata, cydata = self.function._prepare(space)
-            without_bkg = fit.result.copy()
-            without_bkg[-3:] = 0
-            nobkgdat = self.function.func(xdata, without_bkg)
-            fitslice.sum = nobkgdat.sum()
-            fitslice.succes = True
-
-    def tolist(self):
-        results = list()
-        succes = list()
-        locs = list()
-        variance = list()
-        for fitslice in self.slices:
-            if hasattr(fitslice, 'result'):
-                results.append(list(fitslice.result))
-                variance.append(list(fitslice.variance))
-                succes.append(fitslice.succes)
-            else:
-                results.append(None)
-                variance.append(None)
-                succes.append(False)
-
-        for fitslice in self.slices:
-            locs.append(fitslice.loc)
-        return results, succes, locs, variance
-
-    def fit_loc(self, indices):
-        deg = 2
-        locdict = {}
-        locx = list(fitslice.coord for fitslice in self.slices)
-        for index in indices:
-            x = list()
-            y = list()
-            w = list()
-            for fitslice in self.succesful():
-                x.append(fitslice.coord)
-                y.append(fitslice.result[index])
-                w.append(numpy.log(1 / fitslice.variance[index]))
-            w = numpy.array(w)
-            w[w == numpy.inf] = 0
-            w = numpy.nan_to_num(w)
-            w[w < 0] = 0
-            w[w < numpy.median(w)] = 0
-            print w
-            if len(x) > 0:
-                c = numpy.polynomial.polynomial.polyfit(x, y, deg, w = w)
-                newy = numpy.polynomial.polynomial.polyval(locx, c)
-                locdict[index] = newy
-        if len(locdict) > 0:
-            for i, fitslice in enumerate(self.slices):
-                fitslice.loc = list(locdict[index][i] for index in indices)
-
-    def save_fit(self):
-        numpy.savetxt('fit.txt', numpy.vstack([sl.coord, sl.sum] for sl in self.succesful()))
-
-    def save_int(self):
-        numpy.savetxt('int.txt', numpy.vstack([sl.coord, sl.intensity] for sl in self.succesful()))
-            
-class FitSlice(object):
-    def __init__(self, key, coord):
-        self.key = key
-        self.coord = coord
-        self.loc = None
-        self.succes = False
-
-def short_filename(filename):
-    return filename.split('/')[-1].split('.')[0]
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
 
     main = Window()
+    main.loadproject('tt.fit')
     main.resize(1000, 600)
-    #main.loadproject('/home/willem/Documents/PhD/hc1151/analysis/highresrod/test4.fit')
-    #main.plot_widget.set_res(axis = 'l')
     main.show()
 
     
@@ -851,3 +1046,5 @@ if __name__ == '__main__':
 
 
 
+
+  
