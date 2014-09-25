@@ -10,7 +10,7 @@ from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationTool
 import matplotlib.figure, matplotlib.image
 from matplotlib.pyplot import Rectangle
 import itertools
-
+from scipy.spatial import qhull
 
 class Window(QtGui.QMainWindow):
     def __init__(self, parent=None):
@@ -134,6 +134,7 @@ class TopWidget(QtGui.QWidget):
             if isinstance(cls, type) and issubclass(cls, BINoculars.fit.PeakFitBase):
                 self.functions.append(cls)
                 self.function_box.addItem(function)
+        self.function_box.setCurrentIndex(self.function_box.findText('PolarLorentzian2D'))
 
         vbox.addWidget(self.function_box)
         vbox.addLayout(minihbox)
@@ -687,6 +688,14 @@ class IntegrateWidget(QtGui.QWidget):
         intensitybox = QtGui.QHBoxLayout()
         backgroundbox = QtGui.QHBoxLayout()
 
+        self.tracker = QtGui.QCheckBox('peak tracker')
+        self.tracker.setChecked(1)
+        self.locx = QtGui.QDoubleSpinBox()
+        self.locy = QtGui.QDoubleSpinBox()
+        self.locx.setDisabled(True)
+        self.locy.setDisabled(True)
+        self.tracker.clicked.connect(self.refresh_tracker)
+
         self.hsize = QtGui.QDoubleSpinBox()
         self.vsize = QtGui.QDoubleSpinBox()
 
@@ -715,7 +724,24 @@ class IntegrateWidget(QtGui.QWidget):
                 
         integratebox.addLayout(intensitybox)
         integratebox.addLayout(backgroundbox)
+
+        minibox = QtGui.QHBoxLayout()
+        minibox.addWidget(self.tracker)
+        minibox.addWidget(self.locx)
+        minibox.addWidget(self.locy)
+        integratebox.addLayout(minibox)
+       
         self.control_widget.setLayout(integratebox)
+
+
+    def refresh_tracker(self):
+        if self.tracker.checkState():
+            self.locx.setDisabled(True)
+            self.locy.setDisabled(True)
+        else:
+            self.locx.setDisabled(False)
+            self.locy.setDisabled(False)
+        self.plot()
 
     def set_axis(self):
         roi = self.database.load('roi')
@@ -737,18 +763,42 @@ class IntegrateWidget(QtGui.QWidget):
         self.top.setDecimals(len(str(axes[0].res)) - 2)
         self.bottom.setSingleStep(axes[0].res)
         self.bottom.setDecimals(len(str(axes[0].res)) - 2)
-           
+
+        self.locx.setSingleStep(axes[0].res)
+        self.locx.setDecimals(len(str(axes[0].res)) - 2)
+        self.locx.setMinimum(axes[0].min)
+        self.locx.setMaximum(axes[0].max)
+
+        self.locy.setSingleStep(axes[1].res)
+        self.locy.setDecimals(len(str(axes[1].res)) - 2)
+        self.locy.setMinimum(axes[1].min)
+        self.locy.setMaximum(axes[1].max)
+
+        if self.fixed_loc() != None:
+            x,y = self.fixed_loc()
+            self.locx.setValue(x)
+            self.locy.setValue(y)
+
     def send(self):
         roi = [self.hsize.value(), self.vsize.value(), self.left.value() ,self.right.value() ,self.top.value(), self.bottom.value()]
         self.database.save('roi', roi)
         self.plot_box()
 
     def integrate(self, index, space):
-        loc = self.database.load_loc(index)
+        if self.tracker.checkState():
+            loc = self.database.load_loc(index)
+        else:
+            loc = self.fixed_loc()
+
         if loc != None:
             axes = space.axes
-            intensity = interpolate(space[self.intkey(loc, axes)]).flatten()
-            bkg = numpy.hstack(space[bkgkey].get_masked().compressed() for bkgkey in self.bkgkeys(loc, axes))
+            try:
+                intensity = interpolate(space[self.intkey(loc, axes)]).flatten()
+                bkg = numpy.hstack(space[bkgkey].get_masked().compressed() for bkgkey in self.bkgkeys(loc, axes))
+
+            except qhull.QhullError:
+                intensity = numpy.array([])
+                bkg = numpy.array([])
 
             if numpy.alen(bkg) == 0:
                 structurefactor = intensity.sum()
@@ -780,12 +830,28 @@ class IntegrateWidget(QtGui.QWidget):
 
         return leftkey, rightkey, topkey, bottomkey
 
+    def fixed_loc(self):
+        x = self.database.load('fixed_locx')
+        y = self.database.load('fixed_locy')
+
+        if x != None and y != None:
+            return numpy.array([x, y])
+        else:
+            return None
+
     def loc_callback(self, x, y):
         if self.ax:
             self.database.save_loc(self.currentindex(), numpy.array([x, y]))
+            if not self.tracker.checkState():
+                self.database.save('fixed_locx', x)
+                self.database.save('fixed_locy', y)
+                self.locx.setValue(x)
+                self.locy.setValue(y)
             self.plot_box()
 
-    def plot(self, index):
+    def plot(self, index = None):
+        if index == None:
+            index = self.currentindex()
         space = self.database.space_from_index(index)
         interdata = None
 
@@ -805,16 +871,15 @@ class IntegrateWidget(QtGui.QWidget):
             self.ax = self.figure.add_subplot(111)
             BINoculars.plot.plot(space, self.figure, self.ax)
 
-        loc = self.database.load_loc(index)
-        if loc is not None:
-            self.plot_box(loc)
-
+        self.plot_box()
         self.canvas.draw()
 
-    def plot_box(self, loc = None):
-        if loc is None:
+    def plot_box(self):
+        if not self.tracker.checkState():
+            loc = self.fixed_loc()
+        else:
             loc = self.database.load_loc(self.currentindex())
-        if len(self.figure.get_axes()) != 0: 
+        if len(self.figure.get_axes()) != 0 and loc != None: 
             ax = self.figure.get_axes()[0]
             axes = self.figure.space_axes
             key = self.intkey(loc, axes)
