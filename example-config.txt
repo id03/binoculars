@@ -7,7 +7,7 @@ type = local # run locally
 #type = oar
 #tmpdir = /some/globally/available/path
 #oarsub_options = walltime=0:15 # optionally, tweak oarsub parameters
-#executable = /path/to/custom/python /path/to/binoculars.py # optionally, override default location of python and/or BINoculars installation
+#executable = python /data/id03/inhouse/binoculars/binoculars.py # optionally, override default location of python and/or BINoculars installation
 
 # specificy destination file using scan numbers
 destination = demo_{first}-{last}.hdf5
@@ -20,7 +20,7 @@ overwrite = true
 [input]
 type = id03:eh1 # refers to class EH1 in BINoculars/backends/id03.py
 specfile = /path/to/data/file.spec
-imagefolder = /path/to/data/images
+imagefolder = /path/to/data/images/{rUCCD[0]}/
 
 ## approximate number of images per job, only useful when running on the oar cluster
 target_weight = 4000 

@@ -44,7 +44,7 @@ class Window(QtGui.QMainWindow):
 
     def newproject(self):
         dialog = QtGui.QFileDialog(self, "project filename");
-        dialog.setFilter('BINoculars project file (*.fit)');
+        dialog.setFilter('BINoculars fit file (*.fit)');
         dialog.setDefaultSuffix('fit');
         dialog.setFileMode(QtGui.QFileDialog.AnyFile);
         dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
@@ -53,11 +53,11 @@ class Window(QtGui.QMainWindow):
         fname = dialog.selectedFiles()[0]
         if not fname:
             return
-        #try:
-        self.tab_widget.addTab(TopWidget(str(fname), parent=self), 'New Project')
-        self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
-        #except Exception as e:
-        #    QtGui.QMessageBox.critical(self, 'Save project', 'Unable to save project to {}: {}'.format(fname, e))
+        try:
+            self.tab_widget.addTab(TopWidget(str(fname), parent=self), short_filename(str(fname)))
+            self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
+        except Exception as e:
+            QtGui.QMessageBox.critical(self, 'Save project', 'Unable to save project to {}: {}'.format(fname, e))
 
     def loadproject(self, filename = None):
         if not filename:
@@ -67,15 +67,14 @@ class Window(QtGui.QMainWindow):
             dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
             if not dialog.exec_():
                 return
-            fname = dialog.selectedFiles()
+            fname = dialog.selectedFiles()[0]
             if not fname:
                 return
-            for name in fname:
-                #try:
-                self.tab_widget.addTab(TopWidget(str(fname), parent=self), 'New Project')
+            try:
+                self.tab_widget.addTab(TopWidget(str(fname), parent=self), short_filename(str(fname)))
                 self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
-                #except Exception as e:
-                #    QtGui.QMessageBox.critical(self, 'Load project', 'Unable to load project from {}: {}'.format(fname, e))
+            except Exception as e:
+                QtGui.QMessageBox.critical(self, 'Load project', 'Unable to load project from {}: {}'.format(fname, e))
         else:
             self.tab_widget.addTab(TopWidget(filename, parent=self), 'New Project')
             self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
@@ -1034,7 +1033,6 @@ if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
 
     main = Window()
-    main.loadproject('tt.fit')
     main.resize(1000, 600)
     main.show()
 
