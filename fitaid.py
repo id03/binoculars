@@ -735,6 +735,7 @@ class IntegrateWidget(QtGui.QWidget):
 
 
     def refresh_tracker(self):
+        self.database.save('tracker', self.tracker.checkState())
         if self.tracker.checkState():
             self.locx.setDisabled(True)
             self.locy.setDisabled(True)
@@ -773,6 +774,12 @@ class IntegrateWidget(QtGui.QWidget):
         self.locy.setDecimals(len(str(axes[1].res)) - 2)
         self.locy.setMinimum(axes[1].min)
         self.locy.setMaximum(axes[1].max)
+
+        tracker = self.database.load('tracker')
+        if tracker != None:
+            self.tracker.setChecked(tracker)
+        else:
+            self.tracker.setChecked(True)
 
         if self.fixed_loc() != None:
             x,y = self.fixed_loc()
