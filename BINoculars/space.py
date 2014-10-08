@@ -244,6 +244,13 @@ class Axes(object):
     def __repr__(self):
         return '{0.__class__.__name__} ({0.dimension} dimensions, {0.npoints} points, {1}) {{\n    {2}\n}}'.format(self, util.format_bytes(self.memory_size), '\n    '.join(repr(ax) for ax in self.axes))
 
+    def restricted_key(self, key):
+        if len(key) == 0:
+            return None
+        if len(key) == len(self.axes):
+            return tuple(ax.restrict(s) for s, ax in zip(key, self.axes))
+        else:
+            raise IndexError('dimension mismatch')
 
 class EmptySpace(object):
     def __add__(self, other):
@@ -314,6 +321,16 @@ class Space(object):
         newspace.photons = self.photons[newkey].copy()
         newspace.contributions = self.contributions[newkey].copy()
         return newspace
+
+    def get_key(self, key):#needed in the fitaid for visualising the interpolated data
+        if isinstance(key, numbers.Number) or isinstance(key, slice):
+            if not len(self.axes) == 1:
+                raise IndexError('dimension mismatch')
+            else:
+                key = [key]
+        elif not isinstance(key, tuple) or not len(key) == len(self.axes):
+            raise IndexError('dimension mismatch')
+        return tuple(ax.get_index(k) for k, ax in zip(key, self.axes))
 
     def get_value(self, key):
         if isinstance(key, numbers.Number):

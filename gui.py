@@ -218,7 +218,12 @@ class Window(QtGui.QMainWindow):
         file.addAction(saveproject)
         file.addAction(addspace)
         file.addAction(savespace) 
+
+        merge = QtGui.QAction("Merge", self)  
+        merge.triggered.connect(self.merge)
  
+        edit = menu_bar.addMenu("&Edit") 
+        edit.addAction(merge) 
 
         self.tab_widget = QtGui.QTabWidget(self)
         self.tab_widget.setTabsClosable(True)
@@ -308,6 +313,23 @@ class Window(QtGui.QMainWindow):
         except Exception as e:
             QtGui.QMessageBox.critical(self, 'export fitdata', 'Unable to save mesh to {}: {}'.format(fname, e))
 
+    def merge(self):
+        widget = self.tab_widget.currentWidget()
+        dialog = QtGui.QFileDialog(self, "save mesh");
+        dialog.setFilter('BINoculars space file (*.hdf5)');
+        dialog.setDefaultSuffix('hdf5');
+        dialog.setFileMode(QtGui.QFileDialog.AnyFile);
+        dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
+        if not dialog.exec_():
+            return
+        fname = dialog.selectedFiles()[0]
+        if not fname:
+            return
+        #try:
+        index = self.tab_widget.currentIndex()
+        widget.merge(str(fname))
+        #except Exception as e:
+        #    QtGui.QMessageBox.critical(self, 'export fitdata', 'Unable to save mesh to {}: {}'.format(fname, e))
 
 class HiddenToolbar(NavigationToolbar2QTAgg):
     def __init__(self, show_coords, update_sliders, canvas):
@@ -415,10 +437,14 @@ class ProjectWidget(QtGui.QWidget):
                 labels = numpy.array([plotaxes.get_xlabel(), plotaxes.get_ylabel()])
                 order = [plotaxes.space.axes.index(label) for label in labels]
                 labels = labels[order]                
-                coords = numpy.array([event.xdata, event.ydata])[order] 
-                rounded_coords = [ax[ax.get_index(coord)] for ax, coord in zip(plotaxes.space.axes, coords)]
-                intensity = '{0:.2e}'.format(plotaxes.space.get_value(list(coords)))
-                self.parent.statusbar.showMessage('{0} = {1}, {2} = {3}, Intensity = {4}'.format(labels[0], rounded_coords[0] ,labels[1], rounded_coords[1], intensity))
+                coords = numpy.array([event.xdata, event.ydata])[order]
+                try:
+                    rounded_coords = [ax[ax.get_index(coord)] for ax, coord in zip(plotaxes.space.axes, coords)]
+                    intensity = '{0:.2e}'.format(plotaxes.space.get_value(list(coords)))
+                    self.parent.statusbar.showMessage('{0} = {1}, {2} = {3}, Intensity = {4}'.format(labels[0], rounded_coords[0] ,labels[1], rounded_coords[1], intensity))
+                except ValueError:
+                    self.parent.statusbar.showMessage('out of range')
+                                
             elif plotaxes.space.dimension == 1:
                 xaxis = plotaxes.space.axes[plotaxes.space.axes.index(plotaxes.get_xlabel())]
                 if event.xdata in xaxis:
@@ -459,10 +485,6 @@ class ProjectWidget(QtGui.QWidget):
             self.datarange.setEnabled(True)
             self.samerange.setEnabled(True)
         self.plot()
-
-    @staticmethod
-    def restricted_key(key, axes):
-        return tuple(ax.restrict(s) for s, ax in zip(key, axes))
 
     def get_norm(self, mi, ma):
         log = self.log.checkState()
@@ -510,9 +532,10 @@ class ProjectWidget(QtGui.QWidget):
             plotoption = self.group.checkedButton().text()
         
         spaces = []
+
         for i, filename in enumerate(self.table.selection):
             axes = BINoculars.space.Axes.fromfile(filename)
-            space = BINoculars.space.Space.fromfile(filename, key = self.restricted_key(self.key, axes))
+            space = BINoculars.space.Space.fromfile(filename, key = axes.restricted_key(self.key))
             projection = [ax for ax in self.projection if ax in space.axes]
             if projection:
                 space = space.project(*projection)
@@ -531,6 +554,8 @@ class ProjectWidget(QtGui.QWidget):
         norm = self.get_normlist()
 
         for i,space in enumerate(spaces):
+            filename = self.table.selection[i]
+            basename = os.path.splitext(os.path.basename(filename))[0]
             if plotcount > 1:
                 if space.dimension == 1 and (plotoption == 'stack' or plotoption == None):
                     self.ax = self.figure.add_subplot(111)
@@ -542,18 +567,31 @@ class ProjectWidget(QtGui.QWidget):
                     sys.exit(1)
             else:
                  self.ax = self.figure.add_subplot(111)
-            basename = os.path.splitext(os.path.basename(filename))[0]
 
             if plotoption == 'grid':
                 self.ax = self.figure.add_subplot(plotrows, plotcolumns, i+1)
+                self.ax.set_title(basename)
+
             self.ax.space = space
-            im = BINoculars.plot.plot(space,self.figure, self.ax, log = log,label = basename, norm = norm[i])
+            im = BINoculars.plot.plot(space,self.figure, self.ax, log = log,label = basename, norm = norm[i])         
+
             self.figure_images.append(im)
-
-        #if plotcount > 1 and plotoption == 'stack':
-        #    self.figure.legend()
-
+        
+        if space.dimension == 1:
+            self.ax.legend()
+        
+        self.update_figure_range(self.key_to_str(self.key))
         self.canvas.draw()
+
+    def merge(self, filename):
+        try:
+            spaces = tuple(BINoculars.space.Space.fromfile(selected_filename) for selected_filename in self.table.selection)
+            newspace = BINoculars.space.sum(spaces)
+            newspace.tofile(filename)
+            map(self.table.remove, self.table.selection)
+            self.table.addspace(filename, True)
+        except Exception as e:
+            QtGui.QMessageBox.critical(self, 'Merge', 'Unable to merge the meshes. {}'.format(e))                
 
     def errormessage(self, message):
         self.figure.clear()
@@ -561,6 +599,8 @@ class ProjectWidget(QtGui.QWidget):
         self.parent.statusbar.showMessage(message)
 
     def update_figure_range(self, key):
+        if len(key) == 0:
+            return
         for ax in self.figure.axes:
             xlabel, ylabel = ax.get_xlabel(), ax.get_ylabel()
             if xlabel in self.table.plotaxes:
@@ -924,8 +964,12 @@ class LimitWidget(QtGui.QWidget):
         self.update_sliders_right()
         self.send_signal()
 
-
-
+def is_empty(key):
+    for k in key:
+        if isinstance(k, slice):
+            if k.start == k.stop:
+                return True
+    return False
     
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)

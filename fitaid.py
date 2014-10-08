@@ -461,6 +461,8 @@ class RodData(FitData):
         bins = numpy.linspace(mi, ma, numpy.ceil(1 / numpy.float(self.resolution) * (ma - mi)) + 1)
 
         self.x =  (bins[:-1] + bins[1:]) / 2
+        for index, value in enumerate(self.x):
+            self.save_sliceattr(index, 'index_value', value)
 
         for start, stop in zip(bins[:-1], bins[1:]):
             k = [slice(None) for i in self.axes]
@@ -479,31 +481,27 @@ class RodData(FitData):
         key = self.slices()[index]
         return BINoculars.space.Space.fromfile(filename, key).project(self.axis)
 
-    def save_fitdata(self, index, fit):
-        if fit is not None:
-            fitdata = fit.fitdata
-            
-            with h5py.File(self.filename,'a') as db:
-                id = '{0}_fitdata'.format(int(index))
-                mid = '{0}_maskdata'.format(int(index))
-                if id in db[self.rodkey][self.slicekey].keys():
-                    del db[self.rodkey][self.slicekey][id]
-                    del db[self.rodkey][self.slicekey][mid]
-                    db[self.rodkey][self.slicekey].create_dataset(id, fitdata.shape, dtype=fitdata.dtype, compression='gzip').write_direct(fitdata)
-                    db[self.rodkey][self.slicekey].create_dataset(mid, fitdata.shape, dtype=fitdata.mask.dtype, compression='gzip').write_direct(fitdata.mask)
-                else:
-                    db[self.rodkey][self.slicekey].create_dataset(id, fitdata.shape, dtype=fitdata.dtype, compression='gzip').write_direct(fitdata)
-                    db[self.rodkey][self.slicekey].create_dataset(mid, fitdata.shape, dtype=fitdata.mask.dtype, compression='gzip').write_direct(fitdata.mask)
-
-    def load_fitdata(self, index):   
+    def save_data(self, index, key, data):         
         with h5py.File(self.filename,'a') as db:
-             id = '{0}_fitdata'.format(int(index))
-             mid = '{0}_maskdata'.format(int(index))
-             if id in db[self.rodkey][self.slicekey].keys() and mid in db[self.rodkey][self.slicekey].keys():
-                 
-                 return numpy.ma.array(db[self.rodkey][self.slicekey][id][...], mask = db[self.rodkey][self.slicekey][mid][...])
-             else:
-                 return None
+            id = '{0}_{1}_data'.format(int(index), key)
+            mid = '{0}_{1}_mask'.format(int(index), key)
+            if id in db[self.rodkey][self.slicekey].keys():
+                del db[self.rodkey][self.slicekey][id]
+                del db[self.rodkey][self.slicekey][mid]
+                db[self.rodkey][self.slicekey].create_dataset(id, data.shape, dtype=data.dtype, compression='gzip').write_direct(data)
+                db[self.rodkey][self.slicekey].create_dataset(mid, data.shape, dtype=data.mask.dtype, compression='gzip').write_direct(data.mask)
+            else:
+                db[self.rodkey][self.slicekey].create_dataset(id, data.shape, dtype=data.dtype, compression='gzip').write_direct(data)
+                db[self.rodkey][self.slicekey].create_dataset(mid, data.shape, dtype=data.mask.dtype, compression='gzip').write_direct(data.mask)
+
+    def load_data(self, index, key):   
+        with h5py.File(self.filename,'a') as db:
+            id = '{0}_{1}_data'.format(int(index), key)
+            mid = '{0}_{1}_mask'.format(int(index), key)
+            if id in db[self.rodkey][self.slicekey].keys() and mid in db[self.rodkey][self.slicekey].keys():
+                return numpy.ma.array(db[self.rodkey][self.slicekey][id][...], mask = db[self.rodkey][self.slicekey][mid][...])
+            else:
+                return None
 
     def save_sliceattr(self, index, key, value):
         with h5py.File(self.filename,'a') as db:
@@ -623,10 +621,11 @@ class FitWidget(QtGui.QWidget):
 
     def plot(self, index):
         space = self.database.space_from_index(index)
-        fitdata = self.database.load_fitdata(index)
-
+        fitdata = self.database.load_data(index, 'fit')
         self.figure.clear()
         self.figure.space_axes = space.axes
+        info = self.database.load_sliceattr(index, 'index_value')
+        label = self.database.axis
 
         if fitdata is not None:
             if space.dimension == 1:
@@ -640,6 +639,7 @@ class FitWidget(QtGui.QWidget):
         else:
             self.ax = self.figure.add_subplot(111)
             BINoculars.plot.plot(space, self.figure, self.ax)
+        self.figure.suptitle('{0} = {1}'.format(label, info))
 
         self.canvas.draw()
 
@@ -647,7 +647,7 @@ class FitWidget(QtGui.QWidget):
         if not len(space.get_masked().compressed()) == 0:
             fit = function(space, loc = self.database.load_loc(index))
             fit.fitdata.mask = space.get_masked().mask
-            self.database.save_fitdata(index, fit)
+            self.database.save_data(index, 'fit',  fit.fitdata)
             params = list(line.split(':')[0] for line in fit.summary.split('\n'))
             for key, value in zip(params, fit.result):
                 self.database.save_sliceattr(index, key, value)
@@ -799,23 +799,50 @@ class IntegrateWidget(QtGui.QWidget):
 
         if loc != None:
             axes = space.axes
+
+            key = space.get_key(self.intkey(loc, axes))
+
+            fitdata = self.database.load_data(index, 'fit')
+            if fitdata != None:
+                fitintensity = fitdata[key].flatten()
+                fitbkg = numpy.hstack(fitdata[space.get_key(bkgkey)].flatten() for bkgkey in self.bkgkeys(loc, axes))
+                if numpy.alen(fitbkg) == 0:
+                    fitstructurefactor = fitintensity.sum()
+                elif numpy.alen(fitintensity) == 0:
+                    fitstructurefactor = numpy.nan
+                else:
+                    fitstructurefactor = fitintensity.sum() - numpy.alen(fitintensity) * 1.0 / numpy.alen(fitbkg) * fitbkg.sum()
+                self.database.save_sliceattr(index, 'fitsf', fitstructurefactor)
+                
+            niintensity = space[self.intkey(loc, axes)].get_masked().compressed()
+            
             try:
                 intensity = interpolate(space[self.intkey(loc, axes)]).flatten()
                 bkg = numpy.hstack(space[bkgkey].get_masked().compressed() for bkgkey in self.bkgkeys(loc, axes))
-
-            except qhull.QhullError:
+                interdata = space.get_masked()
+                interdata[key] = intensity.reshape(interdata[key].shape)
+                interdata[key].mask = numpy.zeros_like(interdata[key])
+                self.database.save_data(index, 'inter',  interdata)
+            except Exception as e:
+                print 'Warning error interpolating slice {0}: {1}'.format(index, e.message)
                 intensity = numpy.array([])
                 bkg = numpy.array([])
 
             if numpy.alen(bkg) == 0:
                 structurefactor = intensity.sum()
-                print structurefactor
+                nistructurefactor = niintensity.sum()
+                print structurefactor, nistructurefactor 
             elif numpy.alen(intensity) == 0:
                 structurefactor = numpy.nan
+                nistructurefactor = numpy.nan
             else:
-                structurefactor = intensity.sum() - numpy.alen(intensity) * 1.0 / numpy.alen(bkg) * bkg.sum()        
-                print index, structurefactor, intensity.sum(), numpy.alen(intensity) * 1.0 / numpy.alen(bkg) * bkg.sum() 
+                structurefactor = intensity.sum() - numpy.alen(intensity) * 1.0 / numpy.alen(bkg) * bkg.sum()
+                nistructurefactor = niintensity.sum() - numpy.alen(niintensity) * 1.0 / numpy.alen(bkg) * bkg.sum()
+                print index, structurefactor, intensity.sum(), numpy.alen(intensity) * 1.0 / numpy.alen(bkg) * bkg.sum(), nistructurefactor, niintensity.sum(),  numpy.alen(niintensity) * 1.0 / numpy.alen(bkg) * bkg.sum()
+
             self.database.save_sliceattr(index, 'sf', structurefactor)
+            self.database.save_sliceattr(index, 'nisf', nistructurefactor)
+
 
     def intkey(self, coords, axes):
 
@@ -860,7 +887,9 @@ class IntegrateWidget(QtGui.QWidget):
         if index == None:
             index = self.currentindex()
         space = self.database.space_from_index(index)
-        interdata = None
+        interdata = self.database.load_data(index, 'inter')
+        info = self.database.load_sliceattr(index, 'index_value')
+        label = self.database.axis
 
         self.figure.clear()
         self.figure.space_axes = space.axes
@@ -878,6 +907,7 @@ class IntegrateWidget(QtGui.QWidget):
             self.ax = self.figure.add_subplot(111)
             BINoculars.plot.plot(space, self.figure, self.ax)
 
+        self.figure.suptitle('{0} = {1}'.format(label, info))
         self.plot_box()
         self.canvas.draw()
 

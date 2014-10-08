@@ -26,7 +26,7 @@ imagefolder = /path/to/data/images/{rUCCD[0]}/
 target_weight = 4000 
 
 # technical yadayada for this particular input class
-centralpixel = 40, 255
+centralpixel = 40, 255   # x,y
 sdd = 1050               # sample to detector distance (mm)
 pixelsize = 0.055, 0.055 # pixel size x/y (mm)
 ymask = 185-253,262-400
