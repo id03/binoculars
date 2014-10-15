@@ -56,17 +56,17 @@ class QProjection(backend.ProjectionBase):
         sixc.setLambda(wavelength)
         sixc.setUB(UB)
         R = sixc.getQSurface(gamma=gamma, delta=delta, theta=theta, mu=mu, chi=chi, phi=phi)
-        qx = R[0,:].reshape(shape)
+        qz = R[0,:].reshape(shape)
         qy = R[1,:].reshape(shape)
-        qz = R[2,:].reshape(shape)
-        return (qx, qy, qz)
+        qx = R[2,:].reshape(shape)
+        return (qz, qy, qx)
 
     def get_axis_labels(self):
         return 'qx', 'qy', 'qz'
 
 class SphericalQProjection(QProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        qx, qy, qz = super(SphericalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
+        qz, qy, qx = super(SphericalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
         q = numpy.sqrt(qx**2 + qy**2 + qz**2)
         theta = numpy.arccos(qz / q)
         phi = numpy.arctan2(qy, qx)
@@ -77,7 +77,7 @@ class SphericalQProjection(QProjection):
 
 class CylindricalQProjection(QProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        qx, qy, qz = super(CylindricalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
+        qz, qy, qx = super(CylindricalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
         qpar = numpy.sqrt(qx**2 + qy**2)
         phi = numpy.arctan2(qy, qx)
         return (qpar, qz, phi)
@@ -150,8 +150,10 @@ class ID03Input(backend.InputBase):
             except specfile.error: # no points
                 continue
             next(self.get_images(scan, 0, pointcount-1, dry_run=True))# dryrun
-
-            if self.config.target_weight and pointcount > self.config.target_weight * 1.4:
+            if self.config.pr:
+                pointcount = self.config.pr[1] - self.config.pr[0]
+                yield backend.Job(scan=scanno, firstpoint=self.config.pr[0], lastpoint=self.config.pr[1], weight=pointcount)
+            elif self.config.target_weight and pointcount > self.config.target_weight * 1.4:
                 for s in util.chunk_slicer(pointcount, self.config.target_weight):
                     yield backend.Job(scan=scanno, firstpoint=s.start, lastpoint=s.stop-1, weight=s.stop-s.start)
             else:
@@ -174,8 +176,12 @@ class ID03Input(backend.InputBase):
         self.config.specfile = config.pop('specfile')
         self.config.imagefolder = config.pop('imagefolder', None)
         self.config.UB = config.pop('ub', None)
+        self.config.pr = config.pop('pr', None)
+        self.config.background = config.pop('background', None)
         if self.config.UB:
             self.config.UB = util.parse_tuple(self.config.UB, length=9, type=float)
+        if self.config.pr:
+            self.config.pr = util.parse_tuple(self.config.pr, length=2, type=int)
         self.config.sdd = float(config.pop('sdd'))
         self.config.pixelsize = util.parse_tuple(config.pop('pixelsize'), length=2, type=float)
         self.config.centralpixel = util.parse_tuple(config.pop('centralpixel'), length=2, type=int)
@@ -280,43 +286,53 @@ class ID03Input(backend.InputBase):
         return params
 
     def get_images(self, scan, first, last, dry_run=False):
-        if self.is_zap(scan):
-            scanheaderC = scan.header('C')
-            zapscanno = int(scanheaderC[2].split(' ')[-1]) # is different from scanno should be changed in spec!
-            try:
-                uccdtagline = scanheaderC[0]
-                UCCD = uccdtagline[22:].split(os.sep)
-            except:
-                print 'warning: UCCD tag not found, use imagefolder for proper file specification'
-                UCCD = []
-            pattern = self._get_pattern(UCCD) 
-            matches = self.find_edfs(pattern, zapscanno)
-            if 0 not in matches:
-                raise errors.FileError('could not find matching edf for zapscannumber {0} using pattern {1}'.format(zapscanno, pattern))
+        if self.config.background:
+            if not os.path.exists(self.config.background):
+                raise errors.FileError('could not find background file {0}'.format(self.config.background))
             if dry_run:
                 yield
             else:
-                edf = EdfFile.EdfFile(matches[0])
+                edf = EdfFile.EdfFile(self.config.background)
                 for i in range(first, last+1):
-                    yield edf.GetData(i)
-
-        else:
-            try:
-                uccdtagline = scan.header('UCCD')[0]
-                UCCD = os.path.dirname(uccdtagline[6:]).split(os.sep)
-            except:
-                print 'warning: UCCD tag not found, use imagefolder for proper file specification'
-                UCCD = []
-            pattern = self._get_pattern(UCCD) 
-            matches = self.find_edfs(pattern, scan.number())
-            if set(range(first, last + 1)) > set(matches.keys()):
-                raise errors.FileError("incorrect number of matches for scan {0} using pattern {1}".format(scan.number(), pattern))
-            if dry_run:
-                yield
-            else:
-                for i in range(first, last+1):
-                    edf = EdfFile.EdfFile(matches[i])
                     yield edf.GetData(0)
+        else:
+            if self.is_zap(scan):
+                scanheaderC = scan.header('C')
+                zapscanno = int(scanheaderC[2].split(' ')[-1]) # is different from scanno should be changed in spec!
+                try:
+                    uccdtagline = scanheaderC[0]
+                    UCCD = uccdtagline[22:].split(os.sep)
+                except:
+                    print 'warning: UCCD tag not found, use imagefolder for proper file specification'
+                    UCCD = []
+                pattern = self._get_pattern(UCCD) 
+                matches = self.find_edfs(pattern, zapscanno)
+                if 0 not in matches:
+                    raise errors.FileError('could not find matching edf for zapscannumber {0} using pattern {1}'.format(zapscanno, pattern))
+                if dry_run:
+                    yield
+                else:
+                    edf = EdfFile.EdfFile(matches[0])
+                    for i in range(first, last+1):
+                        yield edf.GetData(i)
+
+            else:
+                try:
+                    uccdtagline = scan.header('UCCD')[0]
+                    UCCD = os.path.dirname(uccdtagline[6:]).split(os.sep)
+                except:
+                    print 'warning: UCCD tag not found, use imagefolder for proper file specification'
+                    UCCD = []
+                pattern = self._get_pattern(UCCD) 
+                matches = self.find_edfs(pattern, scan.number())
+                if set(range(first, last + 1)) > set(matches.keys()):
+                    raise errors.FileError("incorrect number of matches for scan {0} using pattern {1}".format(scan.number(), pattern))
+                if dry_run:
+                    yield
+                else:
+                    for i in range(first, last+1):
+                        edf = EdfFile.EdfFile(matches[i])
+                        yield edf.GetData(0)
 
     def _get_pattern(self,UCCD):
        imagefolder = self.config.imagefolder
@@ -378,7 +394,7 @@ class EH2(ID03Input):
         wavelength, UB = scanparams
         data = image / mon / transm
 
-        print gamma, delta, theta, mu
+        print 'gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu)
 
         # area correction
         sdd = self.config.sdd / numpy.cos(gamma * numpy.pi / 180)

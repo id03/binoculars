@@ -221,9 +221,14 @@ class Window(QtGui.QMainWindow):
 
         merge = QtGui.QAction("Merge", self)  
         merge.triggered.connect(self.merge)
+
+        subtract = QtGui.QAction("Subtract", self)  
+        subtract.triggered.connect(self.subtract)
  
         edit = menu_bar.addMenu("&Edit") 
         edit.addAction(merge) 
+        edit.addAction(subtract) 
+
 
         self.tab_widget = QtGui.QTabWidget(self)
         self.tab_widget.setTabsClosable(True)
@@ -293,7 +298,7 @@ class Window(QtGui.QMainWindow):
         for name in fname:
             try:
                 widget = self.tab_widget.currentWidget()
-                widget.addspace(str(name))
+                widget.addspace(str(name), True)
             except Exception as e:
                 QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(fname, e))
 
@@ -331,6 +336,23 @@ class Window(QtGui.QMainWindow):
         #except Exception as e:
         #    QtGui.QMessageBox.critical(self, 'export fitdata', 'Unable to save mesh to {}: {}'.format(fname, e))
 
+    def subtract(self):
+        dialog = QtGui.QFileDialog(self, "subtract space");
+        dialog.setFilter('BINoculars space file (*.hdf5)');
+        dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
+        dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
+        if not dialog.exec_():
+            return
+        fname = dialog.selectedFiles()
+        if not fname:
+            return
+        for name in fname:
+            try:
+                widget = self.tab_widget.currentWidget()
+                widget.subtractspace(str(name))
+            except Exception as e:
+                QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(fname, e))
+
 class HiddenToolbar(NavigationToolbar2QTAgg):
     def __init__(self, show_coords, update_sliders, canvas):
         NavigationToolbar2QTAgg.__init__(self, canvas, None)
@@ -366,6 +388,9 @@ class ProjectWidget(QtGui.QWidget):
         self.samerange.setChecked(False)
         QtCore.QObject.connect(self.samerange, QtCore.SIGNAL("stateChanged(int)"), self.update_colorbar)
 
+        self.legend = QtGui.QCheckBox('legend', self)
+        self.legend.setChecked(True)
+        QtCore.QObject.connect(self.legend, QtCore.SIGNAL("stateChanged(int)"), self.plot)
 
         self.datarange = RangeSlider(Qt.Qt.Horizontal)
         self.datarange.setMinimum(0)
@@ -411,6 +436,7 @@ class ProjectWidget(QtGui.QWidget):
         datarangebox = QtGui.QHBoxLayout() 
         datarangebox.addWidget(self.log)
         datarangebox.addWidget(self.samerange)
+        datarangebox.addWidget(self.legend)
 
 
         left.addLayout(radiobox)
@@ -577,7 +603,7 @@ class ProjectWidget(QtGui.QWidget):
 
             self.figure_images.append(im)
         
-        if space.dimension == 1:
+        if space.dimension == 1 and self.legend.checkState():
             self.ax.legend()
         
         self.update_figure_range(self.key_to_str(self.key))
@@ -592,6 +618,19 @@ class ProjectWidget(QtGui.QWidget):
             self.table.addspace(filename, True)
         except Exception as e:
             QtGui.QMessageBox.critical(self, 'Merge', 'Unable to merge the meshes. {}'.format(e))                
+
+    def subtractspace(self, filename):
+        try:
+            subtractspace = BINoculars.space.Space.fromfile(filename)
+            spaces = tuple(BINoculars.space.Space.fromfile(selected_filename) for selected_filename in self.table.selection)
+            newspaces = tuple(space - subtractspace for space in spaces)
+            for space, selected_filename in zip(newspaces, self.table.selection):
+                newfilename = BINoculars.util.find_unused_filename(selected_filename)
+                space.tofile(newfilename)
+                self.table.remove(selected_filename)
+                self.table.addspace(newfilename, True)
+        except Exception as e:
+            QtGui.QMessageBox.critical(self, 'Subtract', 'Unable to subtract the meshes. {}'.format(e))       
 
     def errormessage(self, message):
         self.figure.clear()
@@ -651,10 +690,10 @@ class ProjectWidget(QtGui.QWidget):
 
         return widget
     
-    def addspace(self,filename = None):
+    def addspace(self,filename = None, add = False):
         if filename == None:
             filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.hdf5'))
-        self.table.addspace(filename)
+        self.table.addspace(filename, add)
 
     def save(self):
         dialog = QtGui.QFileDialog(self, "Save image");
@@ -677,7 +716,7 @@ class ProjectWidget(QtGui.QWidget):
 
         for i, filename in enumerate(self.table.selection):
             axes = BINoculars.space.Axes.fromfile(filename)
-            space = BINoculars.space.Space.fromfile(filename, key = self.restricted_key(self.key, axes))
+            space = BINoculars.space.Space.fromfile(filename, key = axes.restricted_key(self.key))
             projection = [ax for ax in self.projection if ax in space.axes]
             if projection:
                 space = space.project(*projection)
@@ -856,8 +895,10 @@ class LimitWidget(QtGui.QWidget):
 
         for line in self.leftindicator:
             line.editingFinished.connect(self.update_sliders_left)
+            line.editingFinished.connect(self.send_signal)
         for line in self.rightindicator:
             line.editingFinished.connect(self.update_sliders_right)
+            line.editingFinished.connect(self.send_signal)
 
         vbox.addWidget(self.refreshbutton)
 

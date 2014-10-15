@@ -3,7 +3,7 @@ import sys
 import numpy
 import os.path
 from PyQt4 import QtGui, QtCore, Qt
-import BINoculars.main, BINoculars.space, BINoculars.plot, BINoculars.fit
+import BINoculars.main, BINoculars.space, BINoculars.plot, BINoculars.fit, BINoculars.util
 from scipy.interpolate import griddata
 
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationToolbar2QTAgg
@@ -205,7 +205,6 @@ class TopWidget(QtGui.QWidget):
     def refresh_plot(self):
         self.plotwidget.refresh(list(RodData(self.database.filename, rodkey, axis, resolution) for rodkey, axis, resolution in self.table.checked()))
 
-
     @property
     def fitclass(self):
         return self.functions[self.function_box.currentIndex()]
@@ -292,25 +291,30 @@ class TableWidget(QtGui.QWidget):
         self.activeindex = 0
 
         self.table = QtGui.QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(['','filename', 'axis', 'res', 'remove'])
+        self.table.setHorizontalHeaderLabels(['','rod', 'axis', 'res', 'remove'])
         
         self.table.cellClicked.connect(self.setlength)
 
         for index, width in enumerate([25,150,40,50,70]):
             self.table.setColumnWidth(index, width)
 
-        for filename in database.filelist:
-            self.addspace(filename)
+        for filename, rodkey in zip(database.filelist, database.rods()):
+            self.addspace(filename, rodkey)
 
         hbox.addWidget(self.table)
         self.setLayout(hbox)
 
-    def addspace(self, filename, add = False):
+    def addspace(self, filename, rodkey = None):
         def remove_callback(rodkey):
             return lambda: self.remove(rodkey)
 
-        rodkey = short_filename(filename)
-        
+        if rodkey == None:
+            rodkey = short_filename(filename)
+            if rodkey in self.database.rods():
+                newkey =  find_unused_rodkey(rodkey, self.database.rods())
+                self.database.copy(rodkey, newkey)
+                rodkey = newkey
+
         old_axis, old_resolution = self.database.load(rodkey, 'axis'), self.database.load(rodkey, 'resolution')
         self.database.create_rod(rodkey, filename)
         index = self.table.rowCount()
@@ -320,7 +324,7 @@ class TableWidget(QtGui.QWidget):
 
         checkboxwidget = QtGui.QCheckBox()
         checkboxwidget.rodkey = rodkey
-        checkboxwidget.setChecked(add or index == 0)
+        checkboxwidget.setChecked(0)
         self.table.setCellWidget(index,0, checkboxwidget)
         checkboxwidget.clicked.connect(self.check_changed)
 
@@ -383,7 +387,6 @@ class TableWidget(QtGui.QWidget):
                 selection.append((rodkey, axis, resolution))
         return selection
 
-
 class FitData(object):
     def __init__(self, filename):
         self.filename = filename
@@ -403,6 +406,11 @@ class FitData(object):
             rods = db.keys()
         return rods
 
+    def copy(self, oldkey, newkey):
+        with h5py.File(self.filename,'a') as db:
+            if oldkey in db.keys():
+                db.copy(db[oldkey], db, name = newkey) 
+          
     @property
     def filelist(self):
         filelist = []
@@ -435,6 +443,7 @@ class RodData(FitData):
             if rodkey in db:
                 if self.slicekey not in db[rodkey]:
                     db[rodkey].create_group(self.slicekey)
+                    self.slices
 
     def save(self, key, value):
         super(RodData, self).save(self.rodkey, key, value)
@@ -442,15 +451,22 @@ class RodData(FitData):
     def load(self, key):
         return super(RodData, self).load(self.rodkey, key)
 
-    def slices(self):
-        s = list()
+    def paxes(self):
+        with h5py.File(self.filename,'a') as db:
+             filename = db[self.rodkey].attrs['filename']
+        axes = BINoculars.space.Axes.fromfile(filename)
+        projected = list(axes)
+        axindex = axes.index(self.axis)
+        projected.pop(axindex)
+        return projected
 
+    def slices(self):
         with h5py.File(self.filename,'a') as db:
              filename = db[self.rodkey].attrs['filename']
 
         self.axes = BINoculars.space.Axes.fromfile(filename)
-
         axindex = self.axes.index(self.axis)
+
         ax = self.axes[axindex]
         axlabel = ax.label
 
@@ -460,25 +476,31 @@ class RodData(FitData):
         mi, ma = ax.min, ax.max
         bins = numpy.linspace(mi, ma, numpy.ceil(1 / numpy.float(self.resolution) * (ma - mi)) + 1)
 
-        self.x =  (bins[:-1] + bins[1:]) / 2
-        for index, value in enumerate(self.x):
-            self.save_sliceattr(index, 'index_value', value)
+        x =  (bins[:-1] + bins[1:]) / 2
+        for index, value in enumerate(x):
+            self.save_sliceattr(index, 'index_value', round(value, len(str( ax.res)) - 2))
 
-        for start, stop in zip(bins[:-1], bins[1:]):
+        for index, (start, stop) in enumerate(zip(bins[:-1], bins[1:])):
             k = [slice(None) for i in self.axes]
             k[axindex] = slice(start, stop)
-            s.append(k)
+            self.save_slice_key(index, k)
 
-        return s
+        self.save('length', numpy.alen(x))
+        self.save('keyinfo', (len(self.axes), axindex))
 
     def rodlength(self):     
-        return len(self.slices())
-
+        length = self.load('length')
+        if length == None:
+            self.slices()
+            return self.load('length')
+        else:
+            return length
+            
     def space_from_index(self, index):
         with h5py.File(self.filename,'a') as db:
              filename = db[self.rodkey].attrs['filename']
-
-        key = self.slices()[index]
+        
+        key = self.load_slice_key(index)
         return BINoculars.space.Space.fromfile(filename, key).project(self.axis)
 
     def save_data(self, index, key, data):         
@@ -502,6 +524,30 @@ class RodData(FitData):
                 return numpy.ma.array(db[self.rodkey][self.slicekey][id][...], mask = db[self.rodkey][self.slicekey][mid][...])
             else:
                 return None
+
+    def load_slice_key(self, index):
+        start = self.load_sliceattr(index, 'start')
+        stop = self.load_sliceattr(index, 'stop')
+        keyinfo = self.load('keyinfo') 
+
+        if start == None or stop == None or keyinfo == None:
+            self.slices()
+            return self.load_slice_key(index)
+
+        length, axindex = keyinfo
+        k = [slice(None) for i in range(length)]
+        k[axindex] = slice(start, stop)
+
+        return k
+
+    def save_slice_key(self, index, sl):
+        length = len(sl)
+        for i, s in enumerate(sl):
+            if not s.start == None and not s.stop == None:
+                axindex = i
+
+        self.save_sliceattr(index, 'start', sl[axindex].start)
+        self.save_sliceattr(index, 'stop', sl[axindex].stop)
 
     def save_sliceattr(self, index, key, value):
         with h5py.File(self.filename,'a') as db:
@@ -531,19 +577,17 @@ class RodData(FitData):
         return paramlist
 
     def all_from_key(self, key):
-        self.slices()
-        s = list()
         y = list()
+        x = list()
         with h5py.File(self.filename,'a') as db:
             for attrs in db[self.rodkey][self.slicekey]:
                 if attrs.endswith('attrs'):
                     if key in db[self.rodkey][self.slicekey][attrs].attrs.keys():
-                        s.append(int(attrs.split('_')[0]))
                         y.append(db[self.rodkey][self.slicekey][attrs].attrs[key])
-        return numpy.array(self.x)[s], numpy.array(y)
+                        x.append(db[self.rodkey][self.slicekey][attrs].attrs['index_value'])
+        return numpy.array(x), numpy.array(y)
 
     def all_from_key_indexed(self, key):
-        self.slices()
         s = list()
         y = list()
         with h5py.File(self.filename,'a') as db:
@@ -618,7 +662,6 @@ class FitWidget(QtGui.QWidget):
         if self.ax:
             self.database.save_loc(self.currentindex(), numpy.array([x, y]))
             
-
     def plot(self, index):
         space = self.database.space_from_index(index)
         fitdata = self.database.load_data(index, 'fit')
@@ -696,11 +739,12 @@ class IntegrateWidget(QtGui.QWidget):
         self.locy.setDisabled(True)
         self.tracker.clicked.connect(self.refresh_tracker)
 
+        self.aroundroi = QtGui.QCheckBox('background around roi')
+        self.aroundroi.setChecked(1)
+        self.aroundroi.clicked.connect(self.refresh_aroundroi)
+
         self.hsize = QtGui.QDoubleSpinBox()
         self.vsize = QtGui.QDoubleSpinBox()
-
-        QtCore.QObject.connect(self.hsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
-        QtCore.QObject.connect(self.vsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
 
         intensitybox.addWidget(QtGui.QLabel('roi size:'))
         intensitybox.addWidget(self.hsize)
@@ -711,12 +755,14 @@ class IntegrateWidget(QtGui.QWidget):
         self.top = QtGui.QDoubleSpinBox()
         self.bottom = QtGui.QDoubleSpinBox()
 
+        QtCore.QObject.connect(self.hsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
+        QtCore.QObject.connect(self.vsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
         QtCore.QObject.connect(self.left, QtCore.SIGNAL("valueChanged(double)"), self.send)
         QtCore.QObject.connect(self.right, QtCore.SIGNAL("valueChanged(double)"), self.send)
         QtCore.QObject.connect(self.top, QtCore.SIGNAL("valueChanged(double)"), self.send)
         QtCore.QObject.connect(self.bottom, QtCore.SIGNAL("valueChanged(double)"), self.send)
 
-        backgroundbox.addWidget(QtGui.QLabel('background'))
+        backgroundbox.addWidget(self.aroundroi)
         backgroundbox.addWidget(self.left)
         backgroundbox.addWidget(self.right)
         backgroundbox.addWidget(self.top)
@@ -733,6 +779,27 @@ class IntegrateWidget(QtGui.QWidget):
        
         self.control_widget.setLayout(integratebox)
 
+    def refresh_aroundroi(self):
+        self.database.save('aroundroi', self.aroundroi.checkState())
+        axes = self.database.paxes()
+        if not self.aroundroi.checkState():
+            self.left.setMinimum(axes[0].min)
+            self.left.setMaximum(axes[0].max)
+            self.right.setMinimum(axes[0].min)
+            self.right.setMaximum(axes[0].max)
+            self.top.setMinimum(axes[1].min)
+            self.top.setMaximum(axes[1].max)
+            self.bottom.setMinimum(axes[1].min)
+            self.bottom.setMaximum(axes[1].max)
+        else:
+            self.left.setMinimum(0)
+            self.left.setMaximum(axes[0].max - axes[0].min)
+            self.right.setMinimum(0)
+            self.right.setMaximum(axes[0].max - axes[0].min)
+            self.top.setMinimum(0)
+            self.top.setMaximum(axes[1].max - axes[1].min)
+            self.bottom.setMinimum(0)
+            self.bottom.setMaximum(axes[1].max - axes[1].min)
 
     def refresh_tracker(self):
         self.database.save('tracker', self.tracker.checkState())
@@ -742,15 +809,19 @@ class IntegrateWidget(QtGui.QWidget):
         else:
             self.locx.setDisabled(False)
             self.locy.setDisabled(False)
-        self.plot()
+        self.plot_box()
 
     def set_axis(self):
         roi = self.database.load('roi')
-        if roi is not None:
-             for box, value in zip([self.hsize, self.vsize, self.left, self.right, self.top, self.bottom], roi):
-                box.setValue(value)
 
-        axes = self.database.space_from_index(0).axes    
+        aroundroi = self.database.load('aroundroi')
+        if aroundroi != None:
+            self.aroundroi.setChecked(aroundroi)
+        else:
+            self.aroundroi.setChecked(True)
+        self.refresh_aroundroi()
+
+        axes = self.database.paxes()    
 
         self.hsize.setSingleStep(axes[1].res)
         self.hsize.setDecimals(len(str(axes[1].res)) - 2)
@@ -780,6 +851,10 @@ class IntegrateWidget(QtGui.QWidget):
             self.tracker.setChecked(tracker)
         else:
             self.tracker.setChecked(True)
+
+        if roi is not None:
+             for box, value in zip([self.hsize, self.vsize, self.left, self.right, self.top, self.bottom], roi):
+                box.setValue(value)
 
         if self.fixed_loc() != None:
             x,y = self.fixed_loc()
@@ -851,18 +926,21 @@ class IntegrateWidget(QtGui.QWidget):
         return tuple(ax.restrict(slice(coord - size, coord + size)) for ax, coord, size in zip(axes, coords, [vsize, hsize]))
 
     def bkgkeys(self, coords, axes):
+        aroundroi = self.database.load('aroundroi')
+        if aroundroi:
+            key = self.intkey(coords, axes)
 
-        key = self.intkey(coords, axes)
+            vsize = self.vsize.value() / 2
+            hsize = self.hsize.value() / 2
 
-        vsize = self.vsize.value() / 2
-        hsize = self.hsize.value() / 2
+            leftkey = (key[0], axes[1].restrict(slice(coords[1] - hsize - self.left.value(), coords[1] - hsize)))
+            rightkey = (key[0], axes[1].restrict(slice(coords[1] + hsize, coords[1] + hsize + self.right.value())))
+            topkey = (axes[0].restrict(slice(coords[0] - vsize - self.top.value(), coords[0] - vsize)), key[1])
+            bottomkey =  (axes[0].restrict(slice(coords[0] + vsize, coords[0] + vsize  + self.bottom.value())), key[1])
 
-        leftkey = (key[0], axes[1].restrict(slice(coords[1] - hsize - self.left.value(), coords[1] - hsize)))
-        rightkey = (key[0], axes[1].restrict(slice(coords[1] + hsize, coords[1] + hsize + self.right.value())))
-        topkey = (axes[0].restrict(slice(coords[0] - vsize - self.top.value(), coords[0] - vsize)), key[1])
-        bottomkey =  (axes[0].restrict(slice(coords[0] + vsize, coords[0] + vsize  + self.bottom.value())), key[1])
-
-        return leftkey, rightkey, topkey, bottomkey
+            return leftkey, rightkey, topkey, bottomkey
+        else:
+            return [(axes[0].restrict(slice(self.left.value(), self.right.value())), axes[1].restrict(slice(self.top.value(), self.bottom.value())))]
 
     def fixed_loc(self):
         x = self.database.load('fixed_locx')
@@ -1130,6 +1208,14 @@ def interpolate(space):
             interpolated = griddata(grid, data.compressed(), open, method = 'nearest')
             values[mask] = interpolated
         return values
+
+def find_unused_rodkey(rodkey, rods):
+    if not rodkey in rods:
+        return rodkey
+    for index in itertools.count(0):
+        newkey = '{0}_{1}'.format(rodkey, index)
+        if newkey not in rods:
+            return newkey
 
 if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
