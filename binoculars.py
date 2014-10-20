@@ -7,6 +7,7 @@ import numpy
 
 import BINoculars.space, BINoculars.util
 
+
 ### INFO
 def command_info(args):
     parser = argparse.ArgumentParser(prog='binoculars info')
