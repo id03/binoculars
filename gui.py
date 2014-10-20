@@ -295,10 +295,13 @@ class Window(QtGui.QMainWindow):
         fname = dialog.selectedFiles()
         if not fname:
             return
-        for name in fname:
+        for index, name in enumerate(fname):
             try:
                 widget = self.tab_widget.currentWidget()
-                widget.addspace(str(name), True)
+                if index == fname.count() - 1:
+                    widget.addspace(str(name), True)
+                else:
+                    widget.addspace(str(name), False)
             except Exception as e:
                 QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(fname, e))
 
@@ -760,7 +763,7 @@ class TableWidget(QtGui.QWidget):
         hbox.addWidget(self.table)
         self.setLayout(hbox)
 
-    def addspace(self, filename, add = False):
+    def addspace(self, filename, add = True):
         def remove_callback(filename):
             return lambda: self.remove(filename)
 
@@ -770,7 +773,7 @@ class TableWidget(QtGui.QWidget):
         axes = BINoculars.space.Axes.fromfile(filename) 
 
         checkboxwidget = QtGui.QCheckBox(short_filename(filename))
-        checkboxwidget.setChecked(add or index == 0)
+        checkboxwidget.setChecked(True)
         checkboxwidget.filename = filename
         checkboxwidget.clicked.connect(self.select)
         self.table.setCellWidget(index,0, checkboxwidget)
@@ -781,7 +784,8 @@ class TableWidget(QtGui.QWidget):
         buttonwidget = QtGui.QPushButton('remove')
         buttonwidget.clicked.connect(remove_callback(filename))
         self.table.setCellWidget(index,2, buttonwidget)
-        self.select()
+        if add:
+            self.select()
 
     def remove(self, filename):
         table_filenames = list(self.table.cellWidget(index, 0).filename for index in range(self.table.rowCount()))

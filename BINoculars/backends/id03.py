@@ -356,7 +356,11 @@ class EH1(ID03Input):
     def process_image(self, scanparams, pointparams, image):
         gamma, delta, theta, chi, phi, mu, mon, transm = pointparams
         wavelength, UB = scanparams
-        data = image / mon / transm
+        if self.config.background:
+            data = image / mon
+        else:
+            data = image / mon / transm
+
 
         print 'gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu)
 
@@ -392,7 +396,12 @@ class EH2(ID03Input):
     def process_image(self, scanparams, pointparams, image):
         gamma, delta, theta, chi, phi, mu, mon, transm = pointparams
         wavelength, UB = scanparams
-        data = image / mon / transm
+        if self.config.background:
+            data = image / mon
+        else:
+            data = image / mon / transm
+
+
 
         print 'gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu)
 

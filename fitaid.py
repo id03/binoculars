@@ -443,7 +443,7 @@ class RodData(FitData):
             if rodkey in db:
                 if self.slicekey not in db[rodkey]:
                     db[rodkey].create_group(self.slicekey)
-                    self.slices
+                    self.slices()
 
     def save(self, key, value):
         super(RodData, self).save(self.rodkey, key, value)
@@ -460,7 +460,7 @@ class RodData(FitData):
         projected.pop(axindex)
         return projected
 
-    def slices(self):
+    def get_bins(self):
         with h5py.File(self.filename,'a') as db:
              filename = db[self.rodkey].attrs['filename']
 
@@ -474,34 +474,30 @@ class RodData(FitData):
             raise ValueError('interval {0} to low, minimum interval is {1}'.format(self.resolution, ax.res))
 
         mi, ma = ax.min, ax.max
-        bins = numpy.linspace(mi, ma, numpy.ceil(1 / numpy.float(self.resolution) * (ma - mi)) + 1)
+        bins = numpy.linspace(mi, ma, numpy.ceil(1 / numpy.float(self.resolution) * (ma - mi)))
+        return bins, ax, axindex
 
+    def slices(self):
+        bins, ax, axindex = self.get_bins()
         x =  (bins[:-1] + bins[1:]) / 2
         for index, value in enumerate(x):
             self.save_sliceattr(index, 'index_value', round(value, len(str( ax.res)) - 2))
+       
+    def rodlength(self):
+        bins, ax, axindex = self.get_bins()
+        return numpy.alen(bins) -1 
 
-        for index, (start, stop) in enumerate(zip(bins[:-1], bins[1:])):
-            k = [slice(None) for i in self.axes]
-            k[axindex] = slice(start, stop)
-            self.save_slice_key(index, k)
-
-        self.save('length', numpy.alen(x))
-        self.save('keyinfo', (len(self.axes), axindex))
-
-    def rodlength(self):     
-        length = self.load('length')
-        if length == None:
-            self.slices()
-            return self.load('length')
-        else:
-            return length
+    def get_key(self, index):
+        bins, ax, axindex = self.get_bins()
+        start, stop = zip(bins[:-1], bins[1:])[index]
+        k = [slice(None) for i in self.axes]
+        k[axindex] = slice(start, stop)
+        return k
             
     def space_from_index(self, index):
         with h5py.File(self.filename,'a') as db:
              filename = db[self.rodkey].attrs['filename']
-        
-        key = self.load_slice_key(index)
-        return BINoculars.space.Space.fromfile(filename, key).project(self.axis)
+        return BINoculars.space.Space.fromfile(filename, self.get_key(index)).project(self.axis)
 
     def save_data(self, index, key, data):         
         with h5py.File(self.filename,'a') as db:
@@ -524,30 +520,6 @@ class RodData(FitData):
                 return numpy.ma.array(db[self.rodkey][self.slicekey][id][...], mask = db[self.rodkey][self.slicekey][mid][...])
             else:
                 return None
-
-    def load_slice_key(self, index):
-        start = self.load_sliceattr(index, 'start')
-        stop = self.load_sliceattr(index, 'stop')
-        keyinfo = self.load('keyinfo') 
-
-        if start == None or stop == None or keyinfo == None:
-            self.slices()
-            return self.load_slice_key(index)
-
-        length, axindex = keyinfo
-        k = [slice(None) for i in range(length)]
-        k[axindex] = slice(start, stop)
-
-        return k
-
-    def save_slice_key(self, index, sl):
-        length = len(sl)
-        for i, s in enumerate(sl):
-            if not s.start == None and not s.stop == None:
-                axindex = i
-
-        self.save_sliceattr(index, 'start', sl[axindex].start)
-        self.save_sliceattr(index, 'stop', sl[axindex].stop)
 
     def save_sliceattr(self, index, key, value):
         with h5py.File(self.filename,'a') as db:
@@ -692,6 +664,7 @@ class FitWidget(QtGui.QWidget):
             fit.fitdata.mask = space.get_masked().mask
             self.database.save_data(index, 'fit',  fit.fitdata)
             params = list(line.split(':')[0] for line in fit.summary.split('\n'))
+            print index, fit.result
             for key, value in zip(params, fit.result):
                 self.database.save_sliceattr(index, key, value)
             for key, value in zip(params, fit.variance):
@@ -879,8 +852,8 @@ class IntegrateWidget(QtGui.QWidget):
 
             fitdata = self.database.load_data(index, 'fit')
             if fitdata != None:
-                fitintensity = fitdata[key].flatten()
-                fitbkg = numpy.hstack(fitdata[space.get_key(bkgkey)].flatten() for bkgkey in self.bkgkeys(loc, axes))
+                fitintensity = fitdata[key].data.flatten()
+                fitbkg = numpy.hstack(fitdata[space.get_key(bkgkey)].data.flatten() for bkgkey in self.bkgkeys(loc, axes))
                 if numpy.alen(fitbkg) == 0:
                     fitstructurefactor = fitintensity.sum()
                 elif numpy.alen(fitintensity) == 0:
