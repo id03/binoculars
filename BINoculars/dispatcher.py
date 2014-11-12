@@ -34,15 +34,18 @@ class Destination(object):
         elif self.type == 'tmp':
             space.tofile(self.filename)
         elif self.type == 'final':
-            fn = self.filename.format(**self.opts)
-            if not self.overwrite:
-                fn = util.find_unused_filename(fn)
+            fn = self.final_filename()
             space.tofile(fn)
 
     def retrieve(self):
         if self.type == 'memory':
             return self.value
 
+    def final_filename(self):
+        fn = self.filename.format(**self.opts)
+        if not self.overwrite:
+            fn = util.find_unused_filename(fn)
+        return fn
 
 class DispatcherBase(util.ConfigurableObject):
     def __init__(self, config, main):

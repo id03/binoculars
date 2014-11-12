@@ -7,7 +7,6 @@ import numpy
 
 import BINoculars.space, BINoculars.util
 
-
 ### INFO
 def command_info(args):
     parser = argparse.ArgumentParser(prog='binoculars info')
@@ -298,6 +297,29 @@ def command_process(args):
 
     BINoculars.util.register_python_executable(__file__)
     BINoculars.main.Main.from_args(args)
+
+# for scripted useage
+def run(args):# args is string as if typed in terminal
+    import BINoculars.main
+    BINoculars.util.register_python_executable(__file__)
+    main = BINoculars.main.Main.from_args(args.split(' '))
+    if isinstance(main.result, BINoculars.space.Space):
+        return main.result
+    if type(main.result) == bool:
+        filename = main.dispatcher.config.destination.final_filename()
+        return BINoculars.space.Space.fromfile(filename)
+
+def load(filename):
+    if os.path.exists(filename):
+        return BINoculars.space.Space.fromfile(filename)
+    else:
+        raise ValueError('file does not exist')
+
+def save(filename, space):
+    if isinstance(space, BINoculars.space.Space):
+        space.tofile(filename)
+    else:
+        raise ValueError('Only saves BINoculars spaces')
 
 
 ### SUBCOMMAND ARGUMENT HANDLING
