@@ -313,13 +313,13 @@ def load(filename):
     if os.path.exists(filename):
         return BINoculars.space.Space.fromfile(filename)
     else:
-        raise ValueError('file does not exist')
+        raise IOError("File '{0}' does not exist".format(filename))
 
 def save(filename, space):
     if isinstance(space, BINoculars.space.Space):
         space.tofile(filename)
     else:
-        raise ValueError('Only saves BINoculars spaces')
+        raise TypeError("'{0!r}' is not a BINoculars space'.format(space))
 
 
 ### SUBCOMMAND ARGUMENT HANDLING

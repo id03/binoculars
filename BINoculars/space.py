@@ -405,13 +405,12 @@ class Space(object):
         return self
 
     def __sub__(self, other):
-        if not isinstance(other, Space):
-            if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
-                new = self.copy()
-                new.photons -= other * self.contributions
-                return new 
-            else:
-                return NotImplemented
+        if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
+            new = self.copy()
+            new.photons -= other * self.contributions
+            return new 
+        elif not isinstance(other, Space):
+            return NotImplemented
         if self.axes != other.axes or not (self.contributions == other.contributions).all():
             # TODO: we could be a bit more helpful if all axes are compatible
             raise ValueError('cannot subtract spaces that are not identical (axes + contributions)')
@@ -420,12 +419,11 @@ class Space(object):
         return new
 
     def __isub__(self, other):
-        if not isinstance(other, Space):
-            if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
-                self.photons -= other * self.contributions
-                return self
-            else:
-                return NotImplemented
+        if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
+            self.photons -= other * self.contributions
+            return self
+        elif not isinstance(other, Space):
+            return NotImplemented
         if self.axes != other.axes or not (self.contributions == other.contributions).all():
              raise ValueError('cannot subtract spaces that are not identical (axes + contributions)')
         self.photons -= other.photons
