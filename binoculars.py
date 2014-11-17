@@ -319,7 +319,7 @@ def save(filename, space):
     if isinstance(space, BINoculars.space.Space):
         space.tofile(filename)
     else:
-        raise TypeError("'{0!r}' is not a BINoculars space'.format(space))
+        raise TypeError("'{0!r}' is not a BINoculars space".format(space))
 
 
 ### SUBCOMMAND ARGUMENT HANDLING
