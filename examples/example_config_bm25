@@ -1,0 +1,36 @@
+### To process measurements from BM25 this configuration is needed
+# typically one would execute: 
+# python2 binoculars/binoculars.py process config_bm25
+
+### the DISPATCHER is responsible for job management
+[dispatcher]
+type = local # SingleCore # local # SingleCore can be aborted by Ctrl+c
+# ncores = 4 # optionally, specify number of cores (autodetect by default)
+
+# specify destination file using scan numbers
+destination=/data/visitor/XYZ/spaces/sample_{first}.hdf5
+overwrite = true
+
+### choose an appropriate INPUT class and specify custom options
+[input]
+type = bm25:eh2scd # refers to class EH2SCD in BINoculars/backends/bm25.py
+imagefile = /data/visitor/XYZ/bm25/sample_{scannr:03d}_*.edf
+
+## approximate number of images per job
+target_weight = 50 
+
+# technical details for this particular input class
+centralpixel = 1892.0,1357.5
+xmask = 1600-2200  # full size = 0-3824          	        
+ymask = 700-1300  # full size = 0-1911
+sddy_offset= -1288.5  # sample detector distance Y offset
+sddx_offset= 0 # detector X offset
+sddz_offset= 0 # detector Z offset
+ccdth_offset= -0.05
+pixelsize=0.06552, 0.06552  # in microns
+
+### choose PROJECTION plus resolution
+[projection]
+type = bm25:qprojection # refers to QProjection in BINoculars/backends/bm25.py
+
+resolution = 0.004,0.001,0.002 # or just give one number for all
