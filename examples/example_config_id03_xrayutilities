@@ -1,0 +1,36 @@
+### To process measurements from ID03 using xrayutilities in the reciprocal space conversion this configuration is needed
+# typically one would execute: 
+# python2 binoculars/binoculars.py process config_id03_xu
+
+### the DISPATCHER is responsible for job management
+[dispatcher]
+type = local # run locally
+# ncores = 4 # optionally, specify number of cores (autodetect by default)
+
+# specificy destination file using scan numbers
+destination=/path/to/output/spaces/XYZ_xu_{first}-{last}.hdf5
+overwrite = true
+
+### choose an appropriate INPUT class and specify custom options
+[input]
+type = id03_xu:eh2 # refers to class EH2 in BINoculars/backends/id03_xu.py
+specfile=/DIRECTORY/hc1434/sixc_hc1434.spec
+imagefolder = /path/to/data/images/{rUCCD[0]}
+
+## approximate number of images per job, only useful when running on the oar cluster
+target_weight = 4000
+
+# technical details for this particular input class
+centralpixel = 366,328
+ymask = 80-500
+xmask = 182-500 
+sdd=636 #sample detector distance
+pixelsize=0.055, 0.055
+
+### choose PROJECTION plus resolution
+[projection]
+type = id03_xu:hklprojection # refers to HKLProjection in BINoculars/backends/id03_xu.py
+
+## for L-scans (previous values)
+resolution = 0.002, 0.002, 0.0017 # or just give 1 number for all
+
