@@ -11,16 +11,30 @@ import BINoculars.space, BINoculars.util
 def command_info(args):
     parser = argparse.ArgumentParser(prog='binoculars info')
     parser.add_argument('infile', nargs='+', help='input files, must be .hdf5')
-
+    parser.add_argument("--config", help="display config used to generate the hdf5 file", action='store_true')
+    parser.add_argument("--extractconfig", help="save config used to generate the hdf5 file in a new text file", action='store', dest='output')
     args = parser.parse_args(args)
-    
-    for f in args.infile:
-        try:
-            axes = BINoculars.space.Axes.fromfile(f)
-        except Exception as e:
-            print '{0}: unable to load Space: {1!r}'.format(f, e)
-        else:
-            print '{0} {1!r}'.format(f, axes)
+
+    if args.output:
+        if len(args.infile)>1:
+            print 'only one space file argument is support with extractconfig -> using the first'
+        config = BINoculars.space.SpaceConfig.fromh5file(args.infile[0])
+        config.totxtfile(args.output)
+    else:
+        for f in args.infile:
+            try:
+                axes = BINoculars.space.Axes.fromfile(f)
+            except Exception as e:
+                print '{0}: unable to load Space: {1!r}'.format(f, e)
+            else:
+                print '{0} \n{1!r}'.format(f, axes)
+            if args.config:
+                try:
+                    config = BINoculars.space.SpaceConfig.fromh5file(f)
+                except Exception as e:
+                    print '{0}: unable to load Space.Config: {1!r}'.format(f, e)
+                else:
+                    print '{!r}'.format(config)
 
 
 ### CONVERT
