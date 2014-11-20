@@ -4,12 +4,11 @@ import itertools
 import glob
 import numpy
 
-from PyMca import SixCircle, specfile
-
 try:
-    from PyMca import specfilewrapper, EdfFile
+    from PyMca import specfilewrapper, EdfFile, SixCircle, specfile
 except ImportError:
-    from PyMca.PyMcaIO import specfilewrapper, EdfFile
+    from PyMca5.PyMca import specfilewrapper, EdfFile, SixCircle, specfile
+
 
 from .. import backend, errors, util
 
