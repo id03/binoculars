@@ -859,7 +859,7 @@ class IntegrateWidget(QtGui.QWidget):
                 elif numpy.alen(fitintensity) == 0:
                     fitstructurefactor = numpy.nan
                 else:
-                    fitstructurefactor = fitintensity.sum() - numpy.alen(fitintensity) * 1.0 / numpy.alen(fitbkg) * fitbkg.sum()
+                    fitstructurefactor = numpy.sqrt(fitintensity.sum() - numpy.alen(fitintensity) * 1.0 / numpy.alen(fitbkg) * fitbkg.sum())
                 self.database.save_sliceattr(index, 'fitsf', fitstructurefactor)
                 
             niintensity = space[self.intkey(loc, axes)].get_masked().compressed()
@@ -877,20 +877,19 @@ class IntegrateWidget(QtGui.QWidget):
                 bkg = numpy.array([])
 
             if numpy.alen(bkg) == 0:
-                structurefactor = intensity.sum()
-                nistructurefactor = niintensity.sum()
-                print structurefactor, nistructurefactor 
+                structurefactor = numpy.sqrt(intensity.sum())
+                nistructurefactor = numpy.sqrt(niintensity.sum())
             elif numpy.alen(intensity) == 0:
                 structurefactor = numpy.nan
                 nistructurefactor = numpy.nan
             else:
-                structurefactor = intensity.sum() - numpy.alen(intensity) * 1.0 / numpy.alen(bkg) * bkg.sum()
-                nistructurefactor = niintensity.sum() - numpy.alen(niintensity) * 1.0 / numpy.alen(bkg) * bkg.sum()
-                print index, structurefactor, intensity.sum(), numpy.alen(intensity) * 1.0 / numpy.alen(bkg) * bkg.sum(), nistructurefactor, niintensity.sum(),  numpy.alen(niintensity) * 1.0 / numpy.alen(bkg) * bkg.sum()
+                structurefactor = numpy.sqrt(intensity.sum() - numpy.alen(intensity) * 1.0 / numpy.alen(bkg) * bkg.sum())
+                nistructurefactor = numpy.sqrt(niintensity.sum() - numpy.alen(niintensity) * 1.0 / numpy.alen(bkg) * bkg.sum())
 
             self.database.save_sliceattr(index, 'sf', structurefactor)
             self.database.save_sliceattr(index, 'nisf', nistructurefactor)
 
+            print 'Structurefactor {0}: {1}'.format(index, structurefactor)
 
     def intkey(self, coords, axes):
 
