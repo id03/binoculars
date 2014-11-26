@@ -175,8 +175,8 @@ class Axes(object):
         return (8+4) * self.npoints
 
     @classmethod
-    def fromfile(cls, file):
-        with util.open_h5py(file, 'r') as fp:
+    def fromfile(cls, filename):
+        with util.open_h5py(filename, 'r') as fp:
             try:
                 if 'axes' in fp:
                     # old style, float min/max
@@ -187,8 +187,8 @@ class Axes(object):
             except (KeyError, TypeError) as e:
                 raise errors.HDF5FileError('unable to load axes definition from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
 
-    def tofile(self, file):
-        with util.open_h5py(file, 'w') as fp:
+    def tofile(self, filename):
+        with util.open_h5py(filename, 'w') as fp:
             range = fp.create_dataset('axes_range', [len(self.axes), 2], dtype=int)
             res = fp.create_dataset('axes_res', [len(self.axes)], dtype=float)
             labels = fp.create_dataset('axes_labels', [len(self.axes)], dtype=h5py.special_dtype(vlen=str))
