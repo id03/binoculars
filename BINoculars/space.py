@@ -263,12 +263,12 @@ class SpaceConfig(object):
         self.origin = origin
 
     @classmethod
-    def fromh5file(cls, filename):
+    def fromfile(cls, filename):
         with util.open_h5py(filename, 'r') as fp:
             try:
                 config = fp['configuration']
             except KeyError as e:
-                raise errors.HDF5FileError('unable to load configuration from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
+                config = [] # when config is not present, preceed without Error
             c = util.Config()
             for section in config:
                 setattr(c, section, dict((k, v.split('#')[0].strip()) for (k, v) in config[section]))
@@ -305,7 +305,7 @@ class SpaceConfig(object):
             s = getattr(self._config, section)
             for entry in s:
                 str += '    {} = {}\n'.format(entry, s[entry])
-        str += '}}\n'
+        str += '}\n'
         return str
 
 class EmptySpace(object):
@@ -637,7 +637,7 @@ class Space(object):
         try:
             with util.open_h5py(file, 'r') as fp:
                 axes = Axes.fromfile(fp)
-                config = SpaceConfig.fromh5file(fp)
+                config = SpaceConfig.fromfile(fp)
                 if key:
                     if len(axes) != len(key):
                         raise ValueError("dimensionality of 'key' does not match dimensionality of Space in HDF5 file {0}".format(file))
