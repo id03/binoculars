@@ -42,10 +42,12 @@ def read_config_text(fn, overrides=[]):
 class Main(object):
     def __init__(self, config, command):
         self.config = config
+        spaceconf = self.config.copy()
         self.dispatcher = backend.get_dispatcher(self.config.dispatcher, self, default='local')
         self.projection = backend.get_projection(self.config.projection)
         self.input = backend.get_input(self.config.input)
         self.dispatcher.config.destination.set_final_options(self.input.get_destination_options(command))
+        self.dispatcher.config.destination.set_config(spaceconf)
         self.run(command)
 
     @classmethod

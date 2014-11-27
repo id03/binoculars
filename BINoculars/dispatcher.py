@@ -8,7 +8,7 @@ from . import util, errors, space
 
 
 class Destination(object):
-    type = filename = overwrite = value = None
+    type = filename = overwrite = value = config = None
     opts = {}
     
     def set_final_filename(self, filename, overwrite):
@@ -19,6 +19,9 @@ class Destination(object):
     def set_final_options(self, opts):
         if opts is not False:
             self.opts = opts
+
+    def set_config(self, conf):
+        self.config = conf
 
     def set_tmp_filename(self, filename):
         self.type = 'tmp'
@@ -35,6 +38,7 @@ class Destination(object):
             space.tofile(self.filename)
         elif self.type == 'final':
             fn = self.final_filename()
+            space.config = self.config
             space.tofile(fn)
 
     def retrieve(self):
@@ -55,7 +59,9 @@ class DispatcherBase(util.ConfigurableObject):
     def parse_config(self, config):
         super(DispatcherBase, self).parse_config(config)
         self.config.destination = Destination()
-        self.config.destination.set_final_filename(config.pop('destination', 'output.hdf5'), util.parse_bool(config.pop('overwrite', 'false')))
+        self.config.destination.set_final_filename(
+            config.pop('destination', 'output.hdf5'),
+            util.parse_bool(config.pop('overwrite', 'false')))
 
     def has_specific_task(self):
         return False

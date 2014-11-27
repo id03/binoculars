@@ -175,8 +175,8 @@ class Axes(object):
         return (8+4) * self.npoints
 
     @classmethod
-    def fromfile(cls, file):
-        with util.open_h5py(file, 'r') as fp:
+    def fromfile(cls, filename):
+        with util.open_h5py(filename, 'r') as fp:
             try:
                 if 'axes' in fp:
                     # old style, float min/max
@@ -187,8 +187,8 @@ class Axes(object):
             except (KeyError, TypeError) as e:
                 raise errors.HDF5FileError('unable to load axes definition from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
 
-    def tofile(self, file):
-        with util.open_h5py(file, 'w') as fp:
+    def tofile(self, filename):
+        with util.open_h5py(filename, 'w') as fp:
             range = fp.create_dataset('axes_range', [len(self.axes), 2], dtype=int)
             res = fp.create_dataset('axes_res', [len(self.axes)], dtype=float)
             labels = fp.create_dataset('axes_labels', [len(self.axes)], dtype=h5py.special_dtype(vlen=str))
@@ -252,6 +252,62 @@ class Axes(object):
         else:
             raise IndexError('dimension mismatch')
 
+class SpaceConfig(object):
+    def __init__(self, config, origin='n/a'):
+        if isinstance(config, util.Config):
+            self._config = config
+        elif config == None:
+            self._config = util.Config()
+        else:
+            raise TypeError('config argument needs to be of type util.Config and not "{}"'.format(type(config)))
+        self.origin = origin
+
+    @classmethod
+    def fromfile(cls, filename):
+        with util.open_h5py(filename, 'r') as fp:
+            try:
+                config = fp['configuration']
+            except KeyError as e:
+                config = [] # when config is not present, preceed without Error
+            c = util.Config()
+            for section in config:
+                setattr(c, section, dict((k, v.split('#')[0].strip()) for (k, v) in config[section]))
+            return cls(c, filename)
+
+    def tofile(self, filename):
+        with util.open_h5py(filename, 'w') as fp:
+            dt = h5py.special_dtype(vlen=unicode)
+            conf = fp.create_group('configuration')
+            conf.attrs['origin'] = unicode(self.origin)
+            for section in self._config.__dict__:
+                s = getattr(self._config, section)
+                dataset = conf.create_dataset(section, (len(s),2), dtype=dt)
+                for i,entry in zip(range(len(s)), s):
+                    dataset[i, 0] = entry
+                    dataset[i, 1] = s[entry]
+
+    def totxtfile(self, filename):
+        with open(filename, 'w') as fp:
+            fp.write('# Configuration\'s origin: {}\n'.format(self.origin))
+            for section in self._config.__dict__:
+                fp.write('[{}]\n'.format(section))
+                s = getattr(self._config, section)
+                for entry in s:
+                    fp.write(' {} = {}\n'.format(entry, s[entry]))
+
+    def __len__(self):
+        return len(self._config.__dict__)
+
+    def __repr__(self):
+        str = '{0.__class__.__name__} ({1} sections) {{\n'.format(self, len(self))
+        for section in self._config.__dict__:
+            str += '  [{}]\n'.format(section)
+            s = getattr(self._config, section)
+            for entry in s:
+                str += '    {} = {}\n'.format(entry, s[entry])
+        str += '}\n'
+        return str
+
 class EmptySpace(object):
     def __add__(self, other):
         if not isinstance(other, Space):
@@ -270,11 +326,13 @@ class EmptySpace(object):
 
 
 class Space(object):
-    def __init__(self, axes):
+    def __init__(self, axes, config=None):
         if not isinstance(axes, Axes):
             self.axes = Axes(axes)
         else:
             self.axes = axes
+
+        self.config = config
         
         self.photons = numpy.zeros([len(ax) for ax in self.axes], order='C')
         self.contributions = numpy.zeros(self.photons.shape, dtype=numpy.uint32, order='C')
@@ -291,6 +349,17 @@ class Space(object):
     def memory_size(self):
         # approximate! does not take into account all the overhead
         return self.photons.nbytes + self.contributions.nbytes
+
+    @property
+    def config(self):
+        return self._config
+
+    @config.setter
+    def config(self, conf):
+        if isinstance(conf, SpaceConfig):
+            self._config = conf
+        else:
+            self._config = SpaceConfig(conf)
 
     def copy(self):
         new = self.__class__(self.axes)
@@ -558,6 +627,7 @@ class Space(object):
     def tofile(self, filename):
         with util.atomic_write(filename) as tmpname:
             with util.open_h5py(tmpname, 'w') as fp:
+                self.config.tofile(fp)
                 self.axes.tofile(fp)
                 fp.create_dataset('counts', self.photons.shape, dtype=self.photons.dtype, compression='gzip').write_direct(self.photons)
                 fp.create_dataset('contributions', self.contributions.shape, dtype=self.contributions.dtype, compression='gzip').write_direct(self.contributions)
@@ -567,6 +637,7 @@ class Space(object):
         try:
             with util.open_h5py(file, 'r') as fp:
                 axes = Axes.fromfile(fp)
+                config = SpaceConfig.fromfile(fp)
                 if key:
                     if len(axes) != len(key):
                         raise ValueError("dimensionality of 'key' does not match dimensionality of Space in HDF5 file {0}".format(file))
@@ -574,7 +645,7 @@ class Space(object):
                     axes = tuple(ax[k] for k, ax in zip(key, axes) if isinstance(k, slice))
                 else:
                     key = Ellipsis
-                space = cls(axes)
+                space = cls(axes, config)
                 try:
                     fp['counts'].read_direct(space.photons, key)
                     fp['contributions'].read_direct(space.contributions, key)
