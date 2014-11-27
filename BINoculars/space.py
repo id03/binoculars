@@ -276,9 +276,9 @@ class SpaceConfig(object):
 
     def tofile(self, filename):
         with util.open_h5py(filename, 'w') as fp:
-            dt = h5py.special_dtype(vlen=unicode)
+            dt = h5py.special_dtype(vlen=str)
             conf = fp.create_group('configuration')
-            conf.attrs['origin'] = unicode(self.origin)
+            conf.attrs['origin'] = str(self.origin)
             for section in self._config.__dict__:
                 s = getattr(self._config, section)
                 dataset = conf.create_dataset(section, (len(s),2), dtype=dt)
@@ -306,6 +306,7 @@ class SpaceConfig(object):
             for entry in s:
                 str += '    {} = {}\n'.format(entry, s[entry])
         str += '}\n'
+        str += 'origin = {0}\n'.format(self.origin)
         return str
 
 class EmptySpace(object):

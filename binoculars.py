@@ -312,28 +312,6 @@ def command_process(args):
     BINoculars.util.register_python_executable(__file__)
     BINoculars.main.Main.from_args(args)
 
-# for scripted useage
-def run(args):# args is string as if typed in terminal
-    import BINoculars.main
-    BINoculars.util.register_python_executable(__file__)
-    main = BINoculars.main.Main.from_args(args.split(' '))
-    if isinstance(main.result, BINoculars.space.Space):
-        return main.result
-    if type(main.result) == bool:
-        filename = main.dispatcher.config.destination.final_filename()
-        return BINoculars.space.Space.fromfile(filename)
-
-def load(filename):
-    if os.path.exists(filename):
-        return BINoculars.space.Space.fromfile(filename)
-    else:
-        raise IOError("File '{0}' does not exist".format(filename))
-
-def save(filename, space):
-    if isinstance(space, BINoculars.space.Space):
-        space.tofile(filename)
-    else:
-        raise TypeError("'{0!r}' is not a BINoculars space".format(space))
 
 
 ### SUBCOMMAND ARGUMENT HANDLING
