@@ -38,13 +38,6 @@ def command_info(args):
 
 
 ### CONVERT
-def parse_transform_args(transform):
-    for t in transform:
-        lhs, expr = t.split('=')
-        ax, res = lhs.split('@')
-        yield ax.strip(), float(res), expr.strip()
-
-
 def command_convert(args):
     parser = argparse.ArgumentParser(prog='binoculars convert')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
