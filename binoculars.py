@@ -18,7 +18,7 @@ def command_info(args):
     if args.output:
         if len(args.infile)>1:
             print 'only one space file argument is support with extractconfig -> using the first'
-        config = BINoculars.space.SpaceConfig.fromfile(args.infile[0])
+        config = BINoculars.util.ConfigFile.fromfile(args.infile[0])
         config.totxtfile(args.output)
     else:
         for f in args.infile:
@@ -30,9 +30,9 @@ def command_info(args):
                 print '{0} \n{1!r}'.format(f, axes)
             if args.config:
                 try:
-                    config = BINoculars.space.SpaceConfig.fromfile(f)
+                    config = BINoculars.util.ConfigFile.fromfile(f)
                 except Exception as e:
-                    print '{0}: unable to load Space.Config: {1!r}'.format(f, e)
+                    print '{0}: unable to load util.Config: {1!r}'.format(f, e)
                 else:
                     print '{!r}'.format(config)
 

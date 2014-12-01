@@ -1,7 +1,6 @@
 import os
 import sys
 import argparse
-import ConfigParser
 
 from . import space, backend, util, errors
 
@@ -24,20 +23,6 @@ def parse_commandline_config_option(s):
 def multiprocessing_main((config, command)): # note the double parenthesis for map() convenience
     Main.from_object(config, command)
     return config.dispatcher.destination.retrieve()
-
-def read_config_text(fn, overrides=[]):
-     config = ConfigParser.RawConfigParser()
-     config.read(fn)
-
-     for section, option, value in overrides:
-         config.set(section, option, value)
-
-     configobj = util.Config()
-     for section in 'dispatcher', 'projection', 'input':
-         setattr(configobj, section, dict((k, v.split('#')[0].strip()) for (k, v) in config.items(section)))
-
-     return configobj
-
 
 class Main(object):
     def __init__(self, config, command):
@@ -64,7 +49,7 @@ class Main(object):
                 configobj = util.zpi_load(fp)
         if not configobj:
             # reopen args.configfile as text
-            configobj = read_config_text(args.configfile, overrides=args.c)
+            configobj = util.ConfigFile.fromtxtfile(args.configfile, overrides=args.c)
         return cls(configobj, args.command)
 
     @classmethod
@@ -95,7 +80,7 @@ class Main(object):
         return space.chunked_sum(generator(), chunksize=25)
 
     def clone_config(self):
-        config = util.Config()
+        config = util.ConfigFile()
         config.dispatcher = self.dispatcher.config.copy()
         config.projection = self.projection.config.copy()
         config.input = self.input.config.copy()
