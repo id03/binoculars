@@ -34,5 +34,39 @@ def plot(space, log=True, clipping=0.0, fit=None, norm=None, colorbar=True, labe
     else:
         raise TypeError("'{0!r}' is not a BINoculars space".format(space))
 
+def transform(space, labels, resolutions, exprs):
+    ''' Parameters
+        space: BINoculars space
+        labels: list
+            a list of length N with the labels
+        resolutions: list
+            a list of length N with the resolution per label
+        exprs: list
+            a list of length N with strings containing the expressions that will be evaluated.
+            all numpy funtions can be called without adding 'numpy.' to the functions.
+
+        Returns
+        A BINoculars space of dimension N with labels and resolutions specified in the input
+
+        Examples:
+        >>> space
+        Axes (3 dimensions, 2848 points, 33.0 kB) {
+            Axis qx (min=-0.01, max=0.0, res=0.01, count=2)
+            Axis qy (min=-0.04, max=-0.01, res=0.01, count=4)
+            Axis qz (min=0.48, max=4.03, res=0.01, count=356)
+        }
+        >>> newspace = binoculars.transform(space, ['twotheta'], [0.003], ['arcsin(1.54(sqrt(qx**2 + qy**2 + qz**2) / (4 * pi)) / (pi * 180))'])
+        >>> newspace
+        Axes (1 dimensions, 152 points, 1.0 kB) {
+            Axis twotheta (min=0.066, max=0.519, res=0.003, count=152)
+        }
+    '''
+    import BINoculars.util, BINoculars.space
+    if isinstance(space, BINoculars.space.Space):
+        transformation = BINoculars.util.transformation_from_expressions(space, exprs)
+        newspace = space.transform_coordinates(resolutions, labels, transformation)
+    else:
+        raise TypeError("'{0!r}' is not a BINoculars space".format(space))
+    return newspace
 
 
