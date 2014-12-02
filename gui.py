@@ -2,7 +2,6 @@ import sys
 import os
 import glob
 from PyQt4 import QtGui, QtCore, Qt
-from PyMca import QSpecFileWidget, QDataSource, StackBrowser, StackSelector
 import BINoculars.main, BINoculars.space, BINoculars.plot,  BINoculars.util
 import numpy
 import json

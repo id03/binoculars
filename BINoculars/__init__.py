@@ -49,13 +49,14 @@ def transform(space, labels, resolutions, exprs):
         A BINoculars space of dimension N with labels and resolutions specified in the input
 
         Examples:
+        >>> space = BINoculars.load('test.hdf5')
         >>> space
         Axes (3 dimensions, 2848 points, 33.0 kB) {
             Axis qx (min=-0.01, max=0.0, res=0.01, count=2)
             Axis qy (min=-0.04, max=-0.01, res=0.01, count=4)
             Axis qz (min=0.48, max=4.03, res=0.01, count=356)
         }
-        >>> newspace = binoculars.transform(space, ['twotheta'], [0.003], ['arcsin(1.54(sqrt(qx**2 + qy**2 + qz**2) / (4 * pi)) / (pi * 180))'])
+        >>> newspace = BINoculars.transform(space, ['twotheta'], [0.003], ['2 * arcsin(0.51 * (sqrt(qx**2 + qy**2 + qz**2) / (4 * pi)) / (pi * 180))'])
         >>> newspace
         Axes (1 dimensions, 152 points, 1.0 kB) {
             Axis twotheta (min=0.066, max=0.519, res=0.003, count=152)
