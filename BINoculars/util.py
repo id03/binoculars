@@ -209,7 +209,7 @@ class ConfigFile(object):
             except KeyError as e:
                 config = [] # when config is not present, preceed without Error
             for section in config:
-                setattr(configobj, section, dict((k, v.strip()) for (k, v) in config[section]))
+                setattr(configobj, section, dict(config[section]))
             return configobj
 
     @classmethod
