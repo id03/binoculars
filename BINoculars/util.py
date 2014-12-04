@@ -196,7 +196,8 @@ def parse_bool(s):
 class ConfigFile(object):
     def __init__(self, origin='n/a'):
         self.origin = origin
-        for section in 'dispatcher', 'projection', 'input':
+        self.sections = 'dispatcher', 'projection', 'input'
+        for section in self.sections:
             setattr(self, section, dict())
 
     @classmethod
@@ -208,7 +209,7 @@ class ConfigFile(object):
             except KeyError as e:
                 config = [] # when config is not present, preceed without Error
             for section in config:
-                setattr(configobj, section, dict((k, v.split('#')[0].strip()) for (k, v) in config[section]))
+                setattr(configobj, section, dict((k, v.strip()) for (k, v) in config[section]))
             return configobj
 
     @classmethod
@@ -220,7 +221,7 @@ class ConfigFile(object):
             config.set(section, option, value)
 
         configobj = cls(filename)
-        for section in 'dispatcher', 'projection', 'input':
+        for section in configobj.sections:
             setattr(configobj, section, dict((k, v.split('#')[0].strip()) for (k, v) in config.items(section)))
 
         return configobj
@@ -230,7 +231,7 @@ class ConfigFile(object):
             dt = h5py.special_dtype(vlen=str)
             conf = fp.create_group('configuration')
             conf.attrs['origin'] = str(self.origin)
-            for section in 'dispatcher', 'projection', 'input':
+            for section in self.sections:
                 s = getattr(self, section)
                 if len(s):
                     dataset = conf.create_dataset(section, (len(s),2), dtype=dt)
@@ -240,8 +241,8 @@ class ConfigFile(object):
 
     def totxtfile(self, filename):
         with open(filename, 'w') as fp:
-            fp.write('# Configuration\'s origin: {}\n'.format(self.origin))
-            for section in 'dispatcher', 'projection', 'input':
+            fp.write('# Configurations origin: {}\n'.format(self.origin))
+            for section in self.sections:
                 fp.write('[{}]\n'.format(section))
                 s = getattr(self, section)
                 for entry in s:
@@ -249,7 +250,7 @@ class ConfigFile(object):
 
     def __repr__(self):
         str = '{0.__class__.__name__}{{\n'.format(self)
-        for section in 'dispatcher', 'projection', 'input':
+        for section in self.sections:
             str += '  [{}]\n'.format(section)
             s = getattr(self, section)
             for entry in s:

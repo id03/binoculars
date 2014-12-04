@@ -32,7 +32,7 @@ def command_info(args):
                 try:
                     config = BINoculars.util.ConfigFile.fromfile(f)
                 except Exception as e:
-                    print '{0}: unable to load util.Config: {1!r}'.format(f, e)
+                    print '{0}: unable to load util.ConfigFile: {1!r}'.format(f, e)
                 else:
                     print '{!r}'.format(config)
 
