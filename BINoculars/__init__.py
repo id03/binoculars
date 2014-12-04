@@ -27,7 +27,7 @@ def save(filename, space):
 
 def plot(space, log=True, clipping=0.0, fit=None, norm=None, colorbar=True, labels=True, **plotopts):
     import matplotlib.pyplot as pyplot
-    import BINoculars.plot
+    import BINoculars.plot, BINoculars.space
 
     if isinstance(space, BINoculars.space.Space):
         BINoculars.plot.plot(space, pyplot.gcf(), pyplot.gca(), log=log, clipping=clipping, fit=fit, norm=norm, colorbar=colorbar, labels=labels, **plotopts)

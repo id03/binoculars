@@ -252,62 +252,6 @@ class Axes(object):
         else:
             raise IndexError('dimension mismatch')
 
-class SpaceConfig(object):
-    def __init__(self, config, origin='n/a'):
-        if isinstance(config, util.Config):
-            self._config = config
-        elif config == None:
-            self._config = util.Config()
-        else:
-            raise TypeError('config argument needs to be of type util.Config and not "{}"'.format(type(config)))
-        self.origin = origin
-
-    @classmethod
-    def fromfile(cls, filename):
-        with util.open_h5py(filename, 'r') as fp:
-            try:
-                config = fp['configuration']
-            except KeyError as e:
-                config = [] # when config is not present, preceed without Error
-            c = util.Config()
-            for section in config:
-                setattr(c, section, dict((k, v.split('#')[0].strip()) for (k, v) in config[section]))
-            return cls(c, filename)
-
-    def tofile(self, filename):
-        with util.open_h5py(filename, 'w') as fp:
-            dt = h5py.special_dtype(vlen=str)
-            conf = fp.create_group('configuration')
-            conf.attrs['origin'] = str(self.origin)
-            for section in self._config.__dict__:
-                s = getattr(self._config, section)
-                dataset = conf.create_dataset(section, (len(s),2), dtype=dt)
-                for i,entry in zip(range(len(s)), s):
-                    dataset[i, 0] = entry
-                    dataset[i, 1] = s[entry]
-
-    def totxtfile(self, filename):
-        with open(filename, 'w') as fp:
-            fp.write('# Configuration\'s origin: {}\n'.format(self.origin))
-            for section in self._config.__dict__:
-                fp.write('[{}]\n'.format(section))
-                s = getattr(self._config, section)
-                for entry in s:
-                    fp.write(' {} = {}\n'.format(entry, s[entry]))
-
-    def __len__(self):
-        return len(self._config.__dict__)
-
-    def __repr__(self):
-        str = '{0.__class__.__name__} ({1} sections) {{\n'.format(self, len(self))
-        for section in self._config.__dict__:
-            str += '  [{}]\n'.format(section)
-            s = getattr(self._config, section)
-            for entry in s:
-                str += '    {} = {}\n'.format(entry, s[entry])
-        str += '}\n'
-        str += 'origin = {0}\n'.format(self.origin)
-        return str
 
 class EmptySpace(object):
     def __add__(self, other):
@@ -357,10 +301,12 @@ class Space(object):
 
     @config.setter
     def config(self, conf):
-        if isinstance(conf, SpaceConfig):
+        if isinstance(conf, util.ConfigFile):
             self._config = conf
+        elif not conf:
+            self._config = util.ConfigFile()
         else:
-            self._config = SpaceConfig(conf)
+            raise TypeError("'{0!r}' is not a util.ConfigFile".format(space))
 
     def copy(self):
         new = self.__class__(self.axes)
@@ -638,7 +584,7 @@ class Space(object):
         try:
             with util.open_h5py(file, 'r') as fp:
                 axes = Axes.fromfile(fp)
-                config = SpaceConfig.fromfile(fp)
+                config = util.ConfigFile.fromfile(fp)
                 if key:
                     if len(axes) != len(key):
                         raise ValueError("dimensionality of 'key' does not match dimensionality of Space in HDF5 file {0}".format(file))

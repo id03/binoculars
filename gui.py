@@ -723,6 +723,7 @@ class ProjectWidget(QtGui.QWidget):
             if projection:
                 space = space.project(*projection)
 
+            space.trim()
             outfile = BINoculars.util.find_unused_filename(fname)
 
             if ext == '.edf':

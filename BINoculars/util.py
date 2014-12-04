@@ -11,7 +11,7 @@ import numpy
 import contextlib
 import argparse
 import h5py
-
+import ConfigParser
 
 ### ARGUMENT HANDLING
 
@@ -193,21 +193,88 @@ def parse_bool(s):
         return False
     raise ValueError("invalid input for boolean: '{0}'".format(s))
 
+class ConfigFile(object):
+    def __init__(self, origin='n/a'):
+        self.origin = origin
+        self.sections = 'dispatcher', 'projection', 'input'
+        for section in self.sections:
+            setattr(self, section, dict())
 
-class Config(object):
+    @classmethod
+    def fromfile(cls, filename):
+        configobj = cls(filename)
+        with open_h5py(filename, 'r') as fp:
+            try:
+                config = fp['configuration']
+            except KeyError as e:
+                config = [] # when config is not present, preceed without Error
+            for section in config:
+                setattr(configobj, section, dict((k, v.strip()) for (k, v) in config[section]))
+            return configobj
+
+    @classmethod
+    def fromtxtfile(cls, filename, overrides=[]):
+        config = ConfigParser.RawConfigParser()
+        config.read(filename)
+
+        for section, option, value in overrides:
+            config.set(section, option, value)
+
+        configobj = cls(filename)
+        for section in configobj.sections:
+            setattr(configobj, section, dict((k, v.split('#')[0].strip()) for (k, v) in config.items(section)))
+
+        return configobj
+
+    def tofile(self, filename):
+        with open_h5py(filename, 'w') as fp:
+            dt = h5py.special_dtype(vlen=str)
+            conf = fp.create_group('configuration')
+            conf.attrs['origin'] = str(self.origin)
+            for section in self.sections:
+                s = getattr(self, section)
+                if len(s):
+                    dataset = conf.create_dataset(section, (len(s),2), dtype=dt)
+                    for i,entry in zip(range(len(s)), s):
+                        dataset[i, 0] = entry
+                        dataset[i, 1] = s[entry]
+
+    def totxtfile(self, filename):
+        with open(filename, 'w') as fp:
+            fp.write('# Configurations origin: {}\n'.format(self.origin))
+            for section in self.sections:
+                fp.write('[{}]\n'.format(section))
+                s = getattr(self, section)
+                for entry in s:
+                    fp.write('{} = {}\n'.format(entry, s[entry]))
+
+    def __repr__(self):
+        str = '{0.__class__.__name__}{{\n'.format(self)
+        for section in self.sections:
+            str += '  [{}]\n'.format(section)
+            s = getattr(self, section)
+            for entry in s:
+                str += '    {} = {}\n'.format(entry, s[entry])
+        str += '}\n'
+        str += 'origin = {0}\n'.format(self.origin)
+        return str
+
+    def copy(self):
+        return copy.deepcopy(self)
+
+class ConfigSection(object):
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
     def copy(self):
         return copy.deepcopy(self)
 
-
 class ConfigurableObject(object):
     def __init__(self, config):
-        if isinstance(config, Config):
+        if isinstance(config, ConfigSection):
             self.config = config
         else:
-            self.config = Config()
+            self.config = ConfigSection()
             self.parse_config(config)
             for k in config:
                 print 'warning: unrecognized configuration option {0} for {1}'.format(k, self.__class__.__name__)

@@ -64,7 +64,7 @@ def get_projection(config, default=None):
     return _get_backend(config, 'projection', ProjectionBase, default=default)
 
 def _get_backend(config, section, basecls, default=None, args=[], kwargs={}):
-    if isinstance(config, util.Config):
+    if isinstance(config, util.ConfigSection):
         return config.class_(config, *args, **kwargs)
 
     type = config.pop('type', default)
