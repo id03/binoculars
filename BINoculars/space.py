@@ -68,8 +68,9 @@ class Axis(object):
 
     def get_index(self, value):
         if isinstance(value, numbers.Number):
-            if self.min <= value <= self.max:
-                return int(round((value - self.min) / self.res))
+            intvalue = round(value / self.res)
+            if self.imin <= intvalue <= self.imax:
+                return intvalue - self.imin
             raise ValueError('cannot get index: value {0} not in range [{1}, {2}]'.format(value, self.min, self.max))
         elif isinstance(value, slice):
             if value.step is not None:
@@ -86,8 +87,9 @@ class Axis(object):
                 start, stop = stop, start
             return slice(start, stop)
         else:
-            if ((self.min <= value) & (value <= self.max)).all():
-                return numpy.around((value - self.min) / self.res).astype(int)
+            intvalue = numpy.around(value / self.res).astype(int)
+            if ((self.imin <= intvalue) & (intvalue <= self.imax)).all():
+                return intvalue - self.imin
             raise ValueError('cannot get indices, values from [{0}, {1}], axes range [{2}, {3}]'.format(value.min(), value.max(), self.min, self.max))
 
     def __or__(self, other): # union operation
