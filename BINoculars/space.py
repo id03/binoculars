@@ -68,7 +68,7 @@ class Axis(object):
 
     def get_index(self, value):
         if isinstance(value, numbers.Number):
-            intvalue = round(value / self.res)
+            intvalue = int(round(value / self.res))
             if self.imin <= intvalue <= self.imax:
                 return intvalue - self.imin
             raise ValueError('cannot get index: value {0} not in range [{1}, {2}]'.format(value, self.min, self.max))
