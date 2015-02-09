@@ -35,6 +35,15 @@ class HKProjection(HKLProjection):
     def get_axis_labels(self):
         return 'H', 'K'
 
+class specularangles(backend.ProjectionBase):
+   def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+       delta,gamma = numpy.meshgrid(delta,gamma)
+       mu = mu * numpy.ones_like(delta)
+       return (gamma - mu , gamma + mu , delta)
+
+   def get_axis_labels(self):
+       return 'g-m','g+m','delta'
+
 class ThetaLProjection(backend.ProjectionBase):
     # arrays: gamma, delta
     # scalars: theta, mu, chi, phi
@@ -360,6 +369,8 @@ class EH1(ID03Input):
         else:
             data = image / mon / transm
 
+        if mon == 0:
+            raise ValueError('Monitor is zero, this results in empty output') 
 
         print 'gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu)
 
@@ -400,7 +411,8 @@ class EH2(ID03Input):
         else:
             data = image / mon / transm
 
-
+        if mon == 0:
+            raise ValueError('Monitor is zero, this results in empty output') 
 
         print 'gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu)
 

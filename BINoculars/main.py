@@ -62,13 +62,14 @@ class Main(object):
         else:
             jobs = self.input.generate_jobs(command)
             tokens = self.dispatcher.process_jobs(jobs)
-            result = self.dispatcher.sum(tokens)
-            if result is True:
+            self.result = self.dispatcher.sum(tokens)
+            if self.result is True:
                 pass
-            elif isinstance(result, space.EmptySpace):
+            elif isinstance(self.result, space.EmptySpace):
                 sys.stderr.write('error: output is an empty dataset\n')
             else:
-                self.dispatcher.config.destination.store(result)
+                self.dispatcher.config.destination.store(self.result)
+
             
     def process_job(self, job):
         def generator():
