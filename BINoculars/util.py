@@ -181,6 +181,21 @@ def get_inputs(module):
     import backend
     return get_base(module, backend.InputBase)
 
+def get_dispatchers():
+    import dispatcher
+    from inspect import isclass
+
+    items = dir(dispatcher)
+
+    options = []
+    for item in items:
+        obj = getattr(dispatcher, item)
+        if isclass(obj):
+            if issubclass(obj, dispatcher.DispatcherBase):
+                options.append(item)
+
+    return options
+
 def get_base(module, base):
     from inspect import isclass
 
@@ -192,13 +207,13 @@ def get_base(module, base):
     b = getattr(backends, module)
     items = dir(getattr(backends, module))
     
-    projections = []
+    options = []
     for item in items:
         obj = getattr(b, item)
         if isclass(obj):
             if issubclass(obj, base):
-                projections.append(item)
-    return projections
+                options.append(item)
+    return options
 
 ### CONFIGURATION MANAGEMENT
 
