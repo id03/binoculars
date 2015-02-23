@@ -12,6 +12,8 @@ import contextlib
 import argparse
 import h5py
 import ConfigParser
+import glob
+
 
 ### ARGUMENT HANDLING
 
@@ -160,6 +162,43 @@ def statuscl():
     """Clears the status line, shortcut for status('')"""
     return status('')
 
+
+### backend, projection and input finder
+def get_backends():
+    modules = glob.glob(os.path.join(os.path.dirname(__file__), 'backends', '*.py'))
+    names = list()
+
+    for module in modules:
+        if not module.endswith('__init__.py'):
+            names.append(os.path.splitext(os.path.basename(module))[0])
+    return names
+
+def get_projections(module):
+    import backend
+    return get_base(module, backend.ProjectionBase)
+
+def get_inputs(module):
+    import backend
+    return get_base(module, backend.InputBase)
+
+def get_base(module, base):
+    from inspect import isclass
+
+    try:
+        backends = __import__('backends.{0}'.format(module), globals(), locals(), [], -1)
+    except ImportError as e:
+        print 'Error importing {0} with error message: {1}'.format(module, e.message)
+
+    b = getattr(backends, module)
+    items = dir(getattr(backends, module))
+    
+    projections = []
+    for item in items:
+        obj = getattr(b, item)
+        if isclass(obj):
+            if issubclass(obj, base):
+                projections.append(item)
+    return projections
 
 ### CONFIGURATION MANAGEMENT
 
