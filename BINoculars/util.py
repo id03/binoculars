@@ -196,20 +196,22 @@ def get_dispatchers():
 
     return options
 
-def get_base(module, base):
+def get_base(modname, base):
     from inspect import isclass
 
+    if modname not in get_backends():
+        raise KeyError("{0} is not an available backend".format(modname))
     try:
-        backends = __import__('backends.{0}'.format(module), globals(), locals(), [], -1)
+        backends = __import__('backends.{0}'.format(modname), globals(), locals(), [], 1)
     except ImportError as e:
-        print 'Error importing {0} with error message: {1}'.format(module, e.message)
+        raise ImportError("Unable to import module backends.{0}: {1}".format(modname, e))
 
-    b = getattr(backends, module)
-    items = dir(getattr(backends, module))
+    backend = getattr(backends, modname)
+    items = dir(backend)
     
     options = []
     for item in items:
-        obj = getattr(b, item)
+        obj = getattr(backend, item)
         if isclass(obj):
             if issubclass(obj, base):
                 options.append(item)
