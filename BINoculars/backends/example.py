@@ -5,13 +5,28 @@ import numpy
 
 from .. import backend, errors, util
 
+
+'''
+This example backend contains the minimal set of functions needed to construct a backend.
+It consists of a child of a backend.InputBase class and a child of a backend.ProjectionBase
+class. The backend.Inputbase is collects the data from the measurement. The backend.ProjectionBase
+class calculates the new coordinates per pixel.
+
+You can write as much input classes and as much projections in one backend as you prefer, provided that
+the output of the inputclass is compatible with projection class. Otherwise you will be
+served best by writing a new backend, for the incompatibility will create errors that break the script.
+In the configuration file you specify the inputclass and projection needed for the treatment of the dataset.
+'''
+
+
 class QProjection(backend.ProjectionBase):
     def project(self, wavelength, af, delta, omega, ai):
         '''
         This class takes as input the tuple of coordinates returned by the process_job 
         method in the backend.InputBase class. Here you specify how to project the coordinates
         that belong to every datapoint. The number of input arguments should match the
-        second tuple returned by process job
+        second tuple returned by process_job. The shape of each returned array should match
+        the shape of the first argument returned by process_job
         '''
 
         k0 = 2 * numpy.pi / wavelength
@@ -29,27 +44,30 @@ class QProjection(backend.ProjectionBase):
         '''
         return 'qx', 'qy', 'qz'
 
+
 class Input(backend.InputBase):
-    # OFFICIAL API
     def generate_jobs(self, command):
         '''
         Command is supplied when the program is started in the terminal. This can used to differentiate between separate datasets
         that will be processed independently.
         '''
 
-        scans = util.parse_multi_range(','.join(command).replace(' ', ','))
+        scans = util.parse_multi_range(','.join(command).replace(' ', ','))# parse the command
         for scanno in scans:
             yield backend.Job(scan=scanno)
 
     def process_job(self, job):
         '''
-        This methods also is a generator that returns the intensity and a tuple of coordinates that
+        This methods is a generator that returns the intensity and a tuple of coordinates that
         will used for projection. The input is a job, this objects contains attributes that are supplied
         as keyword arguments in the generates_jobs method when backend.Job is instantiated.
         '''
         scan = job.scan
 
-        # simulate data
+        # this example backend simulates a random path through angular space starting at the origin
+        # an example image will be generated using a 50-slit interference function
+ 
+        #reflects a scan with 100 datapoints
         aaf    = numpy.linspace(0, numpy.random.random() * 20, 100)
         adelta = numpy.linspace(0, numpy.random.random() * 20, 100)
         aai = numpy.linspace(0, numpy.random.random() * 20, 100)
@@ -60,9 +78,9 @@ class Input(backend.InputBase):
 
             pixelsize = numpy.array(self.config.pixelsize)
             sdd = self.config.sdd 
-
             app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
 
+            # create an image of 100 x 100 pixels
             centralpixel = self.config.centralpixel # (column, row) = (delta, gamma)
             af_range= -app[1] * (numpy.arange(100) - centralpixel[1]) + af
             delta_range= app[0] * (numpy.arange(100) - centralpixel[0]) + delta
@@ -84,11 +102,11 @@ class Input(backend.InputBase):
 
     def parse_config(self, config):
         '''
-        To be able to collect and process you need the values provided in the configuration file.
+        To collect and process data you need the values provided in the configuration file.
         These you can access locally through the provided config object. This is a dict with
-        as the keys the labels given in the configfile. In order to be able to use them outside the
-        parse_config method you attribute them to the self.config object which can be used throughout
-        the input class. A warning will be generated afterwards for config values not popped out of the dict.
+        as keys the labels given in the configfile. To use them outside the parse_config method you attribute them
+        to the self.config object which can be used throughout the input class. A warning will be
+        generated afterwards for config values not popped out of the dict.
         '''
         super(Input, self).parse_config(config)
         self.config.sdd = float(config.pop('sdd'))

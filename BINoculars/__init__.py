@@ -31,10 +31,11 @@ def run(args):
         filename = main.dispatcher.config.destination.final_filename()
         return BINoculars.space.Space.fromfile(filename)
 
-def load(filename):
+def load(filename, key = None):
     ''' Parameters
         filename: string
             Only hdf5 files are acceptable
+        key: a tuple with slices in as much dimensions as the space is
 
         Returns
         A BINoculars space
@@ -50,7 +51,7 @@ def load(filename):
     '''
     import BINoculars.space
     if os.path.exists(filename):
-        return BINoculars.space.Space.fromfile(filename)
+        return BINoculars.space.Space.fromfile(filename, key = key)
     else:
         raise IOError("File '{0}' does not exist".format(filename))
 
