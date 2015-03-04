@@ -1,0 +1,28 @@
+### the DISPATCHER is responsible for job management
+[dispatcher]
+type = local # run locally
+ncores = 1 # optionally, specify number of cores (autodetect by default)
+
+# specificy destination file using scan numbers
+destination= test_{first}.hdf5
+overwrite = true
+
+### choose an appropriate INPUT class and specify custom options
+[input]
+type = example:input # refers to class Input in BINoculars/backends/example.py
+
+## approximate number of images per job, only useful when running on the oar cluster
+target_weight = 4000
+
+# technical details for this particular input class
+wavelength = 0.5
+centralpixel = 50,50
+sdd=636 #sample detector distance
+pixelsize=0.055, 0.055
+
+### choose PROJECTION plus resolution
+[projection]
+type = example:qprojection # refers to qprojection in BINoculars/backends/example.py
+
+## for L-scans (previous values)
+resolution = 0.01 # or just give 1 number for all
