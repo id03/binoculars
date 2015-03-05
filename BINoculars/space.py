@@ -398,6 +398,10 @@ class Space(object):
         return tuple(ax[key] for ax, key in zip(self.axes, numpy.unravel_index(numpy.argmax(array), array.shape)))
 
     def __add__(self, other):
+        if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
+            new = self.copy()
+            new.photons += other * self.contributions
+            return new 
         if not isinstance(other, Space):
             return NotImplemented
         if not len(self.axes) == len(other.axes) or not all(a.is_compatible(b) for (a, b) in zip(self.axes, other.axes)):
@@ -409,6 +413,9 @@ class Space(object):
         return new
 
     def __iadd__(self, other):
+        if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
+            self.photons += other * self.contributions
+            return self
         if not isinstance(other, Space):
             return NotImplemented
         if not len(self.axes) == len(other.axes) or not all(a.is_compatible(b) for (a, b) in zip(self.axes, other.axes)):
