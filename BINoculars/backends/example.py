@@ -40,7 +40,7 @@ class QProjection(backend.ProjectionBase):
     def get_axis_labels(self):
         '''
         Specify the names of the axes. The number of labels should be equal to the number
-        of coordinates that you specify.
+        of arrays returned in the project method.
         '''
         return 'qx', 'qy', 'qz'
 
@@ -59,13 +59,15 @@ class Input(backend.InputBase):
     def process_job(self, job):
         '''
         This methods is a generator that returns the intensity and a tuple of coordinates that
-        will used for projection. The input is a job, this objects contains attributes that are supplied
-        as keyword arguments in the generates_jobs method when backend.Job is instantiated.
+        will be used for projection. The input is a backend.job object. This objects contains attributes that are supplied
+        as keyword arguments in the generate_jobs method when backend.Job is instantiated.
+
+        This example backend simulates a random path through angular space starting at the origin.
+        an example image will be generated using a three dimensional 10-slit interference function.
+        The angles are with respect to the sample where af and delta are the angular coordinates
+        of the pixels and ai and omega are the in plane and out of plane angles of the incoming beam.
         '''
         scan = job.scan
-
-        # this example backend simulates a random path through angular space starting at the origin
-        # an example image will be generated using a 50-slit interference function
  
         #reflects a scan with 100 datapoints
         aaf    = numpy.linspace(0, numpy.random.random() * 20, 100)
@@ -76,14 +78,19 @@ class Input(backend.InputBase):
         for af, delta, ai, omega in zip(aaf, adelta, aai, aomega):
             print 'af: {0}, delta: {1}, ai: {2}, omega: {3}'.format(af, delta, ai, omega)
 
+            # caculating the angles per pixel. The values specified in the configuration file
+            # can be used for calculating these values
             pixelsize = numpy.array(self.config.pixelsize)
             sdd = self.config.sdd 
             app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
 
-            # create an image of 100 x 100 pixels
-            centralpixel = self.config.centralpixel # (column, row) = (delta, gamma)
+            # create an image of 100 x 100 pixels and calculate the coordinates corresponding to every pixel
+            centralpixel = self.config.centralpixel # (column, row) = (delta, af)
             af_range= -app[1] * (numpy.arange(100) - centralpixel[1]) + af
             delta_range= app[0] * (numpy.arange(100) - centralpixel[0]) + delta
+
+            #calculating the coordinates for simulating the image. This is only included
+            #in this example for simulating of the images. It has no other use.
 
             k0 = 2 * numpy.pi / self.config.wavelength
             delta, af = numpy.meshgrid(delta_range, af_range)
@@ -96,7 +103,8 @@ class Input(backend.InputBase):
             qx = k0 * (numpy.cos(af) * numpy.sin(delta) - numpy.cos(ai) * numpy.sin(omega))
             qz = k0 * (numpy.sin(af) + numpy.sin(ai))
 
-            data = numpy.abs(numpy.sin(qx * 50) / numpy.sin(qx) * numpy.sin(qy * 50) / numpy.sin(qy) * numpy.sin(qz * 50) / numpy.sin(qz))**2
+            #simulating the image
+            data = numpy.abs(numpy.sin(qx * 10) / numpy.sin(qx) * numpy.sin(qy * 10) / numpy.sin(qy) * numpy.sin(qz * 10) / numpy.sin(qz))**2
 
             yield data.flatten(), (self.config.wavelength, af, delta, omega, ai)
 

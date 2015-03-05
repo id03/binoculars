@@ -61,7 +61,7 @@ def save(filename, space):
 
         Parameters
         filename: string
-            filename to which the data is saved.
+            filename to which the data is saved. '.txt', '.hdf5' are supported.
         space: BINoculars space
             the space containing the data that needs to be saved
 
@@ -75,13 +75,19 @@ def save(filename, space):
         >>> BINoculars.save('test.hdf5', space)
     '''
 
-    import BINoculars.space
+    import BINoculars.space, BINoculars.util
     if isinstance(space, BINoculars.space.Space):
-        space.tofile(filename)
+        ext = os.path.splitext(filename)[-1]
+        if ext == '.txt':
+            BINoculars.util.space_to_txt(space, filename)
+        elif ext == '.edf':
+            BINoculars.util.space_to_edf(space, filename)
+        else:        
+            space.tofile(filename)
     else:
         raise TypeError("'{0!r}' is not a BINoculars space".format(space))
 
-def plot(space, log=True, clipping=0.0, fit=None, norm=None, colorbar=True, labels=True, **plotopts):
+def plotspace(space, log=True, clipping=0.0, fit=None, norm=None, colorbar=True, labels=True, **plotopts):
     '''         
         plots a space with the correct axes. The space can be either one or two dimensinal.
         
@@ -110,7 +116,7 @@ def plot(space, log=True, clipping=0.0, fit=None, norm=None, colorbar=True, labe
             Axis qy (min=-0.04, max=-0.01, res=0.01, count=4)
             Axis qz (min=0.48, max=4.03, res=0.01, count=356)
         }
-        >>> BINoculars.plot('test.hdf5')
+        >>> BINoculars.plotspace('test.hdf5')
     '''
 
     import matplotlib.pyplot as pyplot
