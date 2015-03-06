@@ -166,4 +166,38 @@ def transform(space, labels, resolutions, exprs):
         raise TypeError("'{0!r}' is not a BINoculars space".format(space))
     return newspace
 
+def fitspace(space, function, guess = None):
+    ''' 
+        fit the space data.
+        
+        Parameters
+        space: BINoculars space
+        function: list
+            a string with the name of the desired function. supported are:
+            lorentzian (automatically selects 1d or 2d), gaussian1d and voigt1d
+        guess: list
+            a list of length N with the resolution per label
 
+        Returns
+        A BINoculars fit object.
+       
+        Examples:
+        >>> fit = BINoculars.fitspace(space, 'lorentzian')
+        >>> print fit.summary
+            I: 1.081e-07 +/- inf
+            loc: 0.3703 +/- inf
+            gamma: 0.02383 +/- inf
+            slope: 0.004559 +/- inf
+            offset: -0.001888 +/- inf
+        >>> parameters = fit.parameters
+        >>> data = fit.fitdata
+        >>> BINoculars.plotspace(space, fit = data)
+    '''
+
+    import BINoculars.fit
+    if isinstance(space, BINoculars.space.Space):
+        fitclass = BINoculars.fit.get_class_by_name(function)
+        return fitclass(space, guess)
+    else:
+        raise TypeError("'{0!r}' is not a BINoculars space".format(space))
+    return newspace

@@ -42,6 +42,9 @@ class Axis(object):
     def __len__(self):
         return self.imax - self.imin + 1
 
+    def __iter__(self):
+        return iter(self[index] for index in xrange(len(self)))
+
     def __getitem__(self, key):
         if isinstance(key, slice):
             if key.step is not None:
@@ -611,6 +614,14 @@ class Space(object):
             raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(file, e))
         return space
 
+    def iterate_over_axis(self, axis):
+        axis = self.axes[self.axes.index(axis)]
+        for value in axis:
+            yield self.slice(axis, value)
+        
+    def get_axis_values(self, axis):
+        axis = self.axes[self.axes.index(axis)]
+        return numpy.array(list(axis))
 
 def union_axes(axes):
     axes = tuple(axes)
