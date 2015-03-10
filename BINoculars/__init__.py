@@ -201,3 +201,62 @@ def fitspace(space, function, guess = None):
     else:
         raise TypeError("'{0!r}' is not a BINoculars space".format(space))
     return newspace
+
+
+def info(filename):
+    '''
+        Explore the file without loading the file, or after loading the file      
+
+        Parameters
+        filename: filename or space
+
+        Examples:
+        >>> BINoculars.info('test.hdf5')
+        Axes (3 dimensions, 46466628 points, 531.0 MB) {
+            Axis H (min=-0.1184, max=0.0632, res=0.0008, count=228)
+            Axis K (min=-1.1184, max=-0.9136, res=0.0008, count=257)
+            Axis L (min=0.125, max=4.085, res=0.005, count=793)
+        }
+        ConfigFile{
+           [dispatcher]
+           [projection]
+           [input]
+        }
+        origin = test.hdf5
+        >>> space = BINoculars.load('test.hdf5')
+        >>> BINoculars.info(space)
+        Axes (3 dimensions, 46466628 points, 531.0 MB) {
+            Axis H (min=-0.1184, max=0.0632, res=0.0008, count=228)
+            Axis K (min=-1.1184, max=-0.9136, res=0.0008, count=257)
+            Axis L (min=0.125, max=4.085, res=0.005, count=793)
+        }
+        ConfigFile{
+           [dispatcher]
+           [projection]
+           [input]
+        }
+        origin = test.hdf5
+
+    '''
+
+    import BINoculars.space
+    if isinstance(filename, BINoculars.space.Space):
+        print filename
+        print filename.config    
+    elif type(filename) == str:
+        if os.path.exists(filename):
+            try:
+                axes = BINoculars.space.Axes.fromfile(filename)
+            except Exception as e:
+                print '{0}: unable to load Space: {1!r}'.format(filename, e)
+            else:
+                print '{!r}'.format(axes)
+            try:
+                config = BINoculars.util.ConfigFile.fromfile(filename)
+            except Exception as e:
+                print '{0}: unable to load util.ConfigFile: {1!r}'.format(filename, e)
+            else:
+                print '{!r}'.format(config)
+        else:
+            raise IOError("File '{0}' does not exist".format(filename))
+

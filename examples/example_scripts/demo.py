@@ -28,7 +28,7 @@ grid = space.get_grid()
 total = BINoculars.load('test.hdf5') + BINoculars.load('test1.hdf5')
 
 # you can view the configuration settings used to create the space.
-print space.config
+BINoculars.info(space)
 
 # if you now want to reuse this configuration file as an input you can extract the configuration file by
 space.config.totxtfile('config.txt')
