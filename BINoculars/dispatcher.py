@@ -60,8 +60,8 @@ class DispatcherBase(util.ConfigurableObject):
         super(DispatcherBase, self).parse_config(config)
         self.config.destination = Destination()
         self.config.destination.set_final_filename(
-            config.pop('destination', 'output.hdf5'),
-            util.parse_bool(config.pop('overwrite', 'false')))
+            config.pop('destination', 'output.hdf5'),# optional 'output.hdf5' by default
+            util.parse_bool(config.pop('overwrite', 'false')))#by default: numbered files in the form output_###.hdf5:
 
     def has_specific_task(self):
         return False
@@ -111,7 +111,7 @@ class Local(ReentrantBase):
 
     def parse_config(self, config):
         super(Local, self).parse_config(config)
-        self.config.ncores = int(config.pop('ncores', 0))
+        self.config.ncores = int(config.pop('ncores', 0))# optionally, specify number of cores (autodetect by default)
         if self.config.ncores <= 0:
             self.config.ncores = multiprocessing.cpu_count()
 
@@ -152,9 +152,9 @@ class Oar(ReentrantBase):
 
     def parse_config(self, config):
         super(Oar, self).parse_config(config)
-        self.config.tmpdir = config.pop('tmpdir', os.getcwd())
-        self.config.oarsub_options = config.pop('oarsub_options', 'walltime=0:15')
-        self.config.executable = config.pop('executable', ' '.join(util.get_python_executable()))
+        self.config.tmpdir = config.pop('tmpdir', os.getcwd())#Optional, current directory by default
+        self.config.oarsub_options = config.pop('oarsub_options', 'walltime=0:15')# optionally, tweak oarsub parameters
+        self.config.executable = config.pop('executable', ' '.join(util.get_python_executable()))# optionally, override default location of python and/or BINoculars installation
 
     def process_jobs(self, jobs):
         self.configfiles = []

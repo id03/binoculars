@@ -163,7 +163,7 @@ def statuscl():
     return status('')
 
 
-### backend, projection and input finder
+### Dispatcher, projection and input finder
 def get_backends():
     modules = glob.glob(os.path.join(os.path.dirname(__file__), 'backends', '*.py'))
     names = list()
@@ -216,6 +216,49 @@ def get_base(modname, base):
             if issubclass(obj, base):
                 options.append(item)
     return options
+
+### Dispatcher, projection and input configuration options finder
+def get_dispatcher_configkeys(classname):
+    import dispatcher
+    cls = getattr(dispatcher, classname)
+    return get_configkeys(cls)
+    
+def get_projection_configkeys(modname, classname):
+    return get_backend_configkeys(modname, classname)
+
+def get_input_configkeys(modname, classname):
+    return get_backend_configkeys(modname, classname)
+
+def get_backend_configkeys(modname, classname):
+    backends = __import__('backends.{0}'.format(modname), globals(), locals(), [], 1)
+    backend = getattr(backends, modname)
+    cls = getattr(backend, classname)
+    return get_configkeys(cls)
+
+def get_configkeys(cls):
+    from inspect import getsource
+    items = list()
+    while hasattr(cls, 'parse_config'):
+        code = getsource(cls.parse_config)
+        for line in code.split('\n'):
+            key = parse_configcode(line)
+            if key:
+                if key not in items:
+                    items.append(key)
+        cls = cls.__base__
+    return items
+
+def parse_configcode(line):
+    try:
+        comment = '#'.join(line.split('#')[1:])
+        line = line.split('#')[0]
+        index = line.index('config.pop')
+        item = line[index:].split('\'')[1]
+        if item == 'action':
+            return #action is reserved for internal use!
+        return item, comment
+    except ValueError:
+        pass
 
 ### CONFIGURATION MANAGEMENT
 
@@ -326,7 +369,7 @@ class ConfigSection(object):
         return copy.deepcopy(self)
 
 class ConfigurableObject(object):
-    def __init__(self, config):
+    def __init__(self, config):           
         if isinstance(config, ConfigSection):
             self.config = config
         else:

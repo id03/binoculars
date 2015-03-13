@@ -179,20 +179,20 @@ class ID03Input(backend.InputBase):
 
     def parse_config(self, config):
         super(ID03Input, self).parse_config(config)
-        self.config.xmask = util.parse_multi_range(config.pop('xmask'))
-        self.config.ymask = util.parse_multi_range(config.pop('ymask'))
-        self.config.specfile = config.pop('specfile')
-        self.config.imagefolder = config.pop('imagefolder', None)
-        self.config.UB = config.pop('ub', None)
-        self.config.pr = config.pop('pr', None)
-        self.config.background = config.pop('background', None)
+        self.config.xmask = util.parse_multi_range(config.pop('xmask'))#image range in the x direction
+        self.config.ymask = util.parse_multi_range(config.pop('ymask'))#image range in the y direction
+        self.config.specfile = config.pop('specfile')#Location of the specfile
+        self.config.imagefolder = config.pop('imagefolder', None) #Optional, takes specfile folder tag by default
+        self.config.UB = config.pop('ub', None) #Optional, takes specfile matrix by default
+        self.config.pr = config.pop('pr', None) #Optional, all range by default
+        self.config.background = config.pop('background', None) #Optional, if supplied a space of this image is constructed
         if self.config.UB:
             self.config.UB = util.parse_tuple(self.config.UB, length=9, type=float)
         if self.config.pr:
             self.config.pr = util.parse_tuple(self.config.pr, length=2, type=int)
-        self.config.sdd = float(config.pop('sdd'))
-        self.config.pixelsize = util.parse_tuple(config.pop('pixelsize'), length=2, type=float)
-        self.config.centralpixel = util.parse_tuple(config.pop('centralpixel'), length=2, type=int)
+        self.config.sdd = float(config.pop('sdd'))# sample to detector distance (mm)
+        self.config.pixelsize = util.parse_tuple(config.pop('pixelsize'), length=2, type=float)# pixel size x/y (mm) (same dimension as sdd)
+        self.config.centralpixel = util.parse_tuple(config.pop('centralpixel'), length=2, type=int) #x,y
 
     def get_destination_options(self, command):
         if not command:

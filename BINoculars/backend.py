@@ -4,7 +4,7 @@ from . import util, errors, dispatcher
 class ProjectionBase(util.ConfigurableObject):
     def parse_config(self, config):
         super(ProjectionBase, self).parse_config(config)
-        res = config.pop('resolution')
+        res = config.pop('resolution')# or just give 1 number for all dimensions
         labels = self.get_axis_labels()
         if ',' in res:
             self.config.resolution = util.parse_tuple(res, type=float)
@@ -35,7 +35,7 @@ class InputBase(util.ConfigurableObject):
     same computer!"""
     def parse_config(self, config):
         super(InputBase, self).parse_config(config)
-        self.config.target_weight = int(config.pop('target_weight', 0))
+        self.config.target_weight = int(config.pop('target_weight', 0))## approximate number of images per job, only useful when running on the oar cluster
 
     def generate_jobs(self, command):
         """Receives command from user, yields Job() instances"""
