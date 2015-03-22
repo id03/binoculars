@@ -355,7 +355,7 @@ class ConfigFile(object):
             for entry in s:
                 str += '    {} = {}\n'.format(entry, s[entry])
         str += '}\n'
-        str += 'origin = {0}\n'.format(self.origin)
+        str += 'origin = {0}'.format(self.origin)
         return str
 
     def copy(self):

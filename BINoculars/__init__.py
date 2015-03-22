@@ -211,7 +211,7 @@ def info(filename):
         filename: filename or space
 
         Examples:
-        >>> BINoculars.info('test.hdf5')
+        >>> print BINoculars.info('test.hdf5')
         Axes (3 dimensions, 46466628 points, 531.0 MB) {
             Axis H (min=-0.1184, max=0.0632, res=0.0008, count=228)
             Axis K (min=-1.1184, max=-0.9136, res=0.0008, count=257)
@@ -224,7 +224,7 @@ def info(filename):
         }
         origin = test.hdf5
         >>> space = BINoculars.load('test.hdf5')
-        >>> BINoculars.info(space)
+        >>> print BINoculars.info(space)
         Axes (3 dimensions, 46466628 points, 531.0 MB) {
             Axis H (min=-0.1184, max=0.0632, res=0.0008, count=228)
             Axis K (min=-1.1184, max=-0.9136, res=0.0008, count=257)
@@ -240,23 +240,21 @@ def info(filename):
     '''
 
     import BINoculars.space
+    ret = ''
     if isinstance(filename, BINoculars.space.Space):
-        print filename
-        print filename.config    
+        ret += '{!r}\n{!r}'.format(filename, filename.config)
     elif type(filename) == str:
         if os.path.exists(filename):
             try:
                 axes = BINoculars.space.Axes.fromfile(filename)
             except Exception as e:
-                print '{0}: unable to load Space: {1!r}'.format(filename, e)
-            else:
-                print '{!r}'.format(axes)
+                raise IOError('{0}: unable to load Space: {1!r}'.format(filename, e))
+            ret += '{!r}\n'.format(axes)
             try:
                 config = BINoculars.util.ConfigFile.fromfile(filename)
             except Exception as e:
-                print '{0}: unable to load util.ConfigFile: {1!r}'.format(filename, e)
-            else:
-                print '{!r}'.format(config)
+                raise IOError('{0}: unable to load util.ConfigFile: {1!r}'.format(filename, e))
+            ret += '{!r}'.format(config)
         else:
             raise IOError("File '{0}' does not exist".format(filename))
-
+    return ret
