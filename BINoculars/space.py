@@ -8,10 +8,12 @@ from . import util, errors
 
 
 def silence_numpy_errors():
+    """Silence numpy warnings about zero division. Normal usage of Space() will trigger these warnings."""
     numpy.seterr(divide='ignore', invalid='ignore')
 
 
 def sum_onto(a, axis):
+    """Numpy convenience. Project all dimensions of an array onto an axis, i.e. apply sum() to all axes except the one given."""
     for i in reversed(range(len(a.shape))):
         if axis != i:
             a = a.sum(axis=i)
@@ -19,6 +21,18 @@ def sum_onto(a, axis):
 
 
 class Axis(object):
+    """Represents a single dimension finite discrete grid centered at 0.
+
+    Important attributes:
+    min     lower bound
+    max     upper bound 
+    res     step size / resolution
+    label   human-readable identifier
+
+    min, max and res are floats, but internally only integer operations are used. In particular
+    min = imin * res, max = imax * res
+    """
+
     def __init__(self, min, max, res, label=None):
         self.res = float(res)
         if isinstance(min, int):
@@ -158,6 +172,8 @@ class Axis(object):
 
 
 class Axes(object):
+    """Luxurious tuple of Axis objects."""
+
     def __init__(self, axes):
         self.axes = tuple(axes)
         if len(self.axes) > 1 and any(axis.label is None for axis in self.axes):
@@ -259,6 +275,9 @@ class Axes(object):
 
 
 class EmptySpace(object):
+    """Convenience object for sum() and friends. Treated as zero for addition.
+    Does not share a base class with Space for simplicity."""
+
     def __add__(self, other):
         if not isinstance(other, Space):
             return NotImplemented
@@ -276,6 +295,17 @@ class EmptySpace(object):
 
 
 class Space(object):
+    """Main data-storing object in BINoculars. 
+    Data is represented on an n-dimensional rectangular grid. Per grid point,
+    the number of photons (~ intensity) and the number of original data points
+    (pixels) contribution is stored.
+
+    Important attributes:
+        axes             Axes instances describing range and stepsizes of each of the dimensions
+        photons          n-dimension numpy float array, total intensity per grid point
+        contribitions    n-dimensional numpy integer array, number of original datapoints (pixels) per grid point
+        dimension        n"""
+
     def __init__(self, axes, config=None):
         if not isinstance(axes, Axes):
             self.axes = Axes(axes)
@@ -297,11 +327,13 @@ class Space(object):
 
     @property
     def memory_size(self):
-        # approximate! does not take into account all the overhead
+        """Returns approximate memory consumption of this Space.
+        Only considers size of .photons and .contributions, does not take into account the overhead."""
         return self.photons.nbytes + self.contributions.nbytes
 
     @property
     def config(self):
+        """util.ConfigFile instance describing configuration file used to create this Space instance"""
         return self._config
 
     @config.setter
@@ -314,27 +346,24 @@ class Space(object):
             raise TypeError("'{0!r}' is not a util.ConfigFile".format(space))
 
     def copy(self):
+        """Returns a copy of self. Numpy data is not shared, but the Axes object is."""
         new = self.__class__(self.axes)
         new.photons[:] = self.photons
         new.contributions[:] = self.contributions
         return new
 
     def get(self):
+        """Returns normalized photon count."""
         return self.photons/self.contributions
 
     def __repr__(self):
         return '{0.__class__.__name__} ({0.dimension} dimensions, {0.npoints} points, {1}) {{\n    {2}\n}}'.format(self, util.format_bytes(self.memory_size), '\n    '.join(repr(ax) for ax in self.axes))
     
     def __getitem__(self, key):
-        if isinstance(key, numbers.Number) or isinstance(key, slice):
-            if not len(self.axes) == 1:
-                raise IndexError('dimension mismatch')
-            else:
-                key = [key]
-        elif not isinstance(key, tuple) or not len(key) == len(self.axes):
-            raise IndexError('dimension mismatch')
+        """Slicing only! space[-0.2:0.2, 0.9:1.1] does exactly what the syntax implies.
+        Ellipsis operator '...' is not supported."""
 
-        newkey = tuple(ax.get_index(k) for k, ax in zip(key, self.axes))
+        newkey = get_key(key)
         newaxes = tuple(ax[k] for k, ax in zip(newkey, self.axes) if isinstance(ax[k], Axis))
         if not newaxes:
             raise ValueError('zero-dimensional spaces are not supported')
@@ -344,6 +373,7 @@ class Space(object):
         return newspace
 
     def get_key(self, key):#needed in the fitaid for visualising the interpolated data
+        """Convert the n-dimensional interval described by key (as used by e.g. __getitem__()) from data coordinates to indices."""
         if isinstance(key, numbers.Number) or isinstance(key, slice):
             if not len(self.axes) == 1:
                 raise IndexError('dimension mismatch')
@@ -354,6 +384,7 @@ class Space(object):
         return tuple(ax.get_index(k) for k, ax in zip(key, self.axes))
 
     def get_value(self, key):
+        ### FIXME: should be merged into __getitem__()
         if isinstance(key, numbers.Number):
             if not len(self.axes) == 1:
                 raise IndexError('dimension mismatch')
@@ -367,6 +398,12 @@ class Space(object):
 
 
     def project(self, axis, *more_axes):
+        """Reduce dimensionality of Space by projecting onto 'axis'.
+        All data (photons, contributions) is summed along this axis.
+        
+        axis         the label of the axis or the index
+        *more_axis   also project on these axes"""
+
         index = self.axes.index(axis)
         newaxes = list(self.axes)
         newaxes.pop(index)
@@ -380,23 +417,32 @@ class Space(object):
             return newspace
 
     def slice(self, axis, key):
+        """Single-axis slice.
+
+        axis    label or index of axis to slice
+        key     something like slice(lower_data_range, upper_data_range)"""
         axindex = self.axes.index(axis)
         newkey = list(slice(None) for ax in self.axes)
         newkey[axindex] = key
         return self.__getitem__(tuple(newkey))
 
     def get_masked(self):
+        """Returns photons/contributions, but with divide-by-zero's masked out."""
         return numpy.ma.array(data=self.get(), mask=(self.contributions == 0))
         
     def get_grid(self):
+        """Returns the data coordinates of each grid point, as n-tuple of n-dimensinonal arrays.
+        Basically numpy.mgrid() in data coordinates."""
         igrid = numpy.mgrid[tuple(slice(0, len(ax)) for ax in self.axes)]
         grid = tuple(numpy.array((grid + ax.imin) * ax.res) for grid, ax in zip(igrid, self.axes))
         return grid
 
     def max(self, axis=None):
+        """Returns maximum intensity."""
         return self.get_masked().max(axis=axis)
 
     def argmax(self):
+        """Returns data coordinates of grid point with maximum intensity."""
         array = self.get_masked()
         return tuple(ax[key] for ax, key in zip(self.axes, numpy.unravel_index(numpy.argmax(array), array.shape)))
 
@@ -465,6 +511,7 @@ class Space(object):
         return self
 
     def trim(self):
+        """Reduce total size of Space by trimming zero-contribution data points on the boundaries."""
         mask = self.contributions > 0
         lims = (numpy.flatnonzero(sum_onto(mask, i)) for (i, ax) in enumerate(self.axes))
         lims = tuple((i.min(), i.max()) for i in lims)
@@ -474,6 +521,9 @@ class Space(object):
         self.contributions = self.contributions[slices].copy()
 
     def rebin(self, factors):
+        """Increase bin size (= decrease resolution).
+
+        factor   even integer or n-tuple of even integers"""
         if isinstance(factors, int):
             factors = [factors] * len(self.axes)
         elif len(factors) != len(self.axes):
@@ -499,6 +549,9 @@ class Space(object):
         return new
 
     def rebin2(self, resolutions):
+        """Change bin size.
+    
+        resolution    n-tuple of floats, new resolution of each axis"""
         if not len(resolutions) == len(self.axes):
             raise ValueError('cannot rebin space with different dimensionality compatible')
         labels = tuple(ax.label for ax in self.axes)
@@ -533,8 +586,9 @@ class Space(object):
         return newself, newother
 
     def reorder(self, labels):
+        """Change order of axes."""
         if not self.dimension == len(labels):
-            raise ValueError('cannot make spaces with different dimensionality compatible')
+            raise ValueError('dimension mismatch')
         newindices = list(self.axes.index(label) for label in labels)
         new = self.__class__(tuple(self.axes[index] for index in newindices))
         new.photons = numpy.transpose(self.photons, axes = newindices)
@@ -555,7 +609,10 @@ class Space(object):
         return self.from_image(resolutions, labels, transcoords, intensity[valid])
 
     def process_image(self, coordinates, intensity):
-        # note: coordinates must be tuple of arrays, not a 2D array
+        """Load image data into Space.
+
+        coordinates  n-tuple of data coordinate arrays
+        intensity    data intensity array"""
         if len(coordinates) != len(self.axes):
             raise ValueError('dimension mismatch between coordinates and axes')
 
@@ -578,12 +635,19 @@ class Space(object):
 
     @classmethod
     def from_image(cls, resolutions, labels, coordinates, intensity):
+        """Create Space from image data. 
+
+        resolutions   n-tuple of axis resolutions
+        labels          n-tuple of axis labels
+        coordinates   n-tuple of data coordinate arrays
+        intensity     data intensity array"""
         axes = tuple(Axis(coord.min(), coord.max(), res, label) for res, label, coord in zip(resolutions, labels, coordinates))
         newspace = cls(axes)
         newspace.process_image(coordinates, intensity)
         return newspace
 
     def tofile(self, filename):
+        """Store Space in HDF5 file."""
         with util.atomic_write(filename) as tmpname:
             with util.open_h5py(tmpname, 'w') as fp:
                 self.config.tofile(fp)
@@ -593,6 +657,10 @@ class Space(object):
 
     @classmethod
     def fromfile(cls, file, key=None):
+        """Load Space from HDF5 file.
+
+        file      filename string or h5py.File instance
+        key       sliced (subset) loading, should be an n-tuple of slice()s in data coordinates"""
         try:
             with util.open_h5py(file, 'r') as fp:
                 axes = Axes.fromfile(fp)
@@ -651,6 +719,7 @@ def union_unequal_axes(axes):
     return first.__class__(mi, ma, res, first.label)
 
 def sum(spaces):
+    """Calculate sum of iterable of Space instances."""
     spaces = tuple(spaces)
     if len(spaces) == 1:
         return spaces[0]
@@ -666,6 +735,10 @@ def sum(spaces):
 
 # hybrid sum() / __iadd__()
 def chunked_sum(spaces, chunksize=10):
+    """Calculate sum of iterable of Space instances. Creates intermediate sums to avoid growing a large space at every summation.
+
+    spaces     iterable of Space instances
+    chunksize  number of Space instances in each intermediate sum"""
     result = EmptySpace()
     for chunk in util.grouper(spaces, chunksize):
         result += sum(space for space in chunk)
