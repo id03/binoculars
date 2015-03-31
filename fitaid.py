@@ -79,22 +79,27 @@ class Window(QtGui.QMainWindow):
             self.tab_widget.addTab(TopWidget(filename, parent=self), 'New Project')
             self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
 
-    def add_to_project(self):
-        dialog = QtGui.QFileDialog(self, "Import spaces");
-        dialog.setFilter('BINoculars space file (*.hdf5)');
-        dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
-        dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
-        if not dialog.exec_():
-            return
-        fname = dialog.selectedFiles()
-        if not fname:
-            return
-        for name in fname:
-            try:
-                widget = self.tab_widget.currentWidget()
-                widget.addspace(str(name))
-            except Exception as e:
-                QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(fname, e))
+    def add_to_project(self, filename = None):
+        if not filename:
+            dialog = QtGui.QFileDialog(self, "Import spaces");
+            dialog.setFilter('BINoculars space file (*.hdf5)');
+            dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
+            dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
+            if not dialog.exec_():
+                return
+            fname = dialog.selectedFiles()
+            if not fname:
+                return
+            for name in fname:
+                try:
+                    widget = self.tab_widget.currentWidget()
+                    widget.addspace(str(name))
+                except Exception as e:
+                    QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(fname, e))
+        else:
+            widget = self.tab_widget.currentWidget()
+            widget.addspace(filename)
+     
 
 class TopWidget(QtGui.QWidget):
     def __init__(self, filename , parent=None):
@@ -221,6 +226,8 @@ class TopWidget(QtGui.QWidget):
             self.fitwidget.fit(index, space, self.fitclass)
         self.progressbox(self.fitwidget.database.rodkey, function, enumerate(self.fitwidget.database), self.fitwidget.database.rodlength())
         self.fit_loc(self.fitwidget.database)
+        self.fitwidget.plot()
+
 
     def fit_all(self):
         def function(index, space):
@@ -231,6 +238,8 @@ class TopWidget(QtGui.QWidget):
             self.progressbox(self.fitwidget.database.rodkey, function, enumerate(self.fitwidget.database), self.fitwidget.database.rodlength())
             self.fit_loc(self.fitwidget.database)
 
+        self.fitwidget.plot()
+
 
     def int_slice(self):
         index = self.nav.index()
@@ -240,28 +249,33 @@ class TopWidget(QtGui.QWidget):
 
     def int_rod(self):
         self.progressbox(self.integratewidget.database.rodkey,self.integratewidget.integrate, enumerate(self.integratewidget.database), self.integratewidget.database.rodlength())
+        self.integratewidget.plot()
 
     def int_all(self):
         for rodkey, axis, resolution in self.table.checked():
             self.integratewidget.database = RodData(self.database.filename, rodkey, axis, resolution)
             self.progressbox(self.integratewidget.database.rodkey,self.integratewidget.integrate, enumerate(self.integratewidget.database), self.integratewidget.database.rodlength())
-                
+        self.integratewidget.plot()
+  
     def fit_loc(self, database):
         deg = 2
         for param in database.all_attrkeys():
             if param.startswith('loc'):
                 x, y = database.all_from_key(param)
                 x, yvar = database.all_from_key('var_{0}'.format(param))
-                indices, yvar = database.all_from_key_indexed('var_{0}'.format(param))
+                cx = x[numpy.invert(y.mask)]
+                y = y.compressed()
+                yvar = yvar.compressed()
+
                 w = numpy.log(1 / yvar)
                 w[w == numpy.inf] = 0
                 w = numpy.nan_to_num(w)
                 w[w < 0] = 0
                 w[w < numpy.median(w)] = 0
                 if len(x) > 0:
-                    c = numpy.polynomial.polynomial.polyfit(x, y, deg, w = w)
+                    c = numpy.polynomial.polynomial.polyfit(cx, y, deg, w = w)
                     newy = numpy.polynomial.polynomial.polyval(x, c)
-                    for index, newval in zip(indices, newy):
+                    for index, newval in enumerate(newy):
                         database.save_sliceattr(index, 'guessloc{0}'.format(param.lstrip('loc')) , newval)
 
     def progressbox(self, rodkey , function, iterator, length):
@@ -308,6 +322,9 @@ class TableWidget(QtGui.QWidget):
         def remove_callback(rodkey):
             return lambda: self.remove(rodkey)
 
+        def activechange_callback(index):
+            return lambda: self.setlength(index, 1)
+
         if rodkey == None:
             rodkey = short_filename(filename)
             if rodkey in self.database.rods():
@@ -319,6 +336,7 @@ class TableWidget(QtGui.QWidget):
         self.database.create_rod(rodkey, filename)
         index = self.table.rowCount()
         self.table.insertRow(index)
+
 
         axes = BINoculars.space.Axes.fromfile(filename) 
 
@@ -348,6 +366,7 @@ class TableWidget(QtGui.QWidget):
         else:
             resolution.setText(str(axes[axes.index(str(axis.currentText()))].res))
         
+        resolution.editingFinished.connect(activechange_callback(index))
         self.table.setCellWidget(index, 3, resolution)
         
         buttonwidget = QtGui.QPushButton('remove')
@@ -362,7 +381,7 @@ class TableWidget(QtGui.QWidget):
         self.database.delete_rod(rodkey)
         print 'removed: {0}'.format(rodkey)
 
-    def setlength(self, y, x):
+    def setlength(self, y, x = 1):
         if x == 1:
             self.activeindex = y
             rodkey, axis, resolution = self.currentkey()
@@ -390,12 +409,19 @@ class TableWidget(QtGui.QWidget):
 class FitData(object):
     def __init__(self, filename):
         self.filename = filename
+        self.axdict = dict()
+        
+        with h5py.File(self.filename,'a') as db:
+            for rodkey in self.rods():
+                spacename = db[rodkey].attrs['filename']   
+                self.axdict[rodkey] = BINoculars.space.Axes.fromfile(spacename)            
 
-    def create_rod(self, rodkey, filename):
+    def create_rod(self, rodkey, spacename):
         with h5py.File(self.filename,'a') as db:
             if rodkey not in db.keys():
                 db.create_group(rodkey)
-                db[rodkey].attrs['filename'] =  filename
+                db[rodkey].attrs['filename'] =  spacename
+                self.axdict[rodkey] = BINoculars.space.Axes.fromfile(spacename)
 
     def delete_rod(self, rodkey):
         with h5py.File(self.filename,'a') as db:
@@ -433,7 +459,7 @@ class FitData(object):
 
 class RodData(FitData):
     def __init__(self, filename, rodkey, axis, resolution):
-        self.filename = filename
+        super(RodData, self).__init__(filename)
         self.rodkey = rodkey
         self.slicekey = '{0}_{1}'.format(axis, resolution)
         self.axis = axis
@@ -443,7 +469,7 @@ class RodData(FitData):
             if rodkey in db:
                 if self.slicekey not in db[rodkey]:
                     db[rodkey].create_group(self.slicekey)
-                    self.slices()
+                    db[rodkey][self.slicekey].create_group('attrs')
 
     def save(self, key, value):
         super(RodData, self).save(self.rodkey, key, value)
@@ -452,45 +478,32 @@ class RodData(FitData):
         return super(RodData, self).load(self.rodkey, key)
 
     def paxes(self):
-        with h5py.File(self.filename,'a') as db:
-             filename = db[self.rodkey].attrs['filename']
-        axes = BINoculars.space.Axes.fromfile(filename)
+        axes = self.axdict[self.rodkey]
         projected = list(axes)
         axindex = axes.index(self.axis)
         projected.pop(axindex)
         return projected
 
     def get_bins(self):
-        with h5py.File(self.filename,'a') as db:
-             filename = db[self.rodkey].attrs['filename']
+        axes = self.axdict[self.rodkey]
+        axindex = axes.index(self.axis)
+        ax = axes[axindex]
 
-        self.axes = BINoculars.space.Axes.fromfile(filename)
-        axindex = self.axes.index(self.axis)
-
-        ax = self.axes[axindex]
-        axlabel = ax.label
-
-        if float(self.resolution) < ax.res:
-            raise ValueError('interval {0} to low, minimum interval is {1}'.format(self.resolution, ax.res))
-
-        mi, ma = ax.min, ax.max
-        bins = numpy.linspace(mi, ma, numpy.ceil(1 / numpy.float(self.resolution) * (ma - mi)))
+        bins = BINoculars.space.get_bins(ax, self.resolution)
         return bins, ax, axindex
-
-    def slices(self):
-        bins, ax, axindex = self.get_bins()
-        x =  (bins[:-1] + bins[1:]) / 2
-        for index, value in enumerate(x):
-            self.save_sliceattr(index, 'index_value', round(value, len(str( ax.res)) - 2))
        
     def rodlength(self):
         bins, ax, axindex = self.get_bins()
-        return numpy.alen(bins) -1 
+        return numpy.alen(bins) - 1 
+
+    def get_index_value(self, index):
+        return BINoculars.space.get_axis_values(self.axdict[self.rodkey], self.axis, self.resolution)[index]
 
     def get_key(self, index):
+        axes = self.axdict[self.rodkey]
         bins, ax, axindex = self.get_bins()
-        start, stop = zip(bins[:-1], bins[1:])[index]
-        k = [slice(None) for i in self.axes]
+        start, stop = bins[index], bins[index + 1]
+        k = [slice(None) for i in axes]
         k[axindex] = slice(start, stop)
         return k
             
@@ -503,12 +516,12 @@ class RodData(FitData):
         with h5py.File(self.filename,'a') as db:
             id = '{0}_{1}_data'.format(int(index), key)
             mid = '{0}_{1}_mask'.format(int(index), key)
-            if id in db[self.rodkey][self.slicekey].keys():
-                del db[self.rodkey][self.slicekey][id]
-                del db[self.rodkey][self.slicekey][mid]
+            try:
                 db[self.rodkey][self.slicekey].create_dataset(id, data.shape, dtype=data.dtype, compression='gzip').write_direct(data)
                 db[self.rodkey][self.slicekey].create_dataset(mid, data.shape, dtype=data.mask.dtype, compression='gzip').write_direct(data.mask)
-            else:
+            except RuntimeError:
+                del db[self.rodkey][self.slicekey][id]
+                del db[self.rodkey][self.slicekey][mid]
                 db[self.rodkey][self.slicekey].create_dataset(id, data.shape, dtype=data.dtype, compression='gzip').write_direct(data)
                 db[self.rodkey][self.slicekey].create_dataset(mid, data.shape, dtype=data.mask.dtype, compression='gzip').write_direct(data.mask)
 
@@ -516,59 +529,51 @@ class RodData(FitData):
         with h5py.File(self.filename,'a') as db:
             id = '{0}_{1}_data'.format(int(index), key)
             mid = '{0}_{1}_mask'.format(int(index), key)
-            if id in db[self.rodkey][self.slicekey].keys() and mid in db[self.rodkey][self.slicekey].keys():
+            try:
                 return numpy.ma.array(db[self.rodkey][self.slicekey][id][...], mask = db[self.rodkey][self.slicekey][mid][...])
-            else:
+            except KeyError:
                 return None
 
     def save_sliceattr(self, index, key, value):
+        mkey = 'mask{0}'.format(key)
         with h5py.File(self.filename,'a') as db:
-            id = '{0}_attrs'.format(int(index))
-            if not id in db[self.rodkey][self.slicekey]:
-                db[self.rodkey][self.slicekey].create_dataset(id, (1, 1))
-            db[self.rodkey][self.slicekey][id].attrs[key] = value
+            try:
+                group = db[self.rodkey][self.slicekey]['attrs']## else it breaks with the old fitaid
+            except KeyError: 
+                db[rodkey][slicekey].create_group('attrs')
+                group = db[self.rodkey][self.slicekey]['attrs']
+            if not key in group:
+                group.create_dataset(key, (self.rodlength(),))
+                group.create_dataset(mkey, (self.rodlength(),), dtype = numpy.bool).write_direct(numpy.ones(self.rodlength(), dtype = numpy.bool))
+            group[key][index] = value
+            group[mkey][index] = 0
+
 
     def load_sliceattr(self, index, key):
+        mkey = 'mask{0}'.format(key)
         with h5py.File(self.filename,'a') as db:
-            id = '{0}_attrs'.format(int(index))
-            if self.rodkey in db:
-                if self.slicekey in db[self.rodkey]:
-                    if id in db[self.rodkey][self.slicekey].keys():
-                        if key in db[self.rodkey][self.slicekey][id].attrs:
-                            return db[self.rodkey][self.slicekey][id].attrs[str(key)]                         
-            return None
+            try:
+                group = db[self.rodkey][self.slicekey]['attrs']
+            except KeyError: 
+                db[self.rodkey][self.slicekey].create_group('attrs')
+                group = db[self.rodkey][self.slicekey]['attrs']
+            if key in group.keys():
+                return numpy.ma.array(group[key][index], mask = group[mkey][index])  
+            else:               
+                return None
 
     def all_attrkeys(self):
-        paramlist = list()
         with h5py.File(self.filename,'a') as db:
-            for attrs in db[self.rodkey][self.slicekey]:
-                if attrs.endswith('attrs'):
-                    for param in db[self.rodkey][self.slicekey][attrs].attrs:
-                        if param not in paramlist:
-                            paramlist.append(param)
-        return paramlist
+            group = db[self.rodkey][self.slicekey]['attrs']
+            return group.keys() 
 
     def all_from_key(self, key):
-        y = list()
-        x = list()
+        mkey = 'mask{0}'.format(key)
+        axes = self.axdict[self.rodkey]
         with h5py.File(self.filename,'a') as db:
-            for attrs in db[self.rodkey][self.slicekey]:
-                if attrs.endswith('attrs'):
-                    if key in db[self.rodkey][self.slicekey][attrs].attrs.keys():
-                        y.append(db[self.rodkey][self.slicekey][attrs].attrs[key])
-                        x.append(db[self.rodkey][self.slicekey][attrs].attrs['index_value'])
-        return numpy.array(x), numpy.array(y)
-
-    def all_from_key_indexed(self, key):
-        s = list()
-        y = list()
-        with h5py.File(self.filename,'a') as db:
-            for attrs in db[self.rodkey][self.slicekey]:
-                if attrs.endswith('attrs'):
-                    if key in db[self.rodkey][self.slicekey][attrs].attrs.keys():
-                        s.append(int(attrs.split('_')[0]))
-                        y.append(db[self.rodkey][self.slicekey][attrs].attrs[key])
-        return s, numpy.array(y)
+            group = db[self.rodkey][self.slicekey]['attrs']
+            if key in group.keys():
+                return BINoculars.space.get_axis_values(axes, self.axis, self.resolution), numpy.ma.array(group[key], mask = numpy.array(group[mkey]))
                  
     def load_loc(self, index):
         loc = list()   
@@ -634,12 +639,14 @@ class FitWidget(QtGui.QWidget):
         if self.ax:
             self.database.save_loc(self.currentindex(), numpy.array([x, y]))
             
-    def plot(self, index):
+    def plot(self, index = None):
+        if index == None:
+            index = self.currentindex()
         space = self.database.space_from_index(index)
         fitdata = self.database.load_data(index, 'fit')
         self.figure.clear()
         self.figure.space_axes = space.axes
-        info = self.database.load_sliceattr(index, 'index_value')
+        info = self.database.get_index_value(index)
         label = self.database.axis
 
         if fitdata is not None:
@@ -654,17 +661,21 @@ class FitWidget(QtGui.QWidget):
         else:
             self.ax = self.figure.add_subplot(111)
             BINoculars.plot.plot(space, self.figure, self.ax)
-        self.figure.suptitle('{0} = {1}'.format(label, info))
-
+        self.figure.suptitle('{0}, res = {1}, {2} = {3}'.format(self.database.rodkey, self.database.resolution, label, info))
         self.canvas.draw()
 
     def fit(self, index, space, function):
+        print index
         if not len(space.get_masked().compressed()) == 0:
-            fit = function(space, loc = self.database.load_loc(index))
+            loc = self.database.load_loc(index)
+            if loc:
+                if loc == list(float(0) for i in loc):
+                    loc = None
+            fit = function(space, loc = loc)
             fit.fitdata.mask = space.get_masked().mask
             self.database.save_data(index, 'fit',  fit.fitdata)
             params = list(line.split(':')[0] for line in fit.summary.split('\n'))
-            print index, fit.result
+            print fit.result, fit.variance
             for key, value in zip(params, fit.result):
                 self.database.save_sliceattr(index, key, value)
             for key, value in zip(params, fit.variance):
@@ -938,7 +949,7 @@ class IntegrateWidget(QtGui.QWidget):
             index = self.currentindex()
         space = self.database.space_from_index(index)
         interdata = self.database.load_data(index, 'inter')
-        info = self.database.load_sliceattr(index, 'index_value')
+        info = self.database.get_index_value(index)
         label = self.database.axis
 
         self.figure.clear()
@@ -957,7 +968,8 @@ class IntegrateWidget(QtGui.QWidget):
             self.ax = self.figure.add_subplot(111)
             BINoculars.plot.plot(space, self.figure, self.ax)
 
-        self.figure.suptitle('{0} = {1}'.format(label, info))
+        self.figure.suptitle('{0}, res = {1}, {2} = {3}'.format(self.database.rodkey, self.database.resolution, label, info))
+
         self.plot_box()
         self.canvas.draw()
 
@@ -1125,7 +1137,7 @@ class OverviewWidget(QtGui.QWidget):
         while self.table.rowCount() > 0:
             self.table.removeRow(0)
 
-        allparams = list(database.all_attrkeys() for database in databaselist)
+        allparams = list(list(param for param in database.all_attrkeys() if not param.startswith('mask')) for database in databaselist)
         uniqueparams = numpy.unique(numpy.hstack(params for params in allparams))
 
         for param in uniqueparams:
@@ -1193,6 +1205,8 @@ if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
 
     main = Window()
+    main.loadproject('old.fit')
+    #main.add_to_project('mesh_820.hdf5')
     main.resize(1000, 600)
     main.show()
 
@@ -1206,3 +1220,4 @@ if __name__ == "__main__":
 
 
   
+

@@ -363,7 +363,7 @@ class Space(object):
         """Slicing only! space[-0.2:0.2, 0.9:1.1] does exactly what the syntax implies.
         Ellipsis operator '...' is not supported."""
 
-        newkey = get_key(key)
+        newkey = self.get_key(key)
         newaxes = tuple(ax[k] for k, ax in zip(newkey, self.axes) if isinstance(ax[k], Axis))
         if not newaxes:
             raise ValueError('zero-dimensional spaces are not supported')
@@ -682,15 +682,6 @@ class Space(object):
             raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(file, e))
         return space
 
-    def iterate_over_axis(self, axis):
-        axis = self.axes[self.axes.index(axis)]
-        for value in axis:
-            yield self.slice(axis, value)
-        
-    def get_axis_values(self, axis):
-        axis = self.axes[self.axes.index(axis)]
-        return numpy.array(list(axis))
-
 def union_axes(axes):
     axes = tuple(axes)
     if len(axes) == 1:
@@ -743,3 +734,43 @@ def chunked_sum(spaces, chunksize=10):
     for chunk in util.grouper(spaces, chunksize):
         result += sum(space for space in chunk)
     return result
+
+def iterate_over_axis(space, axis, resolution = None):
+    ax = space.axes[space.axes.index(axis)]
+    if resolution:
+        bins = get_bins(ax, resolution)
+        for start, stop in zip(bins[:-1], bins[1:]):
+            yield space.slice(axis, slice(start, stop))
+    else:
+        for value in ax:
+           yield space.slice(axis, value)
+        
+def get_axis_values(axes, axis, resolution = None):
+    ax = axes[axes.index(axis)]
+    if resolution:
+        bins = get_bins(ax, resolution)
+        return (bins[:-1] + bins[1:]) / 2
+    else:
+        return numpy.array(list(ax))
+
+def iterate_over_axis_keys(axes, axis, resolution = None):
+    axindex = axes.index(axis)
+    ax = axes[axindex]
+    k = [slice(None) for i in axes]
+    if resolution:
+        bins = get_bins(ax, resolution)
+        for start, stop in zip(bins[:-1], bins[1:]):
+            k[axindex] = slice(start, stop)
+            yield k
+    else:
+        for value in ax:
+            k[axindex] = value
+            yield k
+
+def get_bins(ax, resolution):
+    if float(resolution) < ax.res:
+        raise ValueError('interval {0} to low, minimum interval is {1}'.format(resolution, ax.res))
+
+    mi, ma = ax.min, ax.max
+    return numpy.linspace(mi, ma, numpy.ceil(1 / numpy.float(resolution) * (ma - mi)))
+

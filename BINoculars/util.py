@@ -260,6 +260,7 @@ def parse_configcode(line):
     except ValueError:
         pass
 
+
 ### CONFIGURATION MANAGEMENT
 
 def parse_range(r):
@@ -306,7 +307,7 @@ class ConfigFile(object):
             try:
                 config = fp['configuration']
             except KeyError as e:
-                config = [] # when config is not present, preceed without Error
+                config = [] # when config is not present, proceed without Error
             for section in config:
                 setattr(configobj, section, dict(config[section]))
             return configobj

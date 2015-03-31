@@ -44,7 +44,7 @@ class FitBase(object):
         return self.cydata - self.func(self.cxdata, params)
  
     def _fit(self):
-        result = scipy.optimize.leastsq(self._fitfunc, self.guess, full_output=True)
+        result = scipy.optimize.leastsq(self._fitfunc, self.guess, full_output=True, epsfcn=0.000001)
 
         self.message = re.sub('\s{2,}', ' ', result[3].strip())
         self.result = result[0]
@@ -73,8 +73,12 @@ class PeakFitBase(FitBase):
     def _guess(self):
         maximum = self.cydata.max() # for background determination
 
-        background = self.cydata < (numpy.median(self.cydata) + maximum) / 2 
-        linparams = self._linfit(list(grid[background] for grid in self.cxdata), self.cydata[background])
+        background = self.cydata < (numpy.median(self.cydata) + maximum) / 2
+
+        if any(background == True): #the fit will fail if background is flas for all
+            linparams = self._linfit(list(grid[background] for grid in self.cxdata), self.cydata[background])
+        else:
+            linparams = numpy.zeros(len(self.cxdata) + 1)
 
         simbackground = linparams[-1] + numpy.sum(numpy.vstack(param * grid.flatten() for (param, grid) in zip(linparams[:-1], self.cxdata)) , axis = 0)
         signal = self.cydata - simbackground
@@ -83,7 +87,7 @@ class PeakFitBase(FitBase):
             argmax = self.argmax
         else:
             argmax = tuple((signal * grid).sum() / signal.sum() for grid in self.cxdata)
-        
+
         argmax_bkg = linparams[-1] + numpy.sum(numpy.vstack(param * grid.flatten() for (param, grid) in zip(linparams[:-1], argmax)))
 
         try:
