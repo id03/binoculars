@@ -1205,8 +1205,6 @@ if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
 
     main = Window()
-    main.loadproject('old.fit')
-    #main.add_to_project('mesh_820.hdf5')
     main.resize(1000, 600)
     main.show()
 
