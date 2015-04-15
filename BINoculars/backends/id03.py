@@ -43,6 +43,7 @@ class specularangles(backend.ProjectionBase):
         gamma *= numpy.pi/180
         chi *= numpy.pi/180
         phi *= numpy.pi/180
+        theta *= numpy.pi/180
 
 
         def mat(u, th):
