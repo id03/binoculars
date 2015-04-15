@@ -54,10 +54,11 @@ class Window(QtGui.QMainWindow):
         if not fname:
             return
         try:
-            self.tab_widget.addTab(TopWidget(str(fname), parent=self), short_filename(str(fname)))
-            self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
+            widget = TopWidget(str(fname), parent=self)
+            self.tab_widget.addTab(widget, short_filename(str(fname)))
+            self.tab_widget.setCurrentWidget(widget)
         except Exception as e:
-            QtGui.QMessageBox.critical(self, 'Save project', 'Unable to save project to {}: {}'.format(fname, e))
+            QtGui.QMessageBox.critical(self, 'New project', 'Unable to save project to {}: {}'.format(fname, e))
 
     def loadproject(self, filename = None):
         if not filename:
@@ -71,15 +72,21 @@ class Window(QtGui.QMainWindow):
             if not fname:
                 return
             try:
-                self.tab_widget.addTab(TopWidget(str(fname), parent=self), short_filename(str(fname)))
-                self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
+                widget = TopWidget(str(fname), parent=self)
+                self.tab_widget.addTab(widget, short_filename(str(fname)))
+                self.tab_widget.setCurrentWidget(widget)
             except Exception as e:
                 QtGui.QMessageBox.critical(self, 'Load project', 'Unable to load project from {}: {}'.format(fname, e))
         else:
-            self.tab_widget.addTab(TopWidget(filename, parent=self), 'New Project')
-            self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
+            widget = TopWidget(str(fname), parent=self)
+            self.tab_widget.addTab(widget, 'fname')
+            self.tab_widget.setCurrentWidget(widget)
 
     def add_to_project(self, filename = None):
+        if self.tab_widget.count() == 0:
+            QtGui.QMessageBox.warning(self, 'Warning', 'First select a file to store data')
+            self.newproject()
+            
         if not filename:
             dialog = QtGui.QFileDialog(self, "Import spaces");
             dialog.setFilter('BINoculars space file (*.hdf5)');
@@ -414,7 +421,14 @@ class FitData(object):
         with h5py.File(self.filename,'a') as db:
             for rodkey in self.rods():
                 spacename = db[rodkey].attrs['filename']   
-                self.axdict[rodkey] = BINoculars.space.Axes.fromfile(spacename)            
+                if not os.path.exists(spacename):
+                    warningbox = QtGui.QMessageBox(2, 'Warning', 'Cannot find space {0} at file {1}; locate proper space'.format(rodkey, spacename), buttons = QtGui.QMessageBox.Open)
+                    warningbox.exec_()
+                    spacename = str(QtGui.QFileDialog.getOpenFileName(caption = 'Open space {0}'.format(rodkey), directory = '.', filter = '*.hdf5'))
+                    if not spacename:
+                        raise IOError('Select proper input')
+                    db[rodkey].attrs['filename'] = spacename
+                self.axdict[rodkey] = BINoculars.space.Axes.fromfile(spacename)    
 
     def create_rod(self, rodkey, spacename):
         with h5py.File(self.filename,'a') as db:
@@ -887,12 +901,12 @@ class IntegrateWidget(QtGui.QWidget):
                 intensity = numpy.array([])
                 bkg = numpy.array([])
 
-            if numpy.alen(bkg) == 0:
-                structurefactor = numpy.sqrt(intensity.sum())
-                nistructurefactor = numpy.sqrt(niintensity.sum())
-            elif numpy.alen(intensity) == 0:
+            if numpy.alen(intensity) == 0:
                 structurefactor = numpy.nan
                 nistructurefactor = numpy.nan
+            elif numpy.alen(bkg) == 0:
+                structurefactor = numpy.sqrt(intensity.sum())
+                nistructurefactor = numpy.sqrt(niintensity.sum())
             else:
                 structurefactor = numpy.sqrt(intensity.sum() - numpy.alen(intensity) * 1.0 / numpy.alen(bkg) * bkg.sum())
                 nistructurefactor = numpy.sqrt(niintensity.sum() - numpy.alen(niintensity) * 1.0 / numpy.alen(bkg) * bkg.sum())
@@ -1138,7 +1152,10 @@ class OverviewWidget(QtGui.QWidget):
             self.table.removeRow(0)
 
         allparams = list(list(param for param in database.all_attrkeys() if not param.startswith('mask')) for database in databaselist)
-        uniqueparams = numpy.unique(numpy.hstack(params for params in allparams))
+        if len(allparams) > 0:
+            uniqueparams = numpy.unique(numpy.hstack(params for params in allparams))
+        else:
+            uniqueparams = []
 
         for param in uniqueparams:
             index = self.table.rowCount()

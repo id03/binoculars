@@ -241,8 +241,9 @@ class Window(QtGui.QMainWindow):
         self.setStatusBar(self.statusbar)
 
     def newproject(self):
-        self.tab_widget.addTab(ProjectWidget([], parent=self), 'New Project')
-        self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
+        widget = ProjectWidget([], parent=self)
+        self.tab_widget.addTab(widget, 'New Project')
+        self.tab_widget.setCurrentWidget(widget)
             
     def loadproject(self, filename = None):
         if not filename:
@@ -259,6 +260,7 @@ class Window(QtGui.QMainWindow):
                 try:
                     widget = ProjectWidget.fromfile(str(name), parent = self)
                     self.tab_widget.addTab(widget, short_filename(str(name)))
+                    self.tab_widget.setCurrentWidget(widget)
                 except Exception as e:
                     QtGui.QMessageBox.critical(self, 'Load project', 'Unable to load project from {}: {}'.format(fname, e))
         else:
@@ -285,6 +287,9 @@ class Window(QtGui.QMainWindow):
             QtGui.QMessageBox.critical(self, 'Save project', 'Unable to save project to {}: {}'.format(fname, e))
 
     def add_to_project(self):
+        if self.tab_widget.count() == 0:
+            self.newproject()
+
         dialog = QtGui.QFileDialog(self, "Import spaces");
         dialog.setFilter('BINoculars space file (*.hdf5)');
         dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
@@ -688,7 +693,17 @@ class ProjectWidget(QtGui.QWidget):
         except IOError as e:
             raise self.error.showMessage("unable to open '{0}' as project file (original error: {1!r})".format(filename, e))
 
-        widget = cls(dict['filelist'], cls.str_to_key(dict['key']), dict['projection'], parent = parent)
+        newlist = []
+        for fn in dict['filelist']:
+            if not os.path.exists(fn):
+                warningbox = QtGui.QMessageBox(2, 'Warning', 'Cannot find space at path {0}; locate proper space'.format(fn), buttons = QtGui.QMessageBox.Open)
+                warningbox.exec_()
+                newname = str(QtGui.QFileDialog.getOpenFileName(caption = 'Open space {0}'.format(fn), directory = '.', filter = '*.hdf5'))
+                newlist.append(newname)
+            else:
+                newlist.append(fn)    
+
+        widget = cls(newlist, cls.str_to_key(dict['key']), dict['projection'], parent = parent)
 
         return widget
     

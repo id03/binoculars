@@ -36,13 +36,69 @@ class HKProjection(HKLProjection):
         return 'H', 'K'
 
 class specularangles(backend.ProjectionBase):
-   def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-       delta,gamma = numpy.meshgrid(delta,gamma)
-       mu = mu * numpy.ones_like(delta)
-       return (gamma - mu , gamma + mu , delta)
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        delta,gamma = numpy.meshgrid(delta,gamma)
+        mu *= numpy.pi/180
+        delta *= numpy.pi/180
+        gamma *= numpy.pi/180
+        chi *= numpy.pi/180
+        phi *= numpy.pi/180
 
-   def get_axis_labels(self):
-       return 'g-m','g+m','delta'
+
+        def mat(u, th):
+            ux, uy, uz = u[0], u[1], u[2]
+            sint = numpy.sin(th)
+            cost = numpy.cos(th)
+            mcost = (1 - numpy.cos(th))
+
+            return numpy.matrix([[cost + ux**2 * mcost, ux * uy * mcost - uz * sint, ux * uz * mcost + uy * sint],
+                             [uy * ux * mcost + uz * sint, cost + uy**2 * mcost, uy * uz - ux * sint],
+                             [uz * ux * mcost - uy * sint, uz * uy * mcost + ux * sint, cost + uz**2 * mcost]])
+
+
+        def rot(vx, vy, vz, u, th):
+            R = mat(u, th)
+            return R[0,0] * vx + R[0,1] * vy + R[0,2] * vz, R[1,0] * vx + R[1,1] * vy + R[1,2] * vz, R[2,0] * vx + R[2,1] * vy + R[2,2] * vz 
+
+        #what are the angles of kin and kout in the sample frame?
+
+        #angles in the hexapod frame
+        koutx, kouty, koutz = numpy.sin(- numpy.pi / 2 + gamma) * numpy.cos(delta), numpy.sin(- numpy.pi / 2 + gamma) * numpy.sin(delta), numpy.cos(- numpy.pi / 2 + gamma)
+        kinx, kiny, kinz =  numpy.sin(numpy.pi / 2 - mu), 0 , numpy.cos(numpy.pi / 2 - mu)
+
+        #now we rotate the frame around hexapod rotation th
+        xaxis = numpy.array(rot(1,0,0, numpy.array([0,0,1]), theta))
+        yaxis = numpy.array(rot(0,1,0, numpy.array([0,0,1]), theta))
+
+        #first we rotate the sample around the xaxis
+        koutx, kouty, koutz = rot(koutx, kouty, koutz, xaxis,  chi)
+        kinx, kiny, kinz = rot(kinx, kiny, kinz, xaxis, chi)
+        yaxis = numpy.array(rot(yaxis[0], yaxis[1], yaxis[2], xaxis, chi))# we also have to rotate the yaxis
+
+        #then we rotate the sample around the yaxis
+        koutx, kouty, koutz = rot(koutx, kouty, koutz, yaxis,  phi)
+        kinx, kiny, kinz = rot(kinx, kiny, kinz, yaxis, phi)
+
+        #to calculate the equivalent gamma, delta and mu in the sample frame we rotate the frame around the sample z which is 0,0,1
+        back = numpy.arctan2(kiny, kinx)
+        koutx, kouty, koutz = rot(koutx, kouty, koutz, numpy.array([0,0,1]) ,  -back)
+        kinx, kiny, kinz = rot(kinx, kiny, kinz, numpy.array([0,0,1]) , -back)
+
+        mu = numpy.arctan2(kinz, kinx) * numpy.ones_like(delta)
+        delta = numpy.pi - numpy.arctan2(kouty, koutx)
+        gamma = numpy.pi - numpy.arctan2(koutz, koutx)
+
+        delta[delta > numpy.pi] -= 2 * numpy.pi
+        gamma[gamma > numpy.pi] -= 2 * numpy.pi
+
+        mu *= 1 / numpy.pi * 180
+        delta *= 1 / numpy.pi * 180
+        gamma *= 1 / numpy.pi * 180
+
+        return (gamma - mu , gamma + mu , delta)
+
+    def get_axis_labels(self):
+        return 'g-m','g+m','delta'
 
 class ThetaLProjection(backend.ProjectionBase):
     # arrays: gamma, delta
@@ -185,9 +241,12 @@ class ID03Input(backend.InputBase):
         self.config.imagefolder = config.pop('imagefolder', None) #Optional, takes specfile folder tag by default
         self.config.UB = config.pop('ub', None) #Optional, takes specfile matrix by default
         self.config.pr = config.pop('pr', None) #Optional, all range by default
+        self.config.hr = config.pop('hr', None) #Optional, hexapod rotations in miliradians. At the entered value the sample is assumed flat, if not entered the sample is assumed flat at the spec values.
         self.config.background = config.pop('background', None) #Optional, if supplied a space of this image is constructed
         if self.config.UB:
             self.config.UB = util.parse_tuple(self.config.UB, length=9, type=float)
+        if self.config.hr:
+            self.config.hr = util.parse_tuple(self.config.hr, length=2, type=float)
         if self.config.pr:
             self.config.pr = util.parse_tuple(self.config.pr, length=2, type=int)
         self.config.sdd = float(config.pop('sdd'))# sample to detector distance (mm)
@@ -263,10 +322,12 @@ class ID03Input(backend.InputBase):
     def get_point_params(self, scan, first, last):
         sl = slice(first, last+1)
 
-        GAM, DEL, TH, CHI, PHI, MU, MON, TRANSM = range(8)
-        params = numpy.zeros((last - first + 1, 8)) # gamma delta theta chi phi mu mon transm
+        GAM, DEL, TH, CHI, PHI, MU, MON, TRANSM, HRX, HRY = range(10)
+        params = numpy.zeros((last - first + 1, 10)) # gamma delta theta chi phi mu mon transm
         params[:, CHI] = scan.motorpos('Chi')
         params[:, PHI] = scan.motorpos('Phi')
+        params[:, HRX] = scan.motorpos('hrx')
+        params[:, HRY] = scan.motorpos('hry')
 
         if self.is_zap(scan):
             th = scan.datacol('th')
@@ -284,6 +345,11 @@ class ID03Input(backend.InputBase):
             transm[-1] = transm[-2] # bug in specfile
             params[:, TRANSM] = transm[sl]
         else:
+            if 'hrx' in scan.alllabels():
+                 params[:, HRX] = scan.datacol('hrx')[sl]
+            if 'hry' in scan.alllabels():
+                 params[:, HRY] = scan.datacol('hry')[sl]
+
             params[:, TH] = scan.datacol('thcnt')[sl]
             params[:, GAM] = scan.datacol('gamcnt')[sl]
             params[:, DEL] = scan.datacol('delcnt')[sl]
@@ -362,7 +428,13 @@ class EH1(ID03Input):
     monitor_counter = 'mon'
 
     def process_image(self, scanparams, pointparams, image):
-        gamma, delta, theta, chi, phi, mu, mon, transm = pointparams
+        gamma, delta, theta, chi, phi, mu, mon, transm, hrx, hry = pointparams
+
+        if self.config.hr:
+            zerohrx, zerohry = self.config.hr
+            chi = (hrx - zerohrx) / numpy.pi * 180. / 1000
+            phi = (hry - zerohry) / numpy.pi * 180. / 1000
+
         wavelength, UB = scanparams
         if self.config.background:
             data = image / mon
