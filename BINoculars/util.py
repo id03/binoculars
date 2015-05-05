@@ -293,6 +293,7 @@ def parse_bool(s):
         return False
     raise ValueError("invalid input for boolean: '{0}'".format(s))
 
+#Contains the unparsed config dicts
 class ConfigFile(object):
     def __init__(self, origin='n/a'):
         self.origin = origin
@@ -362,12 +363,22 @@ class ConfigFile(object):
     def copy(self):
         return copy.deepcopy(self)
 
+#contains one parsed dict, for distribution to dispatcher, input or projection class
 class ConfigSection(object):
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
     def copy(self):
         return copy.deepcopy(self)
+
+#contains the parsed configsections
+class ConfigSectionGroup(object):
+    def __init__(self, origin='n/a'):
+        self.origin = origin
+        self.sections = 'dispatcher', 'projection', 'input'
+        for section in self.sections:
+            setattr(self, section, ConfigSection())
+        self.configfile = ConfigFile()
 
 class ConfigurableObject(object):
     def __init__(self, config):           

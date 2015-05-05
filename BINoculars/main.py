@@ -26,11 +26,20 @@ def multiprocessing_main((config, command)): # note the double parenthesis for m
 
 class Main(object):
     def __init__(self, config, command):
-        self.config = config
+        if isinstance(config, util.ConfigSectionGroup):
+            self.config = config.configfile.copy()
+        elif isinstance(config, util.ConfigFile):
+            self.config = config.copy()
+        else:
+            raise ValueError('Configfile is the wrong type')
+
         spaceconf = self.config.copy()
-        self.dispatcher = backend.get_dispatcher(self.config.dispatcher, self, default='local')
-        self.projection = backend.get_projection(self.config.projection)
-        self.input = backend.get_input(self.config.input)
+
+        #input from either the configfile or the configsectiongroup is valid
+        self.dispatcher = backend.get_dispatcher(config.dispatcher, self, default='local')
+        self.projection = backend.get_projection(config.projection)
+        self.input = backend.get_input(config.input)
+
         self.dispatcher.config.destination.set_final_options(self.input.get_destination_options(command))
         self.dispatcher.config.destination.set_config(spaceconf)
         self.run(command)
@@ -81,7 +90,8 @@ class Main(object):
         return space.chunked_sum(generator(), chunksize=25)
 
     def clone_config(self):
-        config = util.ConfigFile()
+        config = util.ConfigSectionGroup()
+        config.configfile = self.config
         config.dispatcher = self.dispatcher.config.copy()
         config.projection = self.projection.config.copy()
         config.input = self.input.config.copy()

@@ -347,7 +347,7 @@ class Space(object):
 
     def copy(self):
         """Returns a copy of self. Numpy data is not shared, but the Axes object is."""
-        new = self.__class__(self.axes)
+        new = self.__class__(self.axes, self.config)
         new.photons[:] = self.photons
         new.contributions[:] = self.contributions
         return new

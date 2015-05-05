@@ -233,7 +233,7 @@ class Oar(ReentrantBase):
             for line in lines:
                 if line.startswith('OAR_JOB_ID='):
                     void, jobid = line.split('=')
-                    return jobid
+                    return jobid.strip()
         return False
 
     def oarstat(self, jobid):
