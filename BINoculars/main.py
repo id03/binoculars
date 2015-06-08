@@ -99,3 +99,30 @@ class Main(object):
 
     def get_reentrant(self):
         return multiprocessing_main
+
+class Split(Main): #completely ignores the dispatcher, just yields a space per image
+    def __init__(self, config, command):
+        self.command = command
+        if isinstance(config, util.ConfigSectionGroup):
+            self.config = config.configfile.copy()
+        elif isinstance(config, util.ConfigFile):
+            self.config = config.copy()
+        else:
+            raise ValueError('Configfile is the wrong type')
+
+        #input from either the configfile or the configsectiongroup is valid
+        self.projection = backend.get_projection(config.projection)
+        self.input = backend.get_input(config.input)
+
+    def process_job(self, job):
+        res = self.projection.config.resolution
+        labels = self.projection.get_axis_labels()
+        for intensity, params in self.input.process_job(job):
+            coords = self.projection.project(*params)
+            yield space.Space.from_image(res, labels, coords, intensity)
+
+    def run(self):
+        for job in self.input.generate_jobs(self.command):
+            for space in self.process_job(job):
+                yield space
+

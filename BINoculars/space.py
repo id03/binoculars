@@ -774,3 +774,27 @@ def get_bins(ax, resolution):
     mi, ma = ax.min, ax.max
     return numpy.linspace(mi, ma, numpy.ceil(1 / numpy.float(resolution) * (ma - mi)))
 
+def dstack(spaces, dindices, dlabel, dresolution):
+    result = EmptySpace()
+    for space, dindex in itertools.izip(spaces, dindices):
+        resolutions = list(ax.res for ax in space.axes)
+        resolutions.append(dresolution)
+        labels = list(ax.label for ax in space.axes)
+        labels.append(dlabel)
+        exprs = list(ax.label for ax in space.axes)
+        exprs.append('ones_like({0}) * {1}'.format(labels[0], dindex))
+        transformation = util.transformation_from_expressions(space, exprs)
+        result += space.transform_coordinates(resolutions, labels, transformation)
+    return result
+
+def axis_offset(space, label, offset):
+    exprs = list(ax.label for ax in space.axes)
+    index = space.axes.index(label)
+    exprs[index] += '+ {0}'.format(offset)
+    transformation = util.transformation_from_expressions(space, exprs)
+    return space.transform_coordinates((ax.res for ax in space.axes), (ax.label for ax in space.axes), transformation)
+
+def bkgsubtract(space, bkg):
+    bkg.photons = bkg.photons * space.contributions / bkg.contributions
+    bkg.contributions = space.contributions
+    return space - bkg 

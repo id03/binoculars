@@ -3,6 +3,7 @@ import os
 import itertools
 import glob
 import numpy
+import time
 
 try:
     from PyMca import specfilewrapper, EdfFile, SixCircle, specfile
@@ -193,6 +194,15 @@ class GammaDeltaTheta(HKLProjection):#just passing on the coordinates, makes it 
     def get_axis_labels(self):
         return 'Gamma','Delta','Theta'
 
+class GammaDelta(HKLProjection):#just passing on the coordinates, makes it easy to accurately test the theta correction
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        delta,gamma = numpy.meshgrid(delta,gamma)
+        return (gamma, delta)        
+
+    def get_axis_labels(self):
+        return 'Gamma','Delta'
+
+
 class GammaDeltaMu(HKLProjection):#just passing on the coordinates, makes it easy to accurately test the theta correction
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         delta,gamma = numpy.meshgrid(delta,gamma)
@@ -331,10 +341,11 @@ class ID03Input(backend.InputBase):
         params[:, HRY] = scan.motorpos('hry')
 
         if self.is_zap(scan):
-            th = scan.datacol('th')
+            #th = scan.datacol('th')
             # correction for difference between back and forth in th motor
-            th -= (th[1] - th[0]) / 2
-            params[:, TH] = th[sl]
+            #th -= (th[1] - th[0]) / 2
+            #params[:, TH] = th[sl]
+            params[:, TH] = scan.motorpos('Theta')
 
             params[:, GAM] = scan.motorpos('Gam')
             params[:, DEL] = scan.motorpos('Delta')
@@ -445,7 +456,7 @@ class EH1(ID03Input):
         if mon == 0:
             raise ValueError('Monitor is zero, this results in empty output') 
 
-        print 'gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu)
+        print '{4}| gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu, time.ctime(time.time()))
 
         # pixels to angles
         pixelsize = numpy.array(self.config.pixelsize)
@@ -487,7 +498,7 @@ class EH2(ID03Input):
         if mon == 0:
             raise ValueError('Monitor is zero, this results in empty output') 
 
-        print 'gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu)
+        print '{4}| gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu, time.ctime(time.time()))
 
         # area correction
         sdd = self.config.sdd / numpy.cos(gamma * numpy.pi / 180)

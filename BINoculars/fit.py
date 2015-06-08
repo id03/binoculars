@@ -179,6 +179,10 @@ class Gaussian1D(PeakFitBase):
 
 class Voigt1D(PeakFitBase):
     @staticmethod
-    def func((x,), (loc, I, sigma, gamma, offset, slope)):
+    def func((x,), (I, loc, sigma ,gamma, slope, offset)):
         z = (x - loc + numpy.complex(0, gamma)) / (sigma * numpy.sqrt(2))
         return I * numpy.real(scipy.special.wofz(z))/(sigma * numpy.sqrt(2 *  numpy.pi)) + offset + x * slope
+
+    def set_guess(self, maximum , argmax, linparams):
+        gamma0 = 5 * self.space.axes[0].res #estimated FWHM on 10 pixels
+        self.guess =  [maximum, argmax[0], 0.01 ,gamma0, linparams[0], linparams[1]] 
