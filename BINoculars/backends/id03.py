@@ -254,6 +254,7 @@ class ID03Input(backend.InputBase):
         self.config.pr = config.pop('pr', None) #Optional, all range by default
         self.config.hr = config.pop('hr', None) #Optional, hexapod rotations in miliradians. At the entered value the sample is assumed flat, if not entered the sample is assumed flat at the spec values.
         self.config.background = config.pop('background', None) #Optional, if supplied a space of this image is constructed
+        self.config.th_offset = float(config.pop('th_offset', 0)) #Optional; Only used in zapscans, zero by default.
         if self.config.UB:
             self.config.UB = util.parse_tuple(self.config.UB, length=9, type=float)
         if self.config.hr:
@@ -341,11 +342,17 @@ class ID03Input(backend.InputBase):
         params[:, HRY] = scan.motorpos('hry')
 
         if self.is_zap(scan):
-            #th = scan.datacol('th')
-            # correction for difference between back and forth in th motor
-            #th -= (th[1] - th[0]) / 2
-            #params[:, TH] = th[sl]
-            params[:, TH] = scan.motorpos('Theta')
+            if 'th' in scan.alllabels():
+                th = scan.datacol('th')[sl]
+	            if len(th) > 1:
+	                sign = numpy.sign(th[1] - th[0])
+	            else:
+	                sign = 1
+                # correction for difference between back and forth in th motor
+                params[:, TH] = th + sign * self.config.th_offset
+            else:
+                params[:, TH] = scan.motorpos('Theta')
+
 
             params[:, GAM] = scan.motorpos('Gam')
             params[:, DEL] = scan.motorpos('Delta')
@@ -537,10 +544,16 @@ class EH2(ID03Input):
  
         
         if self.is_zap(scan):
-            th = scan.datacol('th')
-            # correction for difference between back and forth in th motor
-            th -= (th[1] - th[0]) / 2
-            params[:, TH] = th[sl]
+            if 'th' in scan.alllabels():
+                th = scan.datacol('th')[sl]
+	            if len(th) > 1:
+	                sign = numpy.sign(th[1] - th[0])
+	            else:
+	                sign = 1
+                # correction for difference between back and forth in th motor
+                params[:, TH] = th + sign * self.config.th_offset
+            else:
+                params[:, TH] = scan.motorpos('Theta')
 
             params[:, GAM] = scan.motorpos('Gamma')
             params[:, DEL] = scan.motorpos('Delta')
