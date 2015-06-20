@@ -14,3 +14,6 @@ class HDF5FileError(FileError):
 
 class SubprocessError(ExceptionBase):
     pass
+
+class BackendError(ExceptionBase):
+    pass

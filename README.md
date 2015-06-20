@@ -6,7 +6,7 @@ BINoculars is a tool for data reduction and analysis of large sets of surface di
 
 ## Installation
 
-Grab the [latest sourcecode as zip](https://github.com/id03/binoculars/archive/master.zip) or clone the Git repository. Run `binoculars.py`, `fitaid.py`, `gui.py` or `processwizard.py` directly from the command line.
+Grab the [latest sourcecode as zip](https://github.com/id03/binoculars/archive/master.zip) or clone the Git repository. Run `binoculars.py`, `fitaid.py`, `gui.py` or `processgui.py` directly from the command line.
 
 
 ## Usage
@@ -16,7 +16,7 @@ The [BINoculars wiki](https://github.com/id03/binoculars/wiki) contains a detail
 
 ## Scripting
 
-If you want more complex operations than offered by the command line or GUI tools, you can manipulation BINoculars data directly from Python. Some examples with detailed comments can be found in the [repository](https://github.com/id03/binoculars/tree/master/examples/scripts). The API documentation on the `BINoculars` and `BINoculars.space` modules can be accessed via pydoc, e.g. run `pydoc -w BINoculars BINoculars.space` to generate HTML files. 
+If you want more complex operations than offered by the command line or GUI tools, you can manipulate BINoculars data directly from Python. Some examples with detailed comments can be found in the [repository](https://github.com/id03/binoculars/tree/master/examples/scripts). The API documentation on the `BINoculars` and `BINoculars.space` modules can be accessed via pydoc, e.g. run `pydoc -w BINoculars BINoculars.space` to generate HTML files. 
 
 
 ## Extending BINoculars

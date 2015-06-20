@@ -182,14 +182,9 @@ class Oar(ReentrantBase):
 
     def sum(self, results):
         jobs = list(results)
+        jobscopy = jobs[:]
         self.oarwait(jobs)
-
-        # cleanup:
-        for f in itertools.chain(self.configfiles, self.intermediates):
-            try:
-                os.remove(f)
-            except Exception as e:
-                print "unable to remove {0}: {1}".format(f, e)
+        self.oar_cleanup(jobscopy)
         return True
 
     def run_specific_task(self, command):
@@ -279,3 +274,29 @@ class Oar(ReentrantBase):
                 i += 1
             util.status('{0}: {1} jobs to go. {2} waiting, {3} running, {4} unknown.'.format(time.ctime(),len(jobs),W,R,U))
         util.statuseol()
+
+    def oar_cleanup(self, jobs):
+        # cleanup:
+        for f in itertools.chain(self.configfiles, self.intermediates):
+            try:
+                os.remove(f)
+            except Exception as e:
+                print "unable to remove {0}: {1}".format(f, e)
+
+        errorfn = []        
+
+        for jobid in jobs:
+            errorfilename = 'OAR.{0}.stderr'.format(jobid)
+
+            if os.path.exists(errorfilename):
+                with open(errorfilename, 'r') as fp:
+                    errormsg = fp.read()
+                if len(errormsg) > 0:
+                    errorfn.append(errorfilename)
+                    print 'Critical error: OAR Job {0} failed with the following error: \n{1}'.format(jobid, errormsg)
+                    
+
+        if len(errorfn) > 0:
+            print 'Warning! {0} job(s) failed. See above for the details or the error log files: {1}'.format(len(errorfn), ', '.join(errorfn))
+                        
+

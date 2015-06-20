@@ -13,7 +13,6 @@ except ImportError:
 
 from .. import backend, errors, util
 
-
 class HKLProjection(backend.ProjectionBase):
     # arrays: gamma, delta
     # scalars: theta, mu, chi, phi
@@ -214,6 +213,10 @@ class GammaDeltaMu(HKLProjection):#just passing on the coordinates, makes it eas
 
 class ID03Input(backend.InputBase):
     # OFFICIAL API
+
+    dbg_scanno = None
+    dbg_pointno = None
+
     def generate_jobs(self, command):
         scans = util.parse_multi_range(','.join(command).replace(' ', ','))
         if not len(scans):
@@ -237,12 +240,22 @@ class ID03Input(backend.InputBase):
     def process_job(self, job):
         scan = self.get_scan(job.scan)
         
-        scanparams = self.get_scan_params(scan) # wavelength, UB
-        pointparams = self.get_point_params(scan, job.firstpoint, job.lastpoint) # 2D array of diffractometer angles + mon + transm
-        images = self.get_images(scan, job.firstpoint, job.lastpoint) # iterator!
+        try:
+            scanparams = self.get_scan_params(scan) # wavelength, UB
+            pointparams = self.get_point_params(scan, job.firstpoint, job.lastpoint) # 2D array of diffractometer angles + mon + transm
+            images = self.get_images(scan, job.firstpoint, job.lastpoint) # iterator!
         
-        for pp, image in itertools.izip(pointparams, images):
-            yield self.process_image(scanparams, pp, image)
+            for pp, image in itertools.izip(pointparams, images):
+                yield self.process_image(scanparams, pp, image)
+        except Exception, exc:
+            args = exc.args
+            if not args:
+                arg0 = ''
+            else:
+                arg0 = args[0]
+            arg0 += ', for scan {0} at point {1}'.format(self.dbg_scanno, self.dbg_pointno)
+            exc.args = (arg0, )
+            raise
 
     def parse_config(self, config):
         super(ID03Input, self).parse_config(config)
@@ -302,9 +315,9 @@ class ID03Input(backend.InputBase):
         roi = data[ymask, :]
         return roi[:, xmask]
 
-
     # MAIN LOGIC
     def get_scan_params(self, scan):
+        self.dbg_scanno = scan.number()
         if self.is_zap(scan):
             # zapscans don't contain the UB matrix, this needs to be fixed at ID03
             scanno = scan.number()
@@ -338,16 +351,21 @@ class ID03Input(backend.InputBase):
         params = numpy.zeros((last - first + 1, 10)) # gamma delta theta chi phi mu mon transm
         params[:, CHI] = scan.motorpos('Chi')
         params[:, PHI] = scan.motorpos('Phi')
-        params[:, HRX] = scan.motorpos('hrx')
-        params[:, HRY] = scan.motorpos('hry')
+
+        try:
+            params[:, HRX] = scan.motorpos('hrx')
+            params[:, HRY] = scan.motorpos('hry')
+        except:
+            raise errors.BackendError('The specfile does not accept hrx and hry as a motor label. Have you selected the right hutch? Scannumber = {0}, pointnumber = {1}'.format(self.dbg_scanno, self.dbg_pointno)) 
+
 
         if self.is_zap(scan):
             if 'th' in scan.alllabels():
                 th = scan.datacol('th')[sl]
-	            if len(th) > 1:
-	                sign = numpy.sign(th[1] - th[0])
-	            else:
-	                sign = 1
+                if len(th) > 1:
+                    sign = numpy.sign(th[1] - th[0])
+                else:
+                    sign = 1
                 # correction for difference between back and forth in th motor
                 params[:, TH] = th + sign * self.config.th_offset
             else:
@@ -372,7 +390,12 @@ class ID03Input(backend.InputBase):
             params[:, TH] = scan.datacol('thcnt')[sl]
             params[:, GAM] = scan.datacol('gamcnt')[sl]
             params[:, DEL] = scan.datacol('delcnt')[sl]
-            params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
+
+            try:
+                params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
+            except:
+                raise errors.BackendError('The specfile does not accept {2} as a monitor label. Have you selected the right hutch? Scannumber = {0}, pointnumber = {1}'.format(self.dbg_scanno, self.dbg_pointno, self.monitor_counter)) 
+
             params[:, TRANSM] = scan.datacol('transm')[sl]
             params[:, MU] = scan.datacol('mucnt')[sl]
         
@@ -387,6 +410,7 @@ class ID03Input(backend.InputBase):
             else:
                 edf = EdfFile.EdfFile(self.config.background)
                 for i in range(first, last+1):
+                    self.dbg_pointno = i
                     yield edf.GetData(0)
         else:
             if self.is_zap(scan):
@@ -407,6 +431,7 @@ class ID03Input(backend.InputBase):
                 else:
                     edf = EdfFile.EdfFile(matches[0])
                     for i in range(first, last+1):
+                        self.dbg_pointno = i
                         yield edf.GetData(i)
 
             else:
@@ -424,6 +449,7 @@ class ID03Input(backend.InputBase):
                     yield
                 else:
                     for i in range(first, last+1):
+                        self.dbg_pointno = i
                         edf = EdfFile.EdfFile(matches[i])
                         yield edf.GetData(0)
 
@@ -438,7 +464,7 @@ class ID03Input(backend.InputBase):
            imagefolder = os.path.join(UCCD[:-1])
 
        if not os.path.exists(imagefolder):
-           raise ValueError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))
+           raise errors.ConfigError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))
        return os.path.join(imagefolder, '*')
        
 
@@ -461,7 +487,7 @@ class EH1(ID03Input):
             data = image / mon / transm
 
         if mon == 0:
-            raise ValueError('Monitor is zero, this results in empty output') 
+            raise errors.BackendError('Monitor is zero, this results in empty output. Scannumber = {0}, pointnumber = {1}. Did you forget to open the shutter?'.format(self.dbg_scanno, self.dbg_pointno)) 
 
         print '{4}| gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu, time.ctime(time.time()))
 
@@ -495,6 +521,7 @@ class EH2(ID03Input):
         super(EH2, self).parse_config(config)
         
     def process_image(self, scanparams, pointparams, image):
+
         gamma, delta, theta, chi, phi, mu, mon, transm = pointparams
         wavelength, UB = scanparams
         if self.config.background:
@@ -503,7 +530,7 @@ class EH2(ID03Input):
             data = image / mon / transm
 
         if mon == 0:
-            raise ValueError('Monitor is zero, this results in empty output') 
+            raise errors.BackendError('Monitor is zero, this results in empty output. Scannumber = {0}, pointnumber = {1}. Did you forget to open the shutter?'.format(self.dbg_scanno, self.dbg_pointno)) 
 
         print '{4}| gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu, time.ctime(time.time()))
 
@@ -546,10 +573,10 @@ class EH2(ID03Input):
         if self.is_zap(scan):
             if 'th' in scan.alllabels():
                 th = scan.datacol('th')[sl]
-	            if len(th) > 1:
-	                sign = numpy.sign(th[1] - th[0])
-	            else:
-	                sign = 1
+                if len(th) > 1:
+                    sign = numpy.sign(th[1] - th[0])
+                else:
+                    sign = 1
                 # correction for difference between back and forth in th motor
                 params[:, TH] = th + sign * self.config.th_offset
             else:
@@ -558,8 +585,6 @@ class EH2(ID03Input):
             params[:, GAM] = scan.motorpos('Gamma')
             params[:, DEL] = scan.motorpos('Delta')
             params[:, MU] = scan.motorpos('Mu')
-
-
             params[:, MON] = scan.datacol('zap_mon')[sl]
 
             transm = scan.datacol('zap_transm')
@@ -569,7 +594,12 @@ class EH2(ID03Input):
             params[:, TH] = scan.datacol('thcnt')[sl]
             params[:, GAM] = scan.datacol('gamcnt')[sl]
             params[:, DEL] = scan.datacol('delcnt')[sl]
-            params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
+
+            try:
+                params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
+            except:
+                raise errors.BackendError('The specfile does not accept {2} as a monitor label. Have you selected the right hutch? Scannumber = {0}, pointnumber = {1}'.format(self.dbg_scanno, self.dbg_pointno, self.monitor_counter)) 
+    
             params[:, TRANSM] = scan.datacol('transm')[sl]
             params[:, MU] = scan.datacol('mucnt')[sl]
         return params
