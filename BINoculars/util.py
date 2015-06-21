@@ -303,34 +303,34 @@ class ConfigFile(object):
 
     @classmethod
     def fromfile(cls, filename):
-        if os.path.exists(filename):
-            configobj = cls(filename)
-            with open_h5py(filename, 'r') as fp:
-                try:
-                    config = fp['configuration']
-                except KeyError as e:
-                    config = [] # when config is not present, proceed without Error
-                for section in config:
-                    setattr(configobj, section, dict(config[section]))
-        else:
-            raise IOError('Error importing configuration file. filename {0} does not exist'.format(filename))
+        if type(filename) is str:
+            if not os.path.exists(filename):
+                raise IOError('Error importing configuration file. filename {0} does not exist'.format(filename))
+
+        configobj = cls(filename)
+        with open_h5py(filename, 'r') as fp:
+            try:
+                config = fp['configuration']
+            except KeyError as e:
+                config = [] # when config is not present, proceed without Error
+            for section in config:
+                setattr(configobj, section, dict(config[section]))
         return configobj
 
     @classmethod
     def fromtxtfile(cls, filename, overrides=[]):
-        if os.path.exists(filename):
-            config = ConfigParser.RawConfigParser()
-            config.read(filename)
-
-            for section, option, value in overrides:
-                config.set(section, option, value)
-
-            configobj = cls(filename)
-            for section in configobj.sections:
-                setattr(configobj, section, dict((k, v.split('#')[0].strip()) for (k, v) in config.items(section)))
-        else:
+        if not os.path.exists(filename):
             raise IOError('Error importing configuration file. filename {0} does not exist'.format(filename))
 
+        config = ConfigParser.RawConfigParser()
+        config.read(filename)
+
+        for section, option, value in overrides:
+            config.set(section, option, value)
+
+        configobj = cls(filename)
+        for section in configobj.sections:
+            setattr(configobj, section, dict((k, v.split('#')[0].strip()) for (k, v) in config.items(section)))
         return configobj
 
     def tofile(self, filename):
