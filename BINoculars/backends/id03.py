@@ -247,7 +247,7 @@ class ID03Input(backend.InputBase):
         
             for pp, image in itertools.izip(pointparams, images):
                 yield self.process_image(scanparams, pp, image)
-        except Exception, exc:
+        except Exception as exc:
             args = exc.args
             if not args:
                 arg0 = ''

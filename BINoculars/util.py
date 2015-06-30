@@ -303,7 +303,7 @@ class ConfigFile(object):
 
     @classmethod
     def fromfile(cls, filename):
-        if type(filename) is str:
+        if isinstance(filename, basestring):
             if not os.path.exists(filename):
                 raise IOError('Error importing configuration file. filename {0} does not exist'.format(filename))
 
