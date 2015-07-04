@@ -99,7 +99,7 @@ class Axis(object):
             if value.stop is None:
                 stop = None
             else:
-                stop = self.get_index(value.stop)
+                stop = self.get_index(value.stop) + 1
             if start is not None and stop is not None and start > stop:
                 start, stop = stop, start
             return slice(start, stop)
@@ -149,9 +149,9 @@ class Axis(object):
 
     def restrict(self, value):#Usefull for plotting
        if isinstance(value, numbers.Number):
-           if value <= self.min:
+           if value < self.min:
                return self.min
-           elif value >= self.max:
+           elif value > self.max:
                return self.max
            else:
                return value
@@ -553,7 +553,10 @@ class Space(object):
     
         resolution    n-tuple of floats, new resolution of each axis"""
         if not len(resolutions) == len(self.axes):
-            raise ValueError('cannot rebin space with different dimensionality compatible')
+            raise ValueError('cannot rebin space with different dimensionality')
+        if resolutions == tuple(ax.res for ax in self.axes):
+            return self
+
         labels = tuple(ax.label for ax in self.axes)
         coordinates = tuple(grid.flatten() for grid in self.get_grid())
 
@@ -564,26 +567,6 @@ class Space(object):
         new = self.from_image(resolutions, labels, coordinates, self.photons.flatten())
         new.contributions = contributions
         return new
-
-    def make_compatible(self, other):
-        if not isinstance(other, Space):
-            return NotImplemented
-        if not len(self.axes) == len(other.axes):
-            raise ValueError('cannot make spaces with different dimensionality compatible')
-
-        other = other.reorder(tuple(ax.label for ax in self.axes)) 
-
-        resolutions = tuple(max(a.res, b.res) for (a, b) in zip(self.axes, other.axes))
-        keys = tuple(slice(max(a.min, b.min), min(a.max, b.max)) for (a, b) in zip(self.axes, other.axes))
-
-        for key in keys:
-            if key.start > key.stop:
-               raise ValueError('spaces to be compared have no overlap')
-
-        newself = self.__getitem__(keys).rebin2(resolutions)
-        newother =  other.__getitem__(keys).rebin2(resolutions)
-
-        return newself, newother
 
     def reorder(self, labels):
         """Change order of axes."""
@@ -797,4 +780,16 @@ def axis_offset(space, label, offset):
 def bkgsubtract(space, bkg):
     bkg.photons = bkg.photons * space.contributions / bkg.contributions
     bkg.contributions = space.contributions
-    return space - bkg 
+    return space - bkg
+
+def make_compatible(spaces):
+    if not numpy.alen(numpy.unique(len(space.axes) for space in spaces)) == 1:    
+        raise ValueError('cannot make spaces with different dimensionality compatible')
+    ax0 = tuple(ax.label for ax in spaces[0].axes)
+    resmax = tuple(numpy.vstack(tuple(ax.res for ax in space.reorder(ax0).axes) for space in spaces).max(axis = 0))
+    resmin = tuple(numpy.vstack(tuple(ax.res for ax in space.reorder(ax0).axes) for space in spaces).min(axis = 0))
+    if not resmax == resmin:
+        print 'Warning: Not all spaces have the same resolution. Resolution will be changed to: {0}'.format(resmax)
+    return tuple(space.reorder(ax0).rebin2(resmax) for space in spaces)
+
+

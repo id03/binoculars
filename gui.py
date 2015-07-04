@@ -337,11 +337,11 @@ class Window(QtGui.QMainWindow):
         fname = dialog.selectedFiles()[0]
         if not fname:
             return
-        #try:
-        index = self.tab_widget.currentIndex()
-        widget.merge(str(fname))
-        #except Exception as e:
-        #    QtGui.QMessageBox.critical(self, 'export fitdata', 'Unable to save mesh to {}: {}'.format(fname, e))
+        try:
+            index = self.tab_widget.currentIndex()
+            widget.merge(str(fname))
+        except Exception as e:
+            QtGui.QMessageBox.critical(self, 'merge', 'Unable to save mesh to {}: {}'.format(fname, e))
 
     def subtract(self):
         dialog = QtGui.QFileDialog(self, "subtract space");
@@ -619,7 +619,7 @@ class ProjectWidget(QtGui.QWidget):
     def merge(self, filename):
         try:
             spaces = tuple(BINoculars.space.Space.fromfile(selected_filename) for selected_filename in self.table.selection)
-            newspace = BINoculars.space.sum(spaces)
+            newspace = BINoculars.space.sum(BINoculars.space.make_compatible(spaces))
             newspace.tofile(filename)
             map(self.table.remove, self.table.selection)
             self.table.addspace(filename, True)
