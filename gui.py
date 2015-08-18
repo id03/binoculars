@@ -391,7 +391,11 @@ class ProjectWidget(QtGui.QWidget):
         self.log.setChecked(True)
         QtCore.QObject.connect(self.log, QtCore.SIGNAL("stateChanged(int)"), self.plot)
 
-        self.samerange = QtGui.QCheckBox('same intensity range', self)
+        self.swap_axes = QtGui.QCheckBox('swap axes', self)
+        self.swap_axes.setChecked(False)
+        QtCore.QObject.connect(self.swap_axes, QtCore.SIGNAL("stateChanged(int)"), self.plot)
+
+        self.samerange = QtGui.QCheckBox('same range', self)
         self.samerange.setChecked(False)
         QtCore.QObject.connect(self.samerange, QtCore.SIGNAL("stateChanged(int)"), self.update_colorbar)
 
@@ -444,6 +448,7 @@ class ProjectWidget(QtGui.QWidget):
         datarangebox.addWidget(self.log)
         datarangebox.addWidget(self.samerange)
         datarangebox.addWidget(self.legend)
+        datarangebox.addWidget(self.swap_axes)
 
 
         left.addLayout(radiobox)
@@ -514,9 +519,11 @@ class ProjectWidget(QtGui.QWidget):
         if len(self.limitwidget.sliders) - len(self.projection) == 1:
             self.datarange.setDisabled(True)
             self.samerange.setDisabled(True)
+            self.swap_axes.setDisabled(True)
         elif len(self.limitwidget.sliders) - len(self.projection) == 2:
             self.datarange.setEnabled(True)
             self.samerange.setEnabled(True)
+            self.swap_axes.setEnabled(True)
         self.plot()
 
     def get_norm(self, mi, ma):
@@ -604,6 +611,9 @@ class ProjectWidget(QtGui.QWidget):
             if plotoption == 'grid':
                 self.ax = self.figure.add_subplot(plotrows, plotcolumns, i+1)
                 self.ax.set_title(basename)
+
+            if space.dimension == 2 and self.swap_axes.checkState():
+                space = space.reorder(list(ax.label for ax in space.axes)[::-1])
 
             self.ax.space = space
             im = BINoculars.plot.plot(space,self.figure, self.ax, log = log,label = basename, norm = norm[i])         
