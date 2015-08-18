@@ -147,7 +147,7 @@ class Axis(object):
         return '{0.__class__.__name__} {0.label} (min={0.min}, max={0.max}, res={0.res}, count={1})'.format(self, len(self))
 
 
-    def restrict(self, value):#Usefull for plotting
+    def restrict(self, value):#Useful for plotting
        if isinstance(value, numbers.Number):
            if value < self.min:
                return self.min
@@ -758,8 +758,7 @@ def get_bins(ax, resolution):
     return numpy.linspace(mi, ma, numpy.ceil(1 / numpy.float(resolution) * (ma - mi)))
 
 def dstack(spaces, dindices, dlabel, dresolution):
-    result = EmptySpace()
-    for space, dindex in itertools.izip(spaces, dindices):
+    def transform(space, dindex):
         resolutions = list(ax.res for ax in space.axes)
         resolutions.append(dresolution)
         labels = list(ax.label for ax in space.axes)
@@ -767,8 +766,8 @@ def dstack(spaces, dindices, dlabel, dresolution):
         exprs = list(ax.label for ax in space.axes)
         exprs.append('ones_like({0}) * {1}'.format(labels[0], dindex))
         transformation = util.transformation_from_expressions(space, exprs)
-        result += space.transform_coordinates(resolutions, labels, transformation)
-    return result
+        return space.transform_coordinates(resolutions, labels, transformation)
+    return sum(transform(space, dindex) for space, dindex in itertools.izip(spaces, dindices))
 
 def axis_offset(space, label, offset):
     exprs = list(ax.label for ax in space.axes)
@@ -779,6 +778,7 @@ def axis_offset(space, label, offset):
 
 def bkgsubtract(space, bkg):
     bkg.photons = bkg.photons * space.contributions / bkg.contributions
+    bkg.photons[bkg.contributions == 0] = 0
     bkg.contributions = space.contributions
     return space - bkg
 
