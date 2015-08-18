@@ -17,3 +17,13 @@ class SubprocessError(ExceptionBase):
 
 class BackendError(ExceptionBase):
     pass
+
+
+def addmessage(args, errormsg):
+    if not args:
+        arg0 = ''
+    else:
+        arg0 = args[0]
+    arg0 += errormsg
+    return (arg0, )
+

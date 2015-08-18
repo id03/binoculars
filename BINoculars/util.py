@@ -13,7 +13,7 @@ import argparse
 import h5py
 import ConfigParser
 import glob
-
+import errors
 
 ### ARGUMENT HANDLING
 
@@ -273,6 +273,8 @@ def parse_range(r):
         return []
 
 def parse_multi_range(s):
+    if not s:
+        return s
     out = []
     ranges = s.split(',')
     for r in ranges:
@@ -282,7 +284,7 @@ def parse_multi_range(s):
 def parse_tuple(s, length=None, type=str):
     t = tuple(type(i) for i in s.split(','))
     if length is not None and len(t) != length:
-        raise ValueError('invalid tuple length: expected {0} got {0}'.format(length, len(t)))
+        raise ValueError('invalid tuple length: expected {0} got {1}'.format(length, len(t)))
     return t
 
 def parse_bool(s):
@@ -392,7 +394,15 @@ class ConfigurableObject(object):
             self.config = config
         else:
             self.config = ConfigSection()
-            self.parse_config(config)
+            try:
+                allkeys = config.keys()
+                self.parse_config(config)
+            except KeyError as exc:
+                raise errors.ConfigError("Configuration option {0} is missing from the configuration file. Please specify this option in the configuration file".format(exc))
+            except Exception as exc:
+                missing = set(key for key in allkeys if key not in self.config.__dict__.keys()) - set(config.keys())
+                exc.args = errors.addmessage(exc.args, ". Unable to parse configuration option '{0}'. The error can quite likely be solved by modifying the option in the configuration file.".format(','.join(missing)))
+                raise
             for k in config:
                 print 'warning: unrecognized configuration option {0} for {1}'.format(k, self.__class__.__name__)
             self.config.class_ = self.__class__
