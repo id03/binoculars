@@ -131,8 +131,8 @@ def get_class_by_name(name):
     for k, v in globals().iteritems():
         if isinstance(v, type) and issubclass(v, FitBase):
             options[k.lower()] = v
-    if name in options:
-        return options[name]
+    if name.lower() in options:
+        return options[name.lower()]
     else:
         raise ValueError("unsupported fit function '{0}'".format(name))
 
@@ -147,6 +147,26 @@ class Lorentzian1D(PeakFitBase):
         gamma0 = 5 * self.space.axes[0].res #estimated FWHM on 10 pixels
         self.guess =  [maximum , argmax[0], gamma0, linparams[0], linparams[1]] 
 
+class Lorentzian1DNoBkg(PeakFitBase):
+    @staticmethod
+    def func((x,), (I, loc ,gamma)):
+        return I / ((x - loc)**2 + gamma**2)
+
+    def set_guess(self, maximum , argmax, linparams):
+        gamma0 = 5 * self.space.axes[0].res #estimated FWHM on 10 pixels
+        self.guess =  [maximum , argmax[0], gamma0] 
+
+class PolarLorentzian2Dnobkg(PeakFitBase):
+    @staticmethod
+    def func((x,y), (I, loc0, loc1, gamma0, gamma1, th)):
+        a,b = tuple(grid - center for grid, center in zip(rot2d(x,y,th),rot2d(loc0,loc1,th)))
+        return (I  / (1 + (a / gamma0)**2 + (b / gamma1)**2 ))
+
+    def set_guess(self, maximum , argmax, linparams):
+        gamma0 = self.space.axes[0].res#estimated FWHM on 10 pixels
+        gamma1 = self.space.axes[1].res
+        self.guess = [maximum , argmax[0], argmax[1], gamma0, gamma1, 0]
+
 class PolarLorentzian2D(PeakFitBase):
     @staticmethod
     def func((x,y), (I, loc0, loc1, gamma0, gamma1, th, slope1, slope2, offset)):
@@ -158,6 +178,10 @@ class PolarLorentzian2D(PeakFitBase):
         gamma1 = self.space.axes[1].res
         self.guess = [maximum , argmax[0], argmax[1], gamma0, gamma1, 0, linparams[0], linparams[1], linparams[2]]
 
+    def integrate_signal(self):
+        return self.func(self.cxdata, (self.result[0], self.result[1], self.result[2], self.result[3], self.result[4], self.result[5], 0, 0, 0)).sum()
+
+
 class Lorentzian2D(PeakFitBase):
     @staticmethod
     def func((x,y), (I, loc0, loc1, gamma0, gamma1, th, slope1, slope2, offset)):
@@ -168,6 +192,18 @@ class Lorentzian2D(PeakFitBase):
         gamma0 = 5 * self.space.axes[0].res #estimated FWHM on 10 pixels
         gamma1 = 5 * self.space.axes[1].res 
         self.guess = [maximum , argmax[0], argmax[1],gamma0, gamma1, 0, linparams[0], linparams[1], linparams[2]] 
+
+class Lorentzian2Dnobkg(PeakFitBase):
+    @staticmethod
+    def func((x,y), (I, loc0, loc1, gamma0, gamma1, th)):
+        a,b = tuple(grid - center for grid, center in zip(rot2d(x,y,th),rot2d(loc0,loc1,th)))
+        return (I  / (1 + (a/gamma0)**2) * 1 / (1 + (b/gamma1)**2))
+
+    def set_guess(self, maximum , argmax, linparams):
+        gamma0 = 5 * self.space.axes[0].res #estimated FWHM on 10 pixels
+        gamma1 = 5 * self.space.axes[1].res 
+        self.guess = [maximum , argmax[0], argmax[1],gamma0, gamma1, 0] 
+
 
 class Lorentzian(AutoDimensionFit):
     dimensions = {1: Lorentzian1D, 2: PolarLorentzian2D}
