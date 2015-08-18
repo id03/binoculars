@@ -13,6 +13,15 @@ except ImportError:
 
 from .. import backend, errors, util
 
+
+class pixels(backend.ProjectionBase):
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        y,x = numpy.mgrid[slice(None,gamma.shape[0]), slice(None,delta.shape[0])]
+        return (y, x)        
+
+    def get_axis_labels(self):
+        return 'y','x'
+
 class HKLProjection(backend.ProjectionBase):
     # arrays: gamma, delta
     # scalars: theta, mu, chi, phi
@@ -248,42 +257,33 @@ class ID03Input(backend.InputBase):
             for pp, image in itertools.izip(pointparams, images):
                 yield self.process_image(scanparams, pp, image)
         except Exception as exc:
-            args = exc.args
-            if not args:
-                arg0 = ''
-            else:
-                arg0 = args[0]
-            arg0 += ', for scan {0} at point {1}'.format(self.dbg_scanno, self.dbg_pointno)
-            exc.args = (arg0, )
+            exc.args = errors.addmessage(exc.args, ', An error occured for scan {0} at point {1}. See above for more information'.format(self.dbg_scanno, self.dbg_pointno))
             raise
 
     def parse_config(self, config):
         super(ID03Input, self).parse_config(config)
-        self.config.xmask = util.parse_multi_range(config.pop('xmask'))#image range in the x direction
-        self.config.ymask = util.parse_multi_range(config.pop('ymask'))#image range in the y direction
+        self.config.xmask = util.parse_multi_range(config.pop('xmask', None))#Optional, select a subset of the image range in the x direction. all by default
+        self.config.ymask = util.parse_multi_range(config.pop('ymask', None))#Optional, select a subset of the image range in the y direction. all by default
         self.config.specfile = config.pop('specfile')#Location of the specfile
         self.config.imagefolder = config.pop('imagefolder', None) #Optional, takes specfile folder tag by default
-        self.config.UB = config.pop('ub', None) #Optional, takes specfile matrix by default
         self.config.pr = config.pop('pr', None) #Optional, all range by default
-        self.config.hr = config.pop('hr', None) #Optional, hexapod rotations in miliradians. At the entered value the sample is assumed flat, if not entered the sample is assumed flat at the spec values.
         self.config.background = config.pop('background', None) #Optional, if supplied a space of this image is constructed
         self.config.th_offset = float(config.pop('th_offset', 0)) #Optional; Only used in zapscans, zero by default.
-        if self.config.UB:
-            self.config.UB = util.parse_tuple(self.config.UB, length=9, type=float)
-        if self.config.hr:
-            self.config.hr = util.parse_tuple(self.config.hr, length=2, type=float)
+        if self.config.xmask is None:
+            self.config.xmask = slice(None)
+        if self.config.ymask is None:
+            self.config.ymask = slice(None)
         if self.config.pr:
             self.config.pr = util.parse_tuple(self.config.pr, length=2, type=int)
         self.config.sdd = float(config.pop('sdd'))# sample to detector distance (mm)
         self.config.pixelsize = util.parse_tuple(config.pop('pixelsize'), length=2, type=float)# pixel size x/y (mm) (same dimension as sdd)
-        self.config.centralpixel = util.parse_tuple(config.pop('centralpixel'), length=2, type=int) #x,y
 
     def get_destination_options(self, command):
         if not command:
             return False
         command = ','.join(command).replace(' ', ',')
         scans = util.parse_multi_range(command)
-        return dict(first=min(scans), last=max(scans), range=','.join(command))
+        return dict(first=min(scans), last=max(scans), range=','.join(str(scan) for scan in scans))
 
     # CONVENIENCE FUNCTIONS
     _spec = None
@@ -460,11 +460,13 @@ class ID03Input(backend.InputBase):
                imagefolder = imagefolder.format(UCCD=UCCD, rUCCD=list(reversed(UCCD)))
            except Exception as e:
                raise errors.ConfigError("invalid 'imagefolder' specification '{0}': {1}".format(self.config.imagefolder, e))
+           else:
+               if not os.path.exists(imagefolder):
+                   raise errors.ConfigError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))               
        else:
-           imagefolder = os.path.join(UCCD[:-1])
-
-       if not os.path.exists(imagefolder):
-           raise errors.ConfigError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))
+           imagefolder = os.path.join(*UCCD)
+           if not os.path.exists(imagefolder):
+               raise errors.ConfigError("invalid UCCD tag '{0}'. The UCCD tag in the specfile does not point to an existing folder. Specify the imagefolder in the configuration file.".format(imagefolder))
        return os.path.join(imagefolder, '*')
        
 
@@ -472,6 +474,16 @@ class ID03Input(backend.InputBase):
 class EH1(ID03Input):
     monitor_counter = 'mon'
 
+    def parse_config(self, config):
+        super(EH1, self).parse_config(config)
+        self.config.centralpixel = util.parse_tuple(config.pop('centralpixel'), length=2, type=int) #x,y
+        self.config.hr = config.pop('hr', None) #Optional, hexapod rotations in miliradians. At the entered value the sample is assumed flat, if not entered the sample is assumed flat at the spec values.
+        self.config.UB = config.pop('ub', None) #Optional, takes specfile matrix by default
+        if self.config.UB:
+            self.config.UB = util.parse_tuple(self.config.UB, length=9, type=float)
+        if self.config.hr:
+            self.config.hr = util.parse_tuple(self.config.hr, length=2, type=float)
+      
     def process_image(self, scanparams, pointparams, image):
         gamma, delta, theta, chi, phi, mu, mon, transm, hrx, hry = pointparams
 
@@ -519,6 +531,10 @@ class EH2(ID03Input):
 
     def parse_config(self, config):
         super(EH2, self).parse_config(config)
+        self.config.centralpixel = util.parse_tuple(config.pop('centralpixel'), length=2, type=int) #x,y
+        self.config.UB = config.pop('ub', None) #Optional, takes specfile matrix by default
+        if self.config.UB:
+            self.config.UB = util.parse_tuple(self.config.UB, length=9, type=float)
         
     def process_image(self, scanparams, pointparams, image):
 
@@ -604,5 +620,71 @@ class EH2(ID03Input):
             params[:, MU] = scan.datacol('mucnt')[sl]
         return params
 
+
+
+class GisaxsDetector(ID03Input):
+    monitor_counter = 'mon'
+
+    def process_image(self, scanparams, pointparams, image):
+        ccdy, ccdz, theta, chi, phi, mu, mon, transm= pointparams
+
+        image = numpy.rot90(image, self.config.drotation)
+        image = numpy.fliplr(image)
+
+        wavelength, UB = scanparams
+
+        if self.config.background:
+            data = image / mon
+        else:
+            data = image / mon / transm
+
+        if mon == 0:
+            raise errors.BackendError('Monitor is zero, this results in empty output. Scannumber = {0}, pointnumber = {1}. Did you forget to open the shutter?'.format(self.dbg_scanno, self.dbg_pointno)) 
+
+        print '{4}| ccdy: {0}, ccdz: {1}, theta: {2}, mu: {3}'.format(ccdy, ccdz, theta, mu, time.ctime(time.time()))
+
+        # pixels to angles
+        pixelsize = numpy.array(self.config.pixelsize)
+        sdd = self.config.sdd 
+
+        app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
+
+        directbeam = (self.config.directbeam[0] - (ccdy - self.config.directbeam_coords[0]) * pixelsize[0], self.config.directbeam[1] - (ccdz - self.config.directbeam_coords[1]) * pixelsize[1])
+        gamma_range= app[0] * (numpy.arange(data.shape[0]) - directbeam[0]) - mu
+        delta_range= app[1] * (numpy.arange(data.shape[1]) - directbeam[1])
+
+        # masking
+        gamma_range = gamma_range[self.config.ymask]
+        delta_range = delta_range[self.config.xmask]
+        intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
+
+        return intensity, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
+
+    def parse_config(self, config):
+        super(GisaxsDetector, self).parse_config(config)
+        self.config.drotation = int(config.pop('drotation', 0)) #Optional; Rotation of the detector, takes standard orientation by default. input 1 for 90 dgree rotation, 2 for 180 and 3 for 270.
+        self.config.directbeam = util.parse_tuple(config.pop('directbeam'), length=2, type=int)      
+        self.config.directbeam_coords = util.parse_tuple(config.pop('directbeam_coords'), length=2, type=float) #Coordinates of ccdy and ccdz at the direct beam position
+
+    def get_point_params(self, scan, first, last):
+        sl = slice(first, last+1)
+
+        CCDY, CCDZ, TH, CHI, PHI, MU, MON, TRANSM = range(8)
+        params = numpy.zeros((last - first + 1, 8)) # gamma delta theta chi phi mu mon transm
+        params[:, CHI] = scan.motorpos('Chi')
+        params[:, PHI] = scan.motorpos('Phi')
+        params[:, CCDY] = scan.motorpos('ccdy')
+        params[:, CCDZ] = scan.motorpos('ccdz')
+
+        params[:, TH] = scan.datacol('thcnt')[sl]
+
+        try:
+            params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
+        except:
+            raise errors.BackendError('The specfile does not accept {2} as a monitor label. Have you selected the right hutch? Scannumber = {0}, pointnumber = {1}'.format(self.dbg_scanno, self.dbg_pointno, self.monitor_counter)) 
+    
+        params[:, TRANSM] = scan.datacol('transm')[sl]
+        params[:, MU] = scan.datacol('mucnt')[sl]
+        return params
 
 
