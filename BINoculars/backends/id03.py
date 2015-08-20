@@ -344,62 +344,6 @@ class ID03Input(backend.InputBase):
 
         return wavelength, UB
 
-    def get_point_params(self, scan, first, last):
-        sl = slice(first, last+1)
-
-        GAM, DEL, TH, CHI, PHI, MU, MON, TRANSM, HRX, HRY = range(10)
-        params = numpy.zeros((last - first + 1, 10)) # gamma delta theta chi phi mu mon transm
-        params[:, CHI] = scan.motorpos('Chi')
-        params[:, PHI] = scan.motorpos('Phi')
-
-        try:
-            params[:, HRX] = scan.motorpos('hrx')
-            params[:, HRY] = scan.motorpos('hry')
-        except:
-            raise errors.BackendError('The specfile does not accept hrx and hry as a motor label. Have you selected the right hutch? Scannumber = {0}, pointnumber = {1}'.format(self.dbg_scanno, self.dbg_pointno)) 
-
-
-        if self.is_zap(scan):
-            if 'th' in scan.alllabels():
-                th = scan.datacol('th')[sl]
-                if len(th) > 1:
-                    sign = numpy.sign(th[1] - th[0])
-                else:
-                    sign = 1
-                # correction for difference between back and forth in th motor
-                params[:, TH] = th + sign * self.config.th_offset
-            else:
-                params[:, TH] = scan.motorpos('Theta')
-
-
-            params[:, GAM] = scan.motorpos('Gam')
-            params[:, DEL] = scan.motorpos('Delta')
-            params[:, MU] = scan.motorpos('Mu')
-
-            params[:, MON] = scan.datacol('zap_mon')[sl]
-
-            transm = scan.datacol('zap_transm')
-            transm[-1] = transm[-2] # bug in specfile
-            params[:, TRANSM] = transm[sl]
-        else:
-            if 'hrx' in scan.alllabels():
-                 params[:, HRX] = scan.datacol('hrx')[sl]
-            if 'hry' in scan.alllabels():
-                 params[:, HRY] = scan.datacol('hry')[sl]
-
-            params[:, TH] = scan.datacol('thcnt')[sl]
-            params[:, GAM] = scan.datacol('gamcnt')[sl]
-            params[:, DEL] = scan.datacol('delcnt')[sl]
-
-            try:
-                params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
-            except:
-                raise errors.BackendError('The specfile does not accept {2} as a monitor label. Have you selected the right hutch? Scannumber = {0}, pointnumber = {1}'.format(self.dbg_scanno, self.dbg_pointno, self.monitor_counter)) 
-
-            params[:, TRANSM] = scan.datacol('transm')[sl]
-            params[:, MU] = scan.datacol('mucnt')[sl]
-        
-        return params
 
     def get_images(self, scan, first, last, dry_run=False):
         if self.config.background:
@@ -525,6 +469,62 @@ class EH1(ID03Input):
  
         return intensity, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
 
+    def get_point_params(self, scan, first, last):
+        sl = slice(first, last+1)
+
+        GAM, DEL, TH, CHI, PHI, MU, MON, TRANSM, HRX, HRY = range(10)
+        params = numpy.zeros((last - first + 1, 10)) # gamma delta theta chi phi mu mon transm
+        params[:, CHI] = scan.motorpos('Chi')
+        params[:, PHI] = scan.motorpos('Phi')
+
+        try:
+            params[:, HRX] = scan.motorpos('hrx')
+            params[:, HRY] = scan.motorpos('hry')
+        except:
+            raise errors.BackendError('The specfile does not accept hrx and hry as a motor label. Have you selected the right hutch? Scannumber = {0}, pointnumber = {1}'.format(self.dbg_scanno, self.dbg_pointno)) 
+
+
+        if self.is_zap(scan):
+            if 'th' in scan.alllabels():
+                th = scan.datacol('th')[sl]
+                if len(th) > 1:
+                    sign = numpy.sign(th[1] - th[0])
+                else:
+                    sign = 1
+                # correction for difference between back and forth in th motor
+                params[:, TH] = th + sign * self.config.th_offset
+            else:
+                params[:, TH] = scan.motorpos('Theta')
+
+
+            params[:, GAM] = scan.motorpos('Gam')
+            params[:, DEL] = scan.motorpos('Delta')
+            params[:, MU] = scan.motorpos('Mu')
+
+            params[:, MON] = scan.datacol('zap_mon')[sl]
+
+            transm = scan.datacol('zap_transm')
+            transm[-1] = transm[-2] # bug in specfile
+            params[:, TRANSM] = transm[sl]
+        else:
+            if 'hrx' in scan.alllabels():
+                 params[:, HRX] = scan.datacol('hrx')[sl]
+            if 'hry' in scan.alllabels():
+                 params[:, HRY] = scan.datacol('hry')[sl]
+
+            params[:, TH] = scan.datacol('thcnt')[sl]
+            params[:, GAM] = scan.datacol('gamcnt')[sl]
+            params[:, DEL] = scan.datacol('delcnt')[sl]
+
+            try:
+                params[:, MON] = scan.datacol(self.monitor_counter)[sl] # differs in EH1/EH2
+            except:
+                raise errors.BackendError('The specfile does not accept {2} as a monitor label. Have you selected the right hutch? Scannumber = {0}, pointnumber = {1}'.format(self.dbg_scanno, self.dbg_pointno, self.monitor_counter)) 
+
+            params[:, TRANSM] = scan.datacol('transm')[sl]
+            params[:, MU] = scan.datacol('mucnt')[sl]
+        
+        return params
 
 class EH2(ID03Input):
     monitor_counter = 'Monitor'

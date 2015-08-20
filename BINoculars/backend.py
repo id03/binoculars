@@ -41,7 +41,7 @@ class InputBase(util.ConfigurableObject):
         """Receives command from user, yields Job() instances"""
         raise NotImplementedError
 
-    def process_jobs(self, job):
+    def process_job(self, job):
         """Receives a Job() instance, yields (intensity, args_to_be_sent_to_a_Projection_instance)
 
         Job()s could have been pickle'd and distributed over a cluster"""
