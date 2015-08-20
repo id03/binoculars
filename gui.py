@@ -478,7 +478,7 @@ class ProjectWidget(QtGui.QWidget):
                 coords = numpy.array([event.xdata, event.ydata])[order]
                 try:
                     rounded_coords = [ax[ax.get_index(coord)] for ax, coord in zip(plotaxes.space.axes, coords)]
-                    intensity = '{0:.2e}'.format(plotaxes.space.get_value(list(coords)))
+                    intensity = '{0:.2e}'.format(plotaxes.space[list(coords)])
                     self.parent.statusbar.showMessage('{0} = {1}, {2} = {3}, Intensity = {4}'.format(labels[0], rounded_coords[0] ,labels[1], rounded_coords[1], intensity))
                 except ValueError:
                     self.parent.statusbar.showMessage('out of range')

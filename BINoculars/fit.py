@@ -91,7 +91,7 @@ class PeakFitBase(FitBase):
         argmax_bkg = linparams[-1] + numpy.sum(numpy.vstack(param * grid.flatten() for (param, grid) in zip(linparams[:-1], argmax)))
 
         try:
-            maximum = self.space.get_value(argmax) - argmax_bkg
+            maximum = self.space[argmax] - argmax_bkg
         except ValueError:
             maximum = self.cydata.max() 
         

@@ -366,7 +366,7 @@ class Space(object):
         newkey = self.get_key(key)
         newaxes = tuple(ax[k] for k, ax in zip(newkey, self.axes) if isinstance(ax[k], Axis))
         if not newaxes:
-            raise ValueError('zero-dimensional spaces are not supported')
+            return self.photons[newkey] / self.contributions[newkey]
         newspace = self.__class__(newaxes)
         newspace.photons = self.photons[newkey].copy()
         newspace.contributions = self.contributions[newkey].copy()
@@ -379,23 +379,9 @@ class Space(object):
                 raise IndexError('dimension mismatch')
             else:
                 key = [key]
-        elif not isinstance(key, tuple) or not len(key) == len(self.axes):
+        elif not (isinstance(key, tuple) or isinstance(key, list)) or not len(key) == len(self.axes):
             raise IndexError('dimension mismatch')
         return tuple(ax.get_index(k) for k, ax in zip(key, self.axes))
-
-    def get_value(self, key):
-        ### FIXME: should be merged into __getitem__()
-        if isinstance(key, numbers.Number):
-            if not len(self.axes) == 1:
-                raise IndexError('dimension mismatch')
-            newkey = self.axes[0].get_index(key)
-            return self.photons[newkey] / self.contributions[newkey]
-        elif isinstance(key, tuple) or isinstance(key, list):
-            newkey = tuple(ax.get_index(k) for k, ax in zip(key, self.axes))
-            return self.photons[newkey] / self.contributions[newkey]
-        else:
-            raise ValueError('invalid key: {0}'.format(key))
-
 
     def project(self, axis, *more_axes):
         """Reduce dimensionality of Space by projecting onto 'axis'.
