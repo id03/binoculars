@@ -33,6 +33,7 @@ class InputBase(util.ConfigurableObject):
     Note: there is no guarantee that generate_jobs() and process_jobs() will
     be called on the same instance, not even in the same process or on the
     same computer!"""
+
     def parse_config(self, config):
         super(InputBase, self).parse_config(config)
         self.config.target_weight = int(config.pop('target_weight', 0))## approximate number of images per job, only useful when running on the oar cluster
@@ -45,7 +46,7 @@ class InputBase(util.ConfigurableObject):
         """Receives a Job() instance, yields (intensity, args_to_be_sent_to_a_Projection_instance)
 
         Job()s could have been pickle'd and distributed over a cluster"""
-        raise NotImplementedError
+        self.metadata = util.MetaBase('job', job.__dict__)
 
     def get_destination_options(self, command):
         """Receives the same command as generate_jobs(), but returns

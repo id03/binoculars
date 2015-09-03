@@ -33,7 +33,12 @@ class Main(object):
         else:
             raise ValueError('Configfile is the wrong type')
 
+        # distribute the configfile to space and to the metadata instance
         spaceconf = self.config.copy()
+        metadataconfig = self.config.copy()
+        metadataconfig.add_section('command', {'command' : command})
+        self.metadata = util.MetaData()
+        self.metadata.add_dataset(metadataconfig)
 
         #input from either the configfile or the configsectiongroup is valid
         self.dispatcher = backend.get_dispatcher(config.dispatcher, self, default='local')
@@ -77,6 +82,7 @@ class Main(object):
             elif isinstance(self.result, space.EmptySpace):
                 sys.stderr.write('error: output is an empty dataset\n')
             else:
+                self.result.metadata += self.metadata
                 self.dispatcher.config.destination.store(self.result)
 
             
@@ -87,7 +93,9 @@ class Main(object):
             for intensity, params in self.input.process_job(job):
                 coords = self.projection.project(*params)
                 yield space.Space.from_image(res, labels, coords, intensity)
-        return space.chunked_sum(generator(), chunksize=25)
+        jobspace = space.chunked_sum(generator(), chunksize=25)
+        jobspace.metadata.add_dataset(self.input.metadata)
+        return jobspace
 
     def clone_config(self):
         config = util.ConfigSectionGroup()
