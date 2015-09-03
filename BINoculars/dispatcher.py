@@ -20,7 +20,8 @@ class Destination(object):
         if opts is not False:
             self.opts = opts
 
-    def set_config(self, conf):
+    def set_config(self, conf, meta):
+        self.meta = meta
         self.config = conf
 
     def set_tmp_filename(self, filename):
@@ -39,6 +40,7 @@ class Destination(object):
         elif self.type == 'final':
             fn = self.final_filename()
             space.config = self.config
+            space.metadata += self.meta
             space.tofile(fn)
 
     def retrieve(self):

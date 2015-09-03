@@ -37,8 +37,8 @@ class Main(object):
         spaceconf = self.config.copy()
         metadataconfig = self.config.copy()
         metadataconfig.add_section('command', {'command' : command})
-        self.metadata = util.MetaData()
-        self.metadata.add_dataset(metadataconfig)
+        metadata = util.MetaData()
+        metadata.add_dataset(metadataconfig)
 
         #input from either the configfile or the configsectiongroup is valid
         self.dispatcher = backend.get_dispatcher(config.dispatcher, self, default='local')
@@ -46,7 +46,8 @@ class Main(object):
         self.input = backend.get_input(config.input)
 
         self.dispatcher.config.destination.set_final_options(self.input.get_destination_options(command))
-        self.dispatcher.config.destination.set_config(spaceconf)
+        if command:
+            self.dispatcher.config.destination.set_config(spaceconf, metadata)
         self.run(command)
 
     @classmethod
@@ -82,7 +83,6 @@ class Main(object):
             elif isinstance(self.result, space.EmptySpace):
                 sys.stderr.write('error: output is an empty dataset\n')
             else:
-                self.result.metadata += self.metadata
                 self.dispatcher.config.destination.store(self.result)
 
             
