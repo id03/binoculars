@@ -387,9 +387,22 @@ class ProjectWidget(QtGui.QWidget):
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.toolbar = HiddenToolbar(self.show_coords,self.update_sliders, self.canvas)
 
-        self.log = QtGui.QCheckBox('log', self)
+        self.lin = QtGui.QRadioButton('lin', self)
+        self.lin.setChecked(False)
+        QtCore.QObject.connect(self.lin, QtCore.SIGNAL("toggled(bool)"), self.plot)
+
+        self.log = QtGui.QRadioButton('log', self)
         self.log.setChecked(True)
-        QtCore.QObject.connect(self.log, QtCore.SIGNAL("stateChanged(int)"), self.plot)
+        QtCore.QObject.connect(self.log, QtCore.SIGNAL("toggled(bool)"), self.plot)
+
+        self.loglog = QtGui.QRadioButton('loglog', self)
+        self.loglog.setChecked(False)
+        QtCore.QObject.connect(self.loglog, QtCore.SIGNAL("toggled(bool)"), self.plot)
+
+        self.loggroup = QtGui.QButtonGroup(self)
+        self.loggroup.addButton(self.lin)
+        self.loggroup.addButton(self.log)
+        self.loggroup.addButton(self.loglog)
 
         self.swap_axes = QtGui.QCheckBox('swap axes', self)
         self.swap_axes.setChecked(False)
@@ -433,8 +446,6 @@ class ProjectWidget(QtGui.QWidget):
         self.control_widget = QtGui.QWidget(self)
         hbox = QtGui.QHBoxLayout() 
         left = QtGui.QVBoxLayout()
-        radiobox =  QtGui.QHBoxLayout() 
-
         left.addWidget(self.button_save)
 
         radiobox =  QtGui.QHBoxLayout() 
@@ -444,12 +455,14 @@ class ProjectWidget(QtGui.QWidget):
             self.group.addButton(rb)
             radiobox.addWidget(rb)
 
+        radiobox.addWidget(self.lin)
+        radiobox.addWidget(self.log)
+        radiobox.addWidget(self.loglog)
+
         datarangebox = QtGui.QHBoxLayout() 
-        datarangebox.addWidget(self.log)
         datarangebox.addWidget(self.samerange)
         datarangebox.addWidget(self.legend)
         datarangebox.addWidget(self.swap_axes)
-
 
         left.addLayout(radiobox)
         left.addLayout(datarangebox)
@@ -520,14 +533,16 @@ class ProjectWidget(QtGui.QWidget):
             self.datarange.setDisabled(True)
             self.samerange.setDisabled(True)
             self.swap_axes.setDisabled(True)
+            self.loglog.setEnabled(True)
         elif len(self.limitwidget.sliders) - len(self.projection) == 2:
+            self.loglog.setDisabled(True)
             self.datarange.setEnabled(True)
             self.samerange.setEnabled(True)
             self.swap_axes.setEnabled(True)
         self.plot()
 
     def get_norm(self, mi, ma):
-        log = self.log.checkState()
+        log = self.log.isChecked()
 
         rangemin = self.datarange.low() * 1.0 / self.datarange.maximum()
         rangemax = self.datarange.high() * 1.0 / self.datarange.maximum()
@@ -546,7 +561,7 @@ class ProjectWidget(QtGui.QWidget):
             return matplotlib.colors.Normalize(vmin, vmax)
 
     def get_normlist(self):
-        log = self.log.checkState()
+        log = self.log.isChecked()
         same = self.samerange.checkState()
 
         if same:
@@ -562,7 +577,8 @@ class ProjectWidget(QtGui.QWidget):
         self.parent.statusbar.clearMessage()
 
         self.figure_images = []
-        log = self.log.checkState()
+        log = self.log.isChecked()
+        loglog = self.loglog.isChecked()
 
         plotcount = len(self.table.selection)
         plotcolumns = int(numpy.ceil(numpy.sqrt(plotcount)))
@@ -587,7 +603,7 @@ class ProjectWidget(QtGui.QWidget):
         self.datamax = []
         for space in spaces:
             data = space.get_masked().compressed()
-            if log:
+            if log or loglog:
                 data = data[data > 0]
             self.datamin.append(data.min())
             self.datamax.append(data.max())
@@ -616,7 +632,7 @@ class ProjectWidget(QtGui.QWidget):
                 space = space.reorder(list(ax.label for ax in space.axes)[::-1])
 
             self.ax.space = space
-            im = BINoculars.plot.plot(space,self.figure, self.ax, log = log,label = basename, norm = norm[i])         
+            im = BINoculars.plot.plot(space, self.figure, self.ax, log = log, loglog = loglog, label = basename, norm = norm[i])         
 
             self.figure_images.append(im)
         

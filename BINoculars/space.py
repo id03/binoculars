@@ -585,7 +585,13 @@ class Space(object):
         if len(coordinates) != len(self.axes):
             raise ValueError('dimension mismatch between coordinates and axes')
 
-        valid = numpy.isfinite(intensity)
+        if isinstance(intensity, numpy.ma.core.MaskedArray):
+            mask = intensity.mask
+            intensity = intensity.data
+        else:
+            mask = numpy.ones_like(intensity)
+
+        valid = numpy.bitwise_and(numpy.isfinite(intensity), ~mask)
         intensity = intensity[valid]
         if not intensity.size:
             return
@@ -610,6 +616,7 @@ class Space(object):
         labels          n-tuple of axis labels
         coordinates   n-tuple of data coordinate arrays
         intensity     data intensity array"""
+
         axes = tuple(Axis(coord.min(), coord.max(), res, label) for res, label, coord in zip(resolutions, labels, coordinates))
         newspace = cls(axes)
         newspace.process_image(coordinates, intensity)
@@ -763,10 +770,18 @@ def axis_offset(space, label, offset):
     return space.transform_coordinates((ax.res for ax in space.axes), (ax.label for ax in space.axes), transformation)
 
 def bkgsubtract(space, bkg):
-    bkg.photons = bkg.photons * space.contributions / bkg.contributions
-    bkg.photons[bkg.contributions == 0] = 0
-    bkg.contributions = space.contributions
-    return space - bkg
+    if space.dimension == bkg.dimension:
+        bkg.photons = bkg.photons * space.contributions / bkg.contributions
+        bkg.photons[bkg.contributions == 0] = 0
+        bkg.contributions = space.contributions
+        return space - bkg
+    else:
+        photons = numpy.broadcast_arrays(space.photons, bkg.photons)[1]
+        contributions = numpy.broadcast_arrays(space.contributions, bkg.contributions)[1]
+        bkg = Space(space.axes)
+        bkg.photons = photons
+        bkg.contributions = contributions
+        return bkgsubtract(space, bkg)
 
 def make_compatible(spaces):
     if not numpy.alen(numpy.unique(len(space.axes) for space in spaces)) == 1:    

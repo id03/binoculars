@@ -273,6 +273,7 @@ class ID03Input(backend.InputBase):
             self.config.xmask = slice(None)
         if self.config.ymask is None:
             self.config.ymask = slice(None)
+        self.config.maskmatrix = load_matrix(config.pop('maskmatrix', None)) #Optional, if supplied pixels where the mask is 0 will be removed
         if self.config.pr:
             self.config.pr = util.parse_tuple(self.config.pr, length=2, type=int)
         self.config.sdd = float(config.pop('sdd'))# sample to detector distance (mm)
@@ -458,6 +459,11 @@ class EH1(ID03Input):
         delta_range= app[0] * (numpy.arange(data.shape[0]) - centralpixel[0]) + delta
 
         # masking
+        if self.config.maskmatrix is not None:
+            if self.config.maskmatrix.shape != data.shape:
+                raise errors.BackendError('The mask matrix does not have the same shape as the images')
+            data = numpy.ma.array(data, mask = ~self.config.maskmatrix)
+
         gamma_range = gamma_range[self.config.ymask]
         delta_range = delta_range[self.config.xmask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
@@ -563,6 +569,12 @@ class EH2(ID03Input):
         delta_range = app[1] * (numpy.arange(data.shape[1]) - centralpixel[1]) + delta
 
         # masking
+
+        if self.config.maskmatrix is not None:
+            if self.config.maskmatrix.shape != data.shape:
+                raise errors.BackendError('The mask matrix does not have the same shape as the images')
+            data = numpy.ma.array(data, mask = ~self.config.maskmatrix)
+
         gamma_range = gamma_range[self.config.xmask]
         delta_range = delta_range[self.config.ymask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
@@ -573,7 +585,6 @@ class EH2(ID03Input):
         delta_grid, gamma_grid = numpy.meshgrid(delta_range, gamma_range)
         Phor = 1 - (numpy.sin(mu * numpy.pi / 180.) * numpy.sin(delta_grid * numpy.pi / 180.) * numpy.cos(gamma_grid* numpy.pi / 180.) + numpy.cos(mu* numpy.pi / 180.) * numpy.sin(gamma_grid* numpy.pi / 180.))**2
         intensity /= Phor
-
 
         return intensity, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
 

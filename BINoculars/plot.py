@@ -101,7 +101,7 @@ def get_clipped_norm(data, clipping=0.0, log=True):
         return matplotlib.colors.Normalize(vmin, vmax)
 
 
-def plot(space, fig, ax, log=True, clipping=0.0, fit=None, norm=None, colorbar=True, labels=True, **plotopts):
+def plot(space, fig, ax, log=True, loglog = False, clipping=0.0, fit=None, norm=None, colorbar=True, labels=True, **plotopts):
     if space.dimension == 1:
         data = space.get_masked()
         xrange = numpy.ma.array(space.axes[0][:], mask=data.mask)
@@ -109,12 +109,17 @@ def plot(space, fig, ax, log=True, clipping=0.0, fit=None, norm=None, colorbar=T
             if log:
                 p1 = ax.semilogy(xrange, data, 'wo', **plotopts)
                 p2 = ax.semilogy(xrange, fit, 'r', linewidth=2, **plotopts)
+            elif loglog:
+                p1 = ax.loglog(xrange, data, 'wo', **plotopts)
+                p2 = ax.loglog(xrange, fit, 'r', linewidth=2, **plotopts)
             else:
                 p1 = ax.plot(xrange, data, 'wo', **plotopts)
                 p2 = ax.plot(xrange, fit, 'r', linewidth=2, **plotopts)
         else:
             if log:
                 p1 = ax.semilogy(xrange, data, **plotopts)
+            elif loglog:
+                p1 = ax.loglog(xrange, data, **plotopts)
             else:
                 p1 = ax.plot(xrange, data, **plotopts)
             p2 = []
