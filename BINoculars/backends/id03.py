@@ -446,7 +446,7 @@ class EH1(ID03Input):
         if mon == 0:
             raise errors.BackendError('Monitor is zero, this results in empty output. Scannumber = {0}, pointnumber = {1}. Did you forget to open the shutter?'.format(self.dbg_scanno, self.dbg_pointno)) 
 
-        print '{4}| gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu, time.ctime(time.time()))
+        util.status('{4}| gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu, time.ctime(time.time())))
 
         # pixels to angles
         pixelsize = numpy.array(self.config.pixelsize)
@@ -554,7 +554,7 @@ class EH2(ID03Input):
         if mon == 0:
             raise errors.BackendError('Monitor is zero, this results in empty output. Scannumber = {0}, pointnumber = {1}. Did you forget to open the shutter?'.format(self.dbg_scanno, self.dbg_pointno)) 
 
-        print '{4}| gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu, time.ctime(time.time()))
+        util.status('{4}| gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu, time.ctime(time.time())))
 
         # area correction
         sdd = self.config.sdd / numpy.cos(gamma * numpy.pi / 180)
@@ -652,7 +652,7 @@ class GisaxsDetector(ID03Input):
         if mon == 0:
             raise errors.BackendError('Monitor is zero, this results in empty output. Scannumber = {0}, pointnumber = {1}. Did you forget to open the shutter?'.format(self.dbg_scanno, self.dbg_pointno)) 
 
-        print '{4}| ccdy: {0}, ccdz: {1}, theta: {2}, mu: {3}'.format(ccdy, ccdz, theta, mu, time.ctime(time.time()))
+        util.status('{4}| ccdy: {0}, ccdz: {1}, theta: {2}, mu: {3}'.format(ccdy, ccdz, theta, mu, time.ctime(time.time())))
 
         # pixels to angles
         pixelsize = numpy.array(self.config.pixelsize)
@@ -698,4 +698,20 @@ class GisaxsDetector(ID03Input):
         params[:, MU] = scan.datacol('mucnt')[sl]
         return params
 
+
+def load_matrix(filename):
+    if filename == None:
+        return None
+    if os.path.exists(filename):
+        ext = os.path.splitext(filename)[-1]
+        if ext == '.txt':
+            return numpy.loadtxt(filename)
+        elif ext == '.npy':
+            return numpy.load(filename)
+        elif ext == '.edf':
+            return EdfFile.EdfFile(filename).getData(0)
+        else:
+            raise ValueError('unknown extension {0}, unable to load matrix!\n'.format(ext))        
+    else:
+       raise IOError('filename: {0} does not exist. Can not load matrix'.format(filename))
 

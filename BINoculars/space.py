@@ -99,7 +99,7 @@ class Axis(object):
             if value.stop is None:
                 stop = None
             else:
-                stop = self.get_index(value.stop) + 1
+                stop = self.get_index(value.stop)
             if start is not None and stop is not None and start > stop:
                 start, stop = stop, start
             return slice(start, stop)
@@ -589,7 +589,7 @@ class Space(object):
             mask = intensity.mask
             intensity = intensity.data
         else:
-            mask = numpy.ones_like(intensity)
+            mask = numpy.zeros_like(intensity, dtype = numpy.bool)
 
         valid = numpy.bitwise_and(numpy.isfinite(intensity), ~mask)
         intensity = intensity[valid]
