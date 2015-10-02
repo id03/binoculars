@@ -1,0 +1,153 @@
+global projection, resolution, binoculars_host, binoculars_port, configfilename
+
+binoculars_host = "160.103.228.220" 
+binoculars_port = "58395"
+configfilename = "/users/onderwaa/ma2249/config_ma2249.txt"
+
+def binoculars '{
+	if ($# == 0){
+		print ("Usage: command (this works only for a number or
+                variable, if you want to sepecify a range (140-150) use
+                binoculars_str)")
+		exit
+	}
+
+        local params, args
+	n=split("$*",args)		
+	destination = (binoculars_host ":" binoculars_port)
+
+        params["configfilename"] = configfilename
+        params["command"] = $1
+
+        if (resolution != 0 ){
+            params["resolution"] = resolution
+	}
+        if (projection != 0){
+            params["projection"] = projection
+	}
+        
+    	for (i=1; i<n; i++){
+        	params[i] = args[i]     
+        }
+             
+        sock_put(destination, encode("json", params))
+        sock_par(destination, "flush")
+        print (sock_get(destination))
+        sock_par(destination, "close")
+
+}'
+
+def binoculars_str '{
+	if ($# == 0){
+		print ("Usage: command(string)")
+		exit
+	}
+
+        local params, args
+	n=split("$*",args)		
+	destination = (binoculars_host ":" binoculars_port)
+
+        params["configfilename"] = configfilename
+        params["command"] = args[0]
+
+        if (resolution != 0 ){
+            params["resolution"] = resolution
+	}
+        if (projection != 0){
+            params["projection"] = projection
+	}
+        
+    	for (i=1; i<n; i++){
+        	params[i] = args[i]     
+        }
+             
+        sock_put(destination, encode("json", params))
+        sock_par(destination, "flush")
+        print (sock_get(destination))
+        sock_par(destination, "close")
+}'
+
+
+def binoculars_setres '{ 
+        if ($# == 0){
+		print ("Usage: resolution, 0 = configfile")
+		print ("resolution = " resolution)
+                exit
+        }
+        local g
+	n=split("$*",g)
+        if (g[0] == 0){
+		resolution = 0
+                exit
+        }
+        str = "" 
+	for (i=0; i<n - 1; i++){
+        	str = (str g[i] ",")   
+	}
+        str = (str g[n-1])
+        resolution = ("projection:resolution=" str)
+}'
+
+def binoculars_setproj'{ 
+        if ($# == 0){
+		print ("Usage: projection, 0 = configfile")
+                print ("projection = " projection)
+                exit
+        }
+        local g
+        str = "" 
+	n=split("$*",g)
+        if (g[0] == 0){
+		projection = 0
+                exit
+        }
+        projection = ("projection:type=" g[0])
+}'
+
+def binoculars_test'{ 
+	destination = (binoculars_host ":" binoculars_port)
+        sock_put(destination, "test")
+        sock_par(destination, "flush")
+        print (sock_get(destination))
+        sock_par(destination, "close")
+}'
+
+def binoculars_last'{
+        binoculars SCAN_N
+}'
+
+def binoculars_sethost'{
+	if ($# == 0){
+		print ("Usage: ipadress port")
+                print ("current host is "binoculars_host ":" binoculars_port)
+		exit
+	}
+        local args
+	n=split("$*",args)
+        binoculars_host = args[0] 
+        binoculars_port = args[1]
+}'
+
+def binoculars_configfile'{
+	if ($# == 0){
+		print ("Usage: configfilename")
+                print ("current configfilename is "configfilename)
+		exit
+	}
+        local args
+	n=split("$*",args)
+        configfilename = args[0]
+}'
+
+def binoculars_show'{
+        print ("current host is "binoculars_host ":" binoculars_port)
+        print ("current configfilename is "configfilename)
+        print ("projection = " projection)
+        print ("resolution = " resolution)
+        binoculars_test
+}'
+
+def binoculars_next'{
+        binoculars SCAN_N+1 "input:wait_for_data=1" "dispatcher:send_to_gui=true"          
+}'
+

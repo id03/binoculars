@@ -218,6 +218,13 @@ class Axes(object):
                 res[i] = ax.res
                 labels[i] = ax.label
 
+    def toarray(self):
+        return numpy.vstack(numpy.hstack([str(ax.imin), str(ax.imax), str(ax.res), ax.label]) for ax in self.axes)
+
+    @classmethod
+    def fromarray(cls, arr):
+        return cls(tuple(Axis(int(imin), int(imax), float(res), lbl) for (imin, imax, res, lbl) in arr))
+
     def index(self, obj):
         if isinstance(obj, Axis):
             return self.axes.index(obj)

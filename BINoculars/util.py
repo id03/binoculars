@@ -14,6 +14,10 @@ import h5py
 import ConfigParser
 import glob
 import errors
+import StringIO
+import struct
+import socket
+import json
 
 ### ARGUMENT HANDLING
 
@@ -297,8 +301,9 @@ def parse_bool(s):
 
 #Contains the unparsed config dicts
 class ConfigFile(object):
-    def __init__(self, origin='n/a'):
+    def __init__(self, origin='n/a', command = []):
         self.origin = origin
+        self.command = command
         self.sections = 'dispatcher', 'projection', 'input'
         for section in self.sections:
             setattr(self, section, dict())
@@ -313,6 +318,8 @@ class ConfigFile(object):
         with open_h5py(filename, 'r') as fp:
             try:
                 config = fp['configuration']
+                if 'command' in config.attrs.keys():
+                    configobj.command = json.loads(config.attrs['command'])
             except KeyError as e:
                 config = [] # when config is not present, proceed without Error
             for section in config:
@@ -320,7 +327,7 @@ class ConfigFile(object):
         return configobj
 
     @classmethod
-    def fromtxtfile(cls, filename, overrides=[]):
+    def fromtxtfile(cls, filename, command = [],  overrides=[]):
         if not os.path.exists(filename):
             raise IOError('Error importing configuration file. filename {0} does not exist'.format(filename))
 
@@ -330,7 +337,7 @@ class ConfigFile(object):
         for section, option, value in overrides:
             config.set(section, option, value)
 
-        configobj = cls(filename)
+        configobj = cls(filename, command = command)
         for section in configobj.sections:
             setattr(configobj, section, dict((k, v.split('#')[0].strip()) for (k, v) in config.items(section)))
         return configobj
@@ -340,6 +347,7 @@ class ConfigFile(object):
             dt = h5py.special_dtype(vlen=str)
             conf = fp.create_group('configuration')
             conf.attrs['origin'] = str(self.origin)
+            conf.attrs['command'] = json.dumps(self.command)
             for section in self.sections:
                 s = getattr(self, section)
                 if len(s):
@@ -365,7 +373,8 @@ class ConfigFile(object):
             for entry in s:
                 str += '    {} = {}\n'.format(entry, s[entry])
         str += '}\n'
-        str += 'origin = {0}'.format(self.origin)
+        str += 'origin = {0}\n'.format(self.origin)
+        str += 'command = {0}'.format(','.join(self.command))
         return str
 
     def copy(self):
@@ -633,3 +642,85 @@ def zpi_load(filename):
         return pickle_load(fp)
     finally:
         fp.close()
+
+
+def serialize(space, command):
+    # first 24 bytes contain length of the message
+    message = StringIO.StringIO()
+    message.write(struct.pack('QQQQ',0,0,0,0))
+
+    message.write(command)
+
+    commandlength = message.len - 32
+  
+    numpy.save(message, space.axes.toarray())
+    arraylength = message.len - commandlength - 32
+
+    numpy.save(message, space.photons)
+    photonlength = message.len - commandlength - arraylength - 32
+
+    numpy.save(message, space.contributions)
+    contributionlength = message.len - commandlength - photonlength - arraylength - 32
+
+    message.seek(0)
+    message.write(struct.pack('QQQQ', commandlength, arraylength, photonlength, contributionlength))
+    message.seek(0)
+    return message
+
+def packet_slicer(length, size = 1024):
+    packets = [size] * (length / size)
+    packets.append(length % size)
+    return packets
+
+def socket_send(ip, port, mssg):
+    try:
+        command, axes, photons, contributions = struct.unpack('QQQQ',mssg.read(32))   
+        mssg.seek(0)
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((ip, port))
+
+        sock.send(mssg.read(32))
+        for packet in packet_slicer(command):
+            sock.send(mssg.read(packet))
+        for packet in packet_slicer(axes):
+            sock.send(mssg.read(packet))
+        for packet in packet_slicer(photons):
+            sock.send(mssg.read(packet))
+        for packet in packet_slicer(contributions):
+            sock.send(mssg.read(packet))
+        sock.close()
+    except socket.error:# in case of failure to send. The data will be saved anyway so any loss of communication is just unfortunate
+        pass
+
+
+def socket_recieve(RequestHandler):#pass one the handler to deal with incoming data
+    comm, axes, photons, contributions = struct.unpack('QQQQ',RequestHandler.request.recv(32))
+
+    command = ''
+    for packet in packet_slicer(comm):
+        command += RequestHandler.request.recv(packet)       
+
+    ax = StringIO.StringIO()
+    for packet in packet_slicer(axes):
+        ax.write(RequestHandler.request.recv(packet))
+    ax.seek(0)
+
+    axes = numpy.load(ax)
+
+    phot = StringIO.StringIO()
+    for packet in packet_slicer(photons):
+        phot.write(RequestHandler.request.recv(packet))
+    phot.seek(0)
+
+    photons = numpy.load(phot)
+
+    cont = StringIO.StringIO()
+    for packet in packet_slicer(contributions):
+        cont.write(RequestHandler.request.recv(packet))
+    cont.seek(0)
+
+    contributions = numpy.load(cont)
+
+    return command, axes, photons, contributions
+

@@ -59,9 +59,22 @@ class DispatcherBase(util.ConfigurableObject):
     def parse_config(self, config):
         super(DispatcherBase, self).parse_config(config)
         self.config.destination = Destination()
-        self.config.destination.set_final_filename(
-            config.pop('destination', 'output.hdf5'),# optional 'output.hdf5' by default
-            util.parse_bool(config.pop('overwrite', 'false')))#by default: numbered files in the form output_###.hdf5:
+        destination = config.pop('destination', 'output.hdf5')# optional 'output.hdf5' by default
+        overwrite = util.parse_bool(config.pop('overwrite', 'false'))#by default: numbered files in the form output_###.hdf5:
+        self.config.destination.set_final_filename(destination, overwrite)# explicitly parsing the options first helps with the debugging
+        self.config.host = config.pop('host', None)# ip adress of the running gui awaiting the spaces 
+        self.config.port = config.pop('port', None)# port of the running gui awaiting the spaces
+        self.config.send_to_gui = util.parse_bool(config.pop('send_to_gui', 'false'))#previewing the data, if true, also specify host and port
+
+    def send(self, spaces):#provides the possiblity to send the results to the gui over the network
+        if not self.config.send_to_gui or (self.config.host == None or self.config.host == None):#only continue of ip is specified and send_to_server is flagged
+            for space in spaces:
+                yield space
+        else:
+            for space in spaces:
+                util.socket_send(self.config.host, int(self.config.port), util.serialize(space, ','.join(self.main.config.command)))
+                yield space
+         
 
     def has_specific_task(self):
         return False
@@ -81,7 +94,7 @@ class SingleCore(DispatcherBase):
             yield self.main.process_job(job)
 
     def sum(self, results):
-        return space.chunked_sum(results)
+        return space.chunked_sum(self.send(results))
 
 
 # Base class for Dispatchers using subprocesses to do some work.
@@ -127,7 +140,7 @@ class Local(ReentrantBase):
             yield result
 
     def sum(self, results):
-        return space.chunked_sum(results)
+        return space.chunked_sum(self.send(results))
 
     def run_specific_task(self, command):
         if command:
@@ -143,7 +156,6 @@ class Local(ReentrantBase):
         config.dispatcher.action = 'job'
         config.dispatcher.job = job
         return config, ()
-
 
 # Dispatch many worker processes on an Oar cluster.
 class Oar(ReentrantBase):
@@ -177,7 +189,6 @@ class Oar(ReentrantBase):
             config.dispatcher.action = 'process'
             config.dispatcher.jobs = jobscluster
             util.zpi_save(config, jobconfig)
-            
             yield self.oarsub(jobconfig)
 
     def sum(self, results):
@@ -193,7 +204,7 @@ class Oar(ReentrantBase):
 
         jobs = sum = space.EmptySpace()
         if self.config.jobs:
-            jobs = space.sum(self.main.process_job(job) for job in self.config.jobs)
+            jobs = space.sum(self.send(self.main.process_job(job) for job in self.config.jobs))
         if self.config.sum:
             sum = space.chunked_sum(space.Space.fromfile(src) for src in self.yield_when_exists(self.config.sum))
         self.config.destination.store(jobs + sum)

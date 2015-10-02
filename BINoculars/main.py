@@ -58,11 +58,12 @@ class Main(object):
                 configobj = util.zpi_load(fp)
         if not configobj:
             # reopen args.configfile as text
-            configobj = util.ConfigFile.fromtxtfile(args.configfile, overrides=args.c)
+            configobj = util.ConfigFile.fromtxtfile(args.configfile, command = args.command , overrides=args.c)
         return cls(configobj, args.command)
 
     @classmethod
     def from_object(cls, config, command):
+        config.command = command
         return cls(config, command)
         
     def run(self, command):
@@ -125,4 +126,5 @@ class Split(Main): #completely ignores the dispatcher, just yields a space per i
         for job in self.input.generate_jobs(self.command):
             for space in self.process_job(job):
                 yield space
+
 
