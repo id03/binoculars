@@ -14,6 +14,9 @@ import h5py
 import ConfigParser
 import glob
 import errors
+import json
+import StringIO
+import binascii
 
 ### ARGUMENT HANDLING
 
@@ -326,8 +329,39 @@ class MetaBase(object):
     def copy(self):
         return copy.deepcopy(self)
 
+    def serialize(self):
+        sections = {}
+        for section in self.sections:
+            section_dict = {}
+            attr = getattr(self, section)
+            for key in attr.keys():
+                if isinstance(attr[key], numpy.ndarray):# to be able to include numpy arrays in the serialisation
+                    sio = StringIO.StringIO()
+                    numpy.save(sio, attr[key])
+                    sio.seek(0)
+                    section_dict[key] = binascii.b2a_hex(sio.read())#hex codation is needed to let json work with the string
+                else:
+                    section_dict[key] = attr[key]
+            sections[section] = section_dict 
+        return json.dumps(sections)
 
-# a collection of metadata objects
+    @classmethod
+    def fromserial(cls, s):
+        obj = cls()
+        data = json.loads(s)
+        for section in data.keys():
+            section_dict =  data[section]
+            for key in section_dict.keys():
+                if isinstance(section_dict[key], basestring):#find and replace all the numpy serialised objects
+                    if section_dict[key].startswith('934e554d505901004600'):#numpy marker
+                        sio = StringIO.StringIO()
+                        sio.write(binascii.a2b_hex(section_dict[key]))
+                        sio.seek(0)
+                        section_dict[key] = numpy.load(sio)
+            obj.add_section(section, data[section])
+        return obj
+   
+# a collection of metadata objects 
 class MetaData(object):
     def __init__(self):
         self.metas = []
@@ -381,6 +415,8 @@ class MetaData(object):
                     for key in s.keys():
                         sectiongroup.create_dataset(key, data = s[key])
 
+
+
     def __repr__(self):
         str = '{0.__class__.__name__}{{\n'.format(self)
         for meta in self.metas:
@@ -388,6 +424,18 @@ class MetaData(object):
                 str += '    ' + line + '\n'
         str += '}\n'
         return str
+
+
+    def serialize(self):
+        data = {}
+        return json.dumps(list(meta.serialize() for meta in self.metas))
+
+    @classmethod
+    def fromserial(cls, s):
+        obj = cls()
+        for item in json.loads(s):
+            obj.metas.append(MetaBase.fromserial(item))
+        return obj
 
 #Contains the unparsed config dicts
 class ConfigFile(MetaBase):

@@ -36,7 +36,10 @@ class TestCase(unittest.TestCase):
 
         print (space + testspace).metadata
 
-
+        print '--------------------------------------------------------'
+        print metadata
+        print metadata.serialize()
+        print BINoculars.util.MetaData.fromserial(metadata.serialize())
 
     def tearDown(self):
         os.remove('test.hdf5')
