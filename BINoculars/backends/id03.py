@@ -271,7 +271,9 @@ class ID03Input(backend.InputBase):
                     yield backend.Job(scan=scanno, firstpoint=0, lastpoint=pointcount-1, weight=pointcount)
 
     def process_job(self, job):
-        scan = self.get_scan(job.scan)        
+        super(ID03Input, self).process_job(job)
+        scan = self.get_scan(job.scan)
+        self.metadict = dict()
         try:
             scanparams = self.get_scan_params(scan) # wavelength, UB
             pointparams = self.get_point_params(scan, job.firstpoint, job.lastpoint) # 2D array of diffractometer angles + mon + transm
@@ -283,6 +285,7 @@ class ID03Input(backend.InputBase):
         except Exception as exc:
             exc.args = errors.addmessage(exc.args, ', An error occured for scan {0} at point {1}. See above for more information'.format(self.dbg_scanno, self.dbg_pointno))
             raise
+        self.metadata.add_section('id03_backend', self.metadict)
 
     def parse_config(self, config):
         super(ID03Input, self).parse_config(config)
@@ -401,6 +404,9 @@ class ID03Input(backend.InputBase):
         else:
             UB = numpy.array(scan.header('G')[2].split(' ')[-9:],dtype=numpy.float)
         wavelength = float(scan.header('G')[1].split(' ')[-1])
+
+        self.metadict['UB'] = UB
+        self.metadict['wavelength'] = wavelength
 
         return wavelength, UB
 

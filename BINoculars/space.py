@@ -313,13 +313,14 @@ class Space(object):
         contribitions    n-dimensional numpy integer array, number of original datapoints (pixels) per grid point
         dimension        n"""
 
-    def __init__(self, axes, config=None):
+    def __init__(self, axes, config=None, metadata=None):
         if not isinstance(axes, Axes):
             self.axes = Axes(axes)
         else:
             self.axes = axes
 
         self.config = config
+        self.metadata = metadata
         
         self.photons = numpy.zeros([len(ax) for ax in self.axes], order='C')
         self.contributions = numpy.zeros(self.photons.shape, dtype=numpy.uint32, order='C')
@@ -352,9 +353,23 @@ class Space(object):
         else:
             raise TypeError("'{0!r}' is not a util.ConfigFile".format(space))
 
+    @property
+    def metadata(self):
+        """util.ConfigFile instance describing configuration file used to create this Space instance"""
+        return self._metadata
+
+    @metadata.setter
+    def metadata(self, metadata):
+        if isinstance(metadata, util.MetaData):
+            self._metadata = metadata
+        elif not metadata:
+            self._metadata = util.MetaData()
+        else:
+            raise TypeError("'{0!r}' is not a util.MetaData".format(space))
+
     def copy(self):
         """Returns a copy of self. Numpy data is not shared, but the Axes object is."""
-        new = self.__class__(self.axes, self.config)
+        new = self.__class__(self.axes, self.config, self.metadata)
         new.photons[:] = self.photons
         new.contributions[:] = self.contributions
         return new
@@ -374,7 +389,7 @@ class Space(object):
         newaxes = tuple(ax[k] for k, ax in zip(newkey, self.axes) if isinstance(ax[k], Axis))
         if not newaxes:
             return self.photons[newkey] / self.contributions[newkey]
-        newspace = self.__class__(newaxes)
+        newspace = self.__class__(newaxes, self.config, self.metadata)
         newspace.photons = self.photons[newkey].copy()
         newspace.contributions = self.contributions[newkey].copy()
         return newspace
@@ -400,7 +415,7 @@ class Space(object):
         index = self.axes.index(axis)
         newaxes = list(self.axes)
         newaxes.pop(index)
-        newspace = self.__class__(newaxes)
+        newspace = self.__class__(newaxes, self.config, self.metadata)
         newspace.photons = self.photons.sum(axis=index)
         newspace.contributions = self.contributions.sum(axis=index)
 
@@ -469,6 +484,7 @@ class Space(object):
         index = tuple(slice(self_ax.get_index(other_ax.min), self_ax.get_index(other_ax.min) + len(other_ax)) for (self_ax, other_ax) in zip(self.axes, other.axes))
         self.photons[index] += other.photons
         self.contributions[index] += other.contributions
+        self.metadata += other.metadata
         return self
 
     def __sub__(self, other):
@@ -566,7 +582,7 @@ class Space(object):
         if not self.dimension == len(labels):
             raise ValueError('dimension mismatch')
         newindices = list(self.axes.index(label) for label in labels)
-        new = self.__class__(tuple(self.axes[index] for index in newindices))
+        new = self.__class__(tuple(self.axes[index] for index in newindices), self.config, self.metadata)
         new.photons = numpy.transpose(self.photons, axes = newindices)
         new.contributions = numpy.transpose(self.contributions, axes = newindices)
         return new
@@ -635,6 +651,7 @@ class Space(object):
             with util.open_h5py(tmpname, 'w') as fp:
                 self.config.tofile(fp)
                 self.axes.tofile(fp)
+                self.metadata.tofile(fp)
                 fp.create_dataset('counts', self.photons.shape, dtype=self.photons.dtype, compression='gzip').write_direct(self.photons)
                 fp.create_dataset('contributions', self.contributions.shape, dtype=self.contributions.dtype, compression='gzip').write_direct(self.contributions)
 
@@ -648,6 +665,7 @@ class Space(object):
             with util.open_h5py(file, 'r') as fp:
                 axes = Axes.fromfile(fp)
                 config = util.ConfigFile.fromfile(fp)
+                metadata = util.MetaData.fromfile(fp)
                 if key:
                     if len(axes) != len(key):
                         raise ValueError("dimensionality of 'key' does not match dimensionality of Space in HDF5 file {0}".format(file))
@@ -655,7 +673,7 @@ class Space(object):
                     axes = tuple(ax[k] for k, ax in zip(key, axes) if isinstance(k, slice))
                 else:
                     key = Ellipsis
-                space = cls(axes, config)
+                space = cls(axes, config, metadata)
                 try:
                     fp['counts'].read_direct(space.photons, key)
                     fp['contributions'].read_direct(space.contributions, key)
