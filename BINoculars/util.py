@@ -16,6 +16,7 @@ import glob
 import errors
 import StringIO
 import struct
+import json
 import socket
 import StringIO
 import binascii
@@ -417,8 +418,6 @@ class MetaData(object):
                     for key in s.keys():
                         sectiongroup.create_dataset(key, data = s[key])
 
-
-
     def __repr__(self):
         str = '{0.__class__.__name__}{{\n'.format(self)
         for meta in self.metas:
@@ -440,12 +439,12 @@ class MetaData(object):
         return obj
 
 #Contains the unparsed config dicts
-class ConfigFile(Metabase):
+class ConfigFile(MetaBase):
     def __init__(self, origin='n/a', command = []):
         self.origin = origin
         self.command = command
         super(ConfigFile, self).__init__()
-        self.sections = 'dispatcher', 'projection', 'input'
+        self.sections = ['dispatcher', 'projection', 'input']
         for section in self.sections:
             setattr(self, section, dict())
 
@@ -508,7 +507,7 @@ class ConfigFile(Metabase):
 
     def __repr__(self):
         str = super(ConfigFile, self).__repr__()
-        str += 'origin = {0}'.format(self.origin)
+        str += 'origin = {0}\n'.format(self.origin)
         str += 'command = {0}'.format(','.join(self.command))
         return str
 

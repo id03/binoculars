@@ -35,10 +35,7 @@ class Main(object):
 
         # distribute the configfile to space and to the metadata instance
         spaceconf = self.config.copy()
-        metadataconfig = self.config.copy()
-        metadataconfig.add_section('command', {'command' : command})
         metadata = util.MetaData()
-        metadata.add_dataset(metadataconfig)
 
         #input from either the configfile or the configsectiongroup is valid
         self.dispatcher = backend.get_dispatcher(config.dispatcher, self, default='local')
@@ -47,7 +44,7 @@ class Main(object):
 
         self.dispatcher.config.destination.set_final_options(self.input.get_destination_options(command))
         if command:
-            self.dispatcher.config.destination.set_config(spaceconf, metadata)
+            self.dispatcher.config.destination.set_config(spaceconf)
         self.run(command)
 
     @classmethod
