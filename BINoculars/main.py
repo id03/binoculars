@@ -33,7 +33,12 @@ class Main(object):
         else:
             raise ValueError('Configfile is the wrong type')
 
+        # distribute the configfile to space and to the metadata instance
         spaceconf = self.config.copy()
+        metadataconfig = self.config.copy()
+        metadataconfig.add_section('command', {'command' : command})
+        metadata = util.MetaData()
+        metadata.add_dataset(metadataconfig)
 
         #input from either the configfile or the configsectiongroup is valid
         self.dispatcher = backend.get_dispatcher(config.dispatcher, self, default='local')
@@ -41,7 +46,8 @@ class Main(object):
         self.input = backend.get_input(config.input)
 
         self.dispatcher.config.destination.set_final_options(self.input.get_destination_options(command))
-        self.dispatcher.config.destination.set_config(spaceconf)
+        if command:
+            self.dispatcher.config.destination.set_config(spaceconf, metadata)
         self.run(command)
 
     @classmethod
@@ -87,7 +93,9 @@ class Main(object):
             for intensity, params in self.input.process_job(job):
                 coords = self.projection.project(*params)
                 yield space.Space.from_image(res, labels, coords, intensity)
-        return space.chunked_sum(generator(), chunksize=25)
+        jobspace = space.chunked_sum(generator(), chunksize=25)
+        jobspace.metadata.add_dataset(self.input.metadata)
+        return jobspace
 
     def clone_config(self):
         config = util.ConfigSectionGroup()

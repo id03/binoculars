@@ -14,6 +14,9 @@ import h5py
 import ConfigParser
 import glob
 import errors
+import json
+import StringIO
+import binascii
 
 ### ARGUMENT HANDLING
 
@@ -295,13 +298,89 @@ def parse_bool(s):
         return False
     raise ValueError("invalid input for boolean: '{0}'".format(s))
 
-#Contains the unparsed config dicts
-class ConfigFile(object):
-    def __init__(self, origin='n/a'):
-        self.origin = origin
-        self.sections = 'dispatcher', 'projection', 'input'
+
+class MetaBase(object):
+    def __init__(self, label = None, section = None):
+        self.sections = []
+        if label is not None and section is not None:
+            self.sections.append(label)
+            setattr(self, label, section)
+        elif label is not None:
+            self.sections.append(label)
+            setattr(self, label, dict())
+                
+    def add_section(self, label, section = None):
+        self.sections.append(label)
+        if section is not None:
+            setattr(self, label, section)
+        else:
+            setattr(self, label, dict())
+
+    def __repr__(self):
+        str = '{0.__class__.__name__}{{\n'.format(self)
         for section in self.sections:
-            setattr(self, section, dict())
+            str += '  [{}]\n'.format(section)
+            s = getattr(self, section)
+            for entry in s:
+                str += '    {} = {}\n'.format(entry, s[entry])
+        str += '}\n'
+        return str
+
+    def copy(self):
+        return copy.deepcopy(self)
+
+    def serialize(self):
+        sections = {}
+        for section in self.sections:
+            section_dict = {}
+            attr = getattr(self, section)
+            for key in attr.keys():
+                if isinstance(attr[key], numpy.ndarray):# to be able to include numpy arrays in the serialisation
+                    sio = StringIO.StringIO()
+                    numpy.save(sio, attr[key])
+                    sio.seek(0)
+                    section_dict[key] = binascii.b2a_hex(sio.read())#hex codation is needed to let json work with the string
+                else:
+                    section_dict[key] = attr[key]
+            sections[section] = section_dict 
+        return json.dumps(sections)
+
+    @classmethod
+    def fromserial(cls, s):
+        obj = cls()
+        data = json.loads(s)
+        for section in data.keys():
+            section_dict =  data[section]
+            for key in section_dict.keys():
+                if isinstance(section_dict[key], basestring):#find and replace all the numpy serialised objects
+                    if section_dict[key].startswith('934e554d505901004600'):#numpy marker
+                        sio = StringIO.StringIO()
+                        sio.write(binascii.a2b_hex(section_dict[key]))
+                        sio.seek(0)
+                        section_dict[key] = numpy.load(sio)
+            obj.add_section(section, data[section])
+        return obj
+   
+# a collection of metadata objects 
+class MetaData(object):
+    def __init__(self):
+        self.metas = []
+
+    def add_dataset(self, dataset):
+        if not isinstance(dataset, MetaBase) and not isinstance(dataset, ConfigFile):
+            raise ValueError('MetaBase instance expected')
+        else:
+            self.metas.append(dataset)
+
+    def __add__(self, other):
+        new = self.__class__()
+        new += self
+        new += other
+        return new
+
+    def __iadd__(self, other):
+        self.metas.extend(other.metas)
+        return self
 
     @classmethod
     def fromfile(cls, filename):
@@ -309,7 +388,72 @@ class ConfigFile(object):
             if not os.path.exists(filename):
                 raise IOError('Error importing configuration file. filename {0} does not exist'.format(filename))
 
-        configobj = cls(filename)
+        metadataobj = cls()
+        with open_h5py(filename, 'r') as fp:
+            try:
+                metadata = fp['metadata']
+            except KeyError as e:
+                metadata = [] # when metadata is not present, proceed without Error
+            for label in metadata:
+                meta = MetaBase()
+                for section in metadata[label].keys():
+                    group = metadata[label][section]
+                    setattr(meta, section, dict((key, group[key].value) for key in group))
+                    meta.sections.append(section)
+                metadataobj.metas.append(meta)
+        return metadataobj
+
+    def tofile(self, filename):
+        with open_h5py(filename, 'w') as fp:
+            metadata = fp.create_group('metadata')
+            for meta in self.metas:
+                label = find_unused_label('metasection', metadata.keys())
+                metabase = metadata.create_group(label)
+                for section in meta.sections:
+                    sectiongroup = metabase.create_group(section)
+                    s = getattr(meta, section)
+                    for key in s.keys():
+                        sectiongroup.create_dataset(key, data = s[key])
+
+
+
+    def __repr__(self):
+        str = '{0.__class__.__name__}{{\n'.format(self)
+        for meta in self.metas:
+            for line in meta.__repr__().split('\n'):
+                str += '    ' + line + '\n'
+        str += '}\n'
+        return str
+
+
+    def serialize(self):
+        data = {}
+        return json.dumps(list(meta.serialize() for meta in self.metas))
+
+    @classmethod
+    def fromserial(cls, s):
+        obj = cls()
+        for item in json.loads(s):
+            obj.metas.append(MetaBase.fromserial(item))
+        return obj
+
+#Contains the unparsed config dicts
+class ConfigFile(MetaBase):
+    def __init__(self, origin='n/a'):
+        self.origin = origin
+        super(ConfigFile, self).__init__()
+
+        sections = 'dispatcher', 'projection', 'input'
+        for section in sections:
+            self.add_section(section)
+
+    @classmethod
+    def fromfile(cls, filename):
+        if isinstance(filename, basestring):
+            if not os.path.exists(filename):
+                raise IOError('Error importing configuration file. filename {0} does not exist'.format(filename))
+
+        configobj = cls(str(filename))
         with open_h5py(filename, 'r') as fp:
             try:
                 config = fp['configuration']
@@ -358,18 +502,9 @@ class ConfigFile(object):
                     fp.write('{} = {}\n'.format(entry, s[entry]))
 
     def __repr__(self):
-        str = '{0.__class__.__name__}{{\n'.format(self)
-        for section in self.sections:
-            str += '  [{}]\n'.format(section)
-            s = getattr(self, section)
-            for entry in s:
-                str += '    {} = {}\n'.format(entry, s[entry])
-        str += '}\n'
+        str = super(ConfigFile, self).__repr__()
         str += 'origin = {0}'.format(self.origin)
         return str
-
-    def copy(self):
-        return copy.deepcopy(self)
 
 #contains one parsed dict, for distribution to dispatcher, input or projection class
 class ConfigSection(object):
@@ -392,6 +527,8 @@ class ConfigurableObject(object):
     def __init__(self, config):           
         if isinstance(config, ConfigSection):
             self.config = config
+        elif not isinstance(config, dict):
+            raise ValueError('expecting dict or Configsection, not: {0}'.format(type(config)))
         else:
             self.config = ConfigSection()
             try:
@@ -431,6 +568,15 @@ def find_unused_filename(filename):
     for f in filename_enumerator(filename, 2):
         if not os.path.exists(f):
             return f
+
+def label_enumerator(label, start=0):
+    for count in itertools.count(start):    
+        yield '{0}_{1}'.format(label,count)
+
+def find_unused_label(label, labellist):
+    for l in label_enumerator(label):
+        if not l in labellist:
+            return l
 
 def yield_when_exists(filelist, timeout=None):
     """Wait for files in 'filelist' to appear, for a maximum of 'timeout' seconds,
