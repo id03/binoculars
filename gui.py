@@ -393,7 +393,7 @@ class Window(QtGui.QMainWindow):
 
             self.ip, self.port = server.server_address
 
-            cmd = ['python', 'server.py', str(self.ip), str(self.port)]
+            cmd = ['python', os.path.join(os.path.dirname(__file__), 'server.py'), str(self.ip), str(self.port)]
             self.pro = subprocess.Popen(cmd, stdin=None, stdout=None, stderr=None, preexec_fn=os.setsid) 
 
 
