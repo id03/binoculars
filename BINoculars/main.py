@@ -35,7 +35,6 @@ class Main(object):
 
         # distribute the configfile to space and to the metadata instance
         spaceconf = self.config.copy()
-        metadata = util.MetaData()
 
         #input from either the configfile or the configsectiongroup is valid
         self.dispatcher = backend.get_dispatcher(config.dispatcher, self, default='local')

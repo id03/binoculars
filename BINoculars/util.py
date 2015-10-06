@@ -361,7 +361,9 @@ class MetaBase(object):
                         sio.write(binascii.a2b_hex(section_dict[key]))
                         sio.seek(0)
                         section_dict[key] = numpy.load(sio)
-            obj.add_section(section, data[section])
+            setattr(obj, section, data[section])
+            if section not in obj.sections:
+                obj.sections.append(section)
         return obj
    
 # a collection of metadata objects 
@@ -426,9 +428,7 @@ class MetaData(object):
         str += '}\n'
         return str
 
-
     def serialize(self):
-        data = {}
         return json.dumps(list(meta.serialize() for meta in self.metas))
 
     @classmethod
@@ -789,23 +789,28 @@ def zpi_load(filename):
 def serialize(space, command):
     # first 24 bytes contain length of the message
     message = StringIO.StringIO()
-    message.write(struct.pack('QQQQ',0,0,0,0))
+    message.write(struct.pack('QQQQQQ',0,0,0,0,0,0))
 
     message.write(command)
+    commandlength = message.len - 48
 
-    commandlength = message.len - 32
+    message.write(space.config.serialize())
+    configlength = message.len - commandlength - 48
   
+    message.write(space.metadata.serialize())
+    metalength = message.len - configlength - commandlength - 48
+
     numpy.save(message, space.axes.toarray())
-    arraylength = message.len - commandlength - 32
+    arraylength = message.len - metalength - configlength - commandlength - 48
 
     numpy.save(message, space.photons)
-    photonlength = message.len - commandlength - arraylength - 32
+    photonlength = message.len - arraylength - metalength - configlength - commandlength - 48
 
     numpy.save(message, space.contributions)
-    contributionlength = message.len - commandlength - photonlength - arraylength - 32
+    contributionlength = message.len - photonlength - arraylength - metalength - configlength - commandlength - 48
 
     message.seek(0)
-    message.write(struct.pack('QQQQ', commandlength, arraylength, photonlength, contributionlength))
+    message.write(struct.pack('QQQQQQ', commandlength, configlength, metalength, arraylength, photonlength, contributionlength))
     message.seek(0)
     return message
 
@@ -816,14 +821,18 @@ def packet_slicer(length, size = 1024):
 
 def socket_send(ip, port, mssg):
     try:
-        command, axes, photons, contributions = struct.unpack('QQQQ',mssg.read(32))   
+        command, config, meta, axes, photons, contributions = struct.unpack('QQQQQQ',mssg.read(48))   
         mssg.seek(0)
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((ip, port))
 
-        sock.send(mssg.read(32))
+        sock.send(mssg.read(48))
         for packet in packet_slicer(command):
+            sock.send(mssg.read(packet))
+        for packet in packet_slicer(config):
+            sock.send(mssg.read(packet))
+        for packet in packet_slicer(meta):
             sock.send(mssg.read(packet))
         for packet in packet_slicer(axes):
             sock.send(mssg.read(packet))
@@ -837,32 +846,13 @@ def socket_send(ip, port, mssg):
 
 
 def socket_recieve(RequestHandler):#pass one the handler to deal with incoming data
-    comm, axes, photons, contributions = struct.unpack('QQQQ',RequestHandler.request.recv(32))
+    def get_msg(length):
+        msg = StringIO.StringIO()
+        for packet in packet_slicer(length):
+            msg.write(RequestHandler.request.recv(packet))
+        msg.seek(0)
+        return msg
 
-    command = ''
-    for packet in packet_slicer(comm):
-        command += RequestHandler.request.recv(packet)       
-
-    ax = StringIO.StringIO()
-    for packet in packet_slicer(axes):
-        ax.write(RequestHandler.request.recv(packet))
-    ax.seek(0)
-
-    axes = numpy.load(ax)
-
-    phot = StringIO.StringIO()
-    for packet in packet_slicer(photons):
-        phot.write(RequestHandler.request.recv(packet))
-    phot.seek(0)
-
-    photons = numpy.load(phot)
-
-    cont = StringIO.StringIO()
-    for packet in packet_slicer(contributions):
-        cont.write(RequestHandler.request.recv(packet))
-    cont.seek(0)
-
-    contributions = numpy.load(cont)
-
-    return command, axes, photons, contributions
+    command, config, metadata, axes, photons, contributions = tuple(get_msg(msglength) for msglength in struct.unpack('QQQQQQ',RequestHandler.request.recv(48)))
+    return command.read(), config.read(), metadata.read(), numpy.load(axes), numpy.load(photons), numpy.load(contributions)
 

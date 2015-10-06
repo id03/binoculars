@@ -456,8 +456,12 @@ class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
 
 class SpaceTCPHandler(SocketServer.BaseRequestHandler):
     def handle(self):
-        command, axes, photons, contributions = BINoculars.util.socket_recieve(self)
+        command, config, metadata, axes, photons, contributions = BINoculars.util.socket_recieve(self)
         space = BINoculars.space.Space(BINoculars.space.Axes.fromarray(axes))
+        space.config = BINoculars.util.ConfigFile.fromserial(config)
+        space.config.command = command
+        space.config.origin = 'server'
+        space.metadata = BINoculars.util.MetaData.fromserial(metadata)
         space.photons = photons
         space.contributions = contributions
         self.server.q.put((command, space))
