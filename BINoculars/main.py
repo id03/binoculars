@@ -82,7 +82,6 @@ class Main(object):
             else:
                 self.dispatcher.config.destination.store(self.result)
 
-            
     def process_job(self, job):
         def generator():
             res = self.projection.config.resolution

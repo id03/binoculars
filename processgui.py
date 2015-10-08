@@ -16,9 +16,6 @@ import glob
 import BINoculars.util, BINoculars.main
 import time
 
-
-
-
 #--------------------------------------------CREATE MAIN WINDOW----------------------------------------
 class Window(QtGui.QMainWindow):
 
@@ -51,7 +48,6 @@ class Window(QtGui.QMainWindow):
         Create.setStatusTip('Create Configfile')
         Create.triggered.connect(self.New_Config)
 
-
         menubar = self.menuBar()
         fileMenu = menubar.addMenu('&File')
         fileMenu.addAction(openFile)
@@ -79,7 +75,6 @@ class Window(QtGui.QMainWindow):
         self.process = QtGui.QPushButton('run',self)
         self.process.setStyleSheet("background-color: darkred")
         self.connect(self.process, QtCore.SIGNAL("clicked()"),self.run)
-        
 
         self.wid = QtGui.QWidget()
         self.CommandLayout = QtGui.QVBoxLayout()
@@ -98,7 +93,6 @@ class Window(QtGui.QMainWindow):
     
     def removeConf(self):
         self.ListCommand.removeRow(self.ListCommand.currentRow()) 
-
         
     def Add_To_Liste(self,(command, cfg)):
         row = self.ListCommand.rowCount()
@@ -113,11 +107,6 @@ class Window(QtGui.QMainWindow):
         self.ListCommand.setItem(row, 0, self.item1)
         self.ListCommand.setItem(row, 1, self.item2)
         
- 
-        
-        
-        
-
     #We run the script and create a hdf5 file            
     def run(self):
         maximum = self.ListCommand.rowCount()
@@ -149,17 +138,11 @@ class Window(QtGui.QMainWindow):
     #we call the load function
     def ShowFile(self):
         filename = QtGui.QFileDialog.getOpenFileName(self, 'Open File', '')
-        for F in filename.split('/') :
-            self.NameFile = []
-            self.NameFile.append(F)
-        self.NameFile.reverse()
-        confwidget = Conf_Tab(self) 
-        newIndex =  self.tab_widget.addTab(confwidget,self.NameFile[0])
+        confwidget = Conf_Tab(self)
+        confwidget.read_data(str(filename))
+        newIndex =  self.tab_widget.addTab(confwidget, os.path.basename(str(filename)))
         QtCore.QObject.connect(confwidget, QtCore.SIGNAL("command"),self.Add_To_Liste)
         self.tab_widget.setCurrentIndex(newIndex)
-        widget = self.tab_widget.currentWidget()
-        widget.read_data(filename)
-
 
     #we call the save function
     def Save(self):
@@ -172,7 +155,6 @@ class Window(QtGui.QMainWindow):
         widget = Conf_Tab(self) 
         self.tab_widget.addTab(widget,'New configfile') 
         QtCore.QObject.connect(widget, QtCore.SIGNAL("command"),self.Add_To_Liste)
-
 
 #----------------------------------------------------------------------------------------------------
 #-----------------------------------------CREATE TABLE-----------------------------------------------
@@ -213,33 +195,31 @@ class Table(QtGui.QWidget):
         self.table.removeRow(self.table.currentRow()) 
 
     def get_keys(self):
-        return list(self.table.item(index,0).text() for index in range(self.table.rowCount())) 
+        return list(str(self.table.item(index,0).text()) for index in range(self.table.rowCount())) 
 
-    #Here we take all values on tables
+    #Here we take all values from tables
     def getParam(self):
         for index in range(self.table.rowCount()):
-            key = str(self.table.item(index,0).text())
-            comment = str(self.table.item(index,0).toolTip())
-            if self.table.item(index,1):
-                value = str(self.table.item(index, 1).text())
-            else:
-                value = str(self.table.cellWidget(index, 1).currentText())
-            if self.table.item == None:
-                value = str(self.table.item(index,1).text(""))
-            yield key, value, comment
+            if not self.table.item == None:                
+                key = str(self.table.item(index,0).text())
+                comment = str(self.table.item(index,0).toolTip())
+                if index == 0:
+                    yield key, str(self.table.cellWidget(index, 1).currentText()), comment
+                elif self.table.item(index,1):
+                    if len(str(self.table.item(index,1).text())) != 0 and self.table.item(index,0).textColor() == QtGui.QColor('black'):
+                        yield key, str(self.table.item(index, 1).text()), comment
 
-    #Here we put all values on tables   
-    def addData(self,cfg):
+    #Here we put all values in tables   
+    def addData(self, cfg):
         for item in cfg:
             if item == 'type':
                 box = self.table.cellWidget(0,1)
                 value = cfg[item].split(':') 
-                if len(value)> 1 :
+                if len(value) > 1 :
                     box.setCurrentIndex(box.findText(value[1], QtCore.Qt.MatchFixedString))
-                    
                 else:
-                    box.setCurrentIndex(box.findText(cfg[item], QtCore.Qt.MatchFixedString))       
-            else: 
+                        box.setCurrentIndex(box.findText(cfg[item], QtCore.Qt.MatchFixedString))
+            elif item not in self.get_keys():
                 self.add_row()
                 row = self.table.rowCount()
                 for col in range(self.table.columnCount()):
@@ -249,22 +229,31 @@ class Table(QtGui.QWidget):
                     if col == 1:
                         newitem2 = QtGui.QTableWidgetItem(cfg[item])
                         self.table.setItem(row -1, col, newitem2)
+            else:
+                index = self.get_keys().index(item)
+                self.table.item(index, 1).setText(cfg[item])   
+
                       
-
-                    
-                        
-
-    def addDataConf(self, items):
+    def addDataConf(self, options):
         keys = self.get_keys()
-        newconfigs = dict((item[0], '') for item in items if item[0] not in keys)
+        newconfigs = dict((option[0], '') for option in options if option[0] not in keys)
         self.addData(newconfigs)
 
-                
+        names = list(option[0] for option in options)
+
+        for index, key in enumerate(self.get_keys()):
+            if str(key) in names:
+                self.table.item(index, 0).setTextColor(QtGui.QColor('black'))
+                self.table.item(index, 0).setToolTip(options[names.index(key)][1])
+            elif str(key) == 'type':
+                self.table.item(index, 0).setTextColor(QtGui.QColor('black'))
+            else:
+                self.table.item(index, 0).setTextColor(QtGui.QColor('gray'))
+
     def add_to_combo(self, items):
         self.combobox.clear()
         self.combobox.addItems(items)
     
-
 #----------------------------------------------------------------------------------------------------
 #-----------------------------------------CREATE CONFIG----------------------------------------------
 class Conf_Tab(QtGui.QWidget):
@@ -288,7 +277,6 @@ class Conf_Tab(QtGui.QWidget):
         self.connect(self.add, QtCore.SIGNAL("clicked()"), self.AddCommand)
         self.scan = QtGui.QLineEdit()
         self.scan.setToolTip('scan selection example: 820 824')
-        
 
         #the dispositon of all elements of the gui
         Layout = QtGui.QGridLayout()
@@ -306,29 +294,28 @@ class Conf_Tab(QtGui.QWidget):
         #Here we call all methods for selected an ellement on differents combobox 
         self.Dis.add_to_combo(QtCore.QStringList(BINoculars.util.get_dispatchers()))
         self.select.activated['QString'].connect(self.DataCombo)
-        self.Inp.combobox.activated['QString'].connect(self.DataTableInp)
-        self.Pro.combobox.activated['QString'].connect(self.DataTableInpPro)
-        self.Dis.combobox.activated['QString'].connect(self.DataTableInpDis)
-        
+        self.Inp.combobox.activated.connect(self.DataTableInp)
+        self.Pro.combobox.activated.connect(self.DataTableInpPro)
+        self.Dis.combobox.activated.connect(self.DataTableInpDis) 
 
     def DataCombo(self,text):
         self.Inp.add_to_combo(QtCore.QStringList(BINoculars.util.get_inputs(str(text))))
         self.Pro.add_to_combo(QtCore.QStringList(BINoculars.util.get_projections(str(text))))
-
-    def DataTableInp (self,text):
-        #self.Inp.table.setRowCount(1)
+        self.DataTableInp()
+        self.DataTableInpPro()
+        self.DataTableInpDis()
+      
+    def DataTableInp(self):
         backend = str(self.select.currentText())
         inp = BINoculars.util.get_input_configkeys(backend, str(self.Inp.combobox.currentText()))
         self.Inp.addDataConf(inp)
 
-    def DataTableInpPro (self,text):
-        #self.Pro.table.setRowCount(1)
+    def DataTableInpPro(self):
         backend = str(self.select.currentText())
         proj = BINoculars.util.get_projection_configkeys(backend, str(self.Pro.combobox.currentText()))
         self.Pro.addDataConf(proj)
 
-    def DataTableInpDis (self,text):
-        #self.Dis.table.setRowCount(1)
+    def DataTableInpDis(self):
         backend = str(self.select.currentText())
         disp = BINoculars.util.get_dispatcher_configkeys(str(self.Dis.combobox.currentText()))
         self.Dis.addDataConf(disp)
@@ -377,7 +364,7 @@ class Conf_Tab(QtGui.QWidget):
         return cfg
 
     #This method take elements on a text file or the binocular script and put them on tables
-    def read_data(self,filename):
+    def read_data(self, filename):
         cfg = BINoculars.util.ConfigFile.fromtxtfile(str(filename))    
         input_type = cfg.input['type']
         backend, value = input_type.strip(' ').split(':')
@@ -387,7 +374,6 @@ class Conf_Tab(QtGui.QWidget):
         self.Inp.addData(cfg.input)
         self.Pro.addData(cfg.projection)
 
-    
     #we add command on the DockWidget
     def AddCommand(self):
         scan = [str(self.scan.text())]
@@ -395,9 +381,6 @@ class Conf_Tab(QtGui.QWidget):
         commandconfig = (scan , cfg)
         self.emit(QtCore.SIGNAL('command'), commandconfig)
         
-        
-
-
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
 
@@ -405,3 +388,4 @@ if __name__ == '__main__':
     main.show()
 
     sys.exit(app.exec_())
+

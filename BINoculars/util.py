@@ -787,7 +787,7 @@ def zpi_load(filename):
 
 
 def serialize(space, command):
-    # first 24 bytes contain length of the message
+    # first 48 bytes contain length of the message, whereby the first 8 give the length of the command, the second 8 the length of the configfile etc..
     message = StringIO.StringIO()
     message.write(struct.pack('QQQQQQ',0,0,0,0,0,0))
 
@@ -814,34 +814,25 @@ def serialize(space, command):
     message.seek(0)
     return message
 
-def packet_slicer(length, size = 1024):
+def packet_slicer(length, size = 1024):#limit the communication to 1024 bytes
     packets = [size] * (length / size)
     packets.append(length % size)
     return packets
 
 def socket_send(ip, port, mssg):
     try:
-        command, config, meta, axes, photons, contributions = struct.unpack('QQQQQQ',mssg.read(48))   
+        mssglengths = struct.unpack('QQQQQQ',mssg.read(48))#the lengths of all the components   
         mssg.seek(0)
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((ip, port))
 
         sock.send(mssg.read(48))
-        for packet in packet_slicer(command):
-            sock.send(mssg.read(packet))
-        for packet in packet_slicer(config):
-            sock.send(mssg.read(packet))
-        for packet in packet_slicer(meta):
-            sock.send(mssg.read(packet))
-        for packet in packet_slicer(axes):
-            sock.send(mssg.read(packet))
-        for packet in packet_slicer(photons):
-            sock.send(mssg.read(packet))
-        for packet in packet_slicer(contributions):
-            sock.send(mssg.read(packet))
+        for l in mssglengths:
+            for packet in packet_slicer(l):
+                sock.send(mssg.read(packet))
         sock.close()
-    except socket.error:# in case of failure to send. The data will be saved anyway so any loss of communication is just unfortunate
+    except socket.error:# in case of failure to send. The data will be saved anyway so any loss of communication unfortunate but not critical
         pass
 
 

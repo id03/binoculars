@@ -586,8 +586,7 @@ class Space(object):
         new.photons = numpy.transpose(self.photons, axes = newindices)
         new.contributions = numpy.transpose(self.contributions, axes = newindices)
         return new
-
-                         
+        
     def transform_coordinates(self, resolutions, labels, transformation):
         # gather data and transform
         intensity = self.get_masked()
@@ -611,10 +610,10 @@ class Space(object):
         if isinstance(intensity, numpy.ma.core.MaskedArray):
             mask = intensity.mask
             intensity = intensity.data
+            valid = numpy.bitwise_and(numpy.isfinite(intensity), ~mask)        
         else:
-            mask = numpy.zeros_like(intensity, dtype = numpy.bool)
+            valid = numpy.isfinite(intensity)
 
-        valid = numpy.bitwise_and(numpy.isfinite(intensity), ~mask)
         intensity = intensity[valid]
         if not intensity.size:
             return
