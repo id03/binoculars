@@ -303,7 +303,7 @@ def command_process(args):
     import BINoculars.main
 
     BINoculars.util.register_python_executable(__file__)
-    BINoculars.main.Main.from_args(args)
+    BINoculars.main.Main.from_args(args)# start of main thread
 
 
 

@@ -67,15 +67,15 @@ class DispatcherBase(util.ConfigurableObject):
         self.config.send_to_gui = util.parse_bool(config.pop('send_to_gui', 'false'))#previewing the data, if true, also specify host and port
 
     def send(self, spaces):#provides the possiblity to send the results to the gui over the network
-        if not self.config.send_to_gui or (self.config.host == None or self.config.host == None):#only continue of ip is specified and send_to_server is flagged
-            for space in spaces:
-                yield space
+        if self.config.send_to_gui or (self.config.host is not None and self.config.host is not None):#only continue of ip is specified and send_to_server is flagged
+             for sp in spaces:
+                if isinstance(sp, space.Space):
+                    util.socket_send(self.config.host, int(self.config.port), util.serialize(sp, ','.join(self.main.config.command)))
+                yield sp
         else:
-            for space in spaces:
-                util.socket_send(self.config.host, int(self.config.port), util.serialize(space, ','.join(self.main.config.command)))
-                yield space
+            for sp in spaces:
+                yield sp
          
-
     def has_specific_task(self):
         return False
 
@@ -171,25 +171,33 @@ class Oar(ReentrantBase):
     def process_jobs(self, jobs):
         self.configfiles = []
         self.intermediates = []
-        clusters = list(util.cluster_jobs(jobs, self.main.input.config.target_weight))
-        for i, jobscluster in enumerate(clusters, start=1):
+        clusters = util.cluster_jobs2(jobs, self.main.input.config.target_weight)
+        for jobscluster in clusters:
             uniq = util.uniqid()
             jobconfig = os.path.join(self.config.tmpdir, 'binoculars-{0}-jobcfg.zpi'.format(uniq))
             self.configfiles.append(jobconfig)
 
             config = self.main.clone_config()
-            if i == len(clusters):
-                config.dispatcher.sum = self.intermediates
-            else:
-                interm = os.path.join(self.config.tmpdir, 'binoculars-{0}-jobout.hdf5'.format(uniq))
-                self.intermediates.append(interm)
-                config.dispatcher.destination.set_tmp_filename(interm)
-                config.dispatcher.sum = ()
+            interm = os.path.join(self.config.tmpdir, 'binoculars-{0}-jobout.hdf5'.format(uniq))
+            self.intermediates.append(interm)
+            config.dispatcher.destination.set_tmp_filename(interm)
+            config.dispatcher.sum = ()
 
             config.dispatcher.action = 'process'
             config.dispatcher.jobs = jobscluster
             util.zpi_save(config, jobconfig)
             yield self.oarsub(jobconfig)
+
+        #if all jobs are sent to the cluster send the process that sums all other jobs
+        uniq = util.uniqid()
+        jobconfig = os.path.join(self.config.tmpdir, 'binoculars-{0}-jobcfg.zpi'.format(uniq))
+        self.configfiles.append(jobconfig)
+        config = self.main.clone_config()
+        config.dispatcher.sum = self.intermediates
+        config.dispatcher.action = 'process'
+        config.dispatcher.jobs = ()
+        util.zpi_save(config, jobconfig)
+        yield self.oarsub(jobconfig)
 
     def sum(self, results):
         jobs = list(results)
@@ -206,23 +214,10 @@ class Oar(ReentrantBase):
         if self.config.jobs:
             jobs = space.sum(self.send(self.main.process_job(job) for job in self.config.jobs))
         if self.config.sum:
-            sum = space.chunked_sum(space.Space.fromfile(src) for src in self.yield_when_exists(self.config.sum))
+            sum = space.chunked_sum(space.Space.fromfile(src) for src in util.yield_when_exists(self.config.sum))
         self.config.destination.store(jobs + sum)
 
-    ### UTILITY
-    @staticmethod
-    def yield_when_exists(files):
-        files = set(files)
-        polltime = 0
-        while files:
-            if time.time() - polltime < 5:
-                time.sleep(time.time() - polltime)
-            polltime = time.time()
-            exists = set(f for f in files if os.path.exists(f))
-            for e in exists:
-                yield e
-            files -= exists
-
+    ### calling OAR
     @staticmethod
     def subprocess_run(*command):
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -230,7 +225,6 @@ class Oar(ReentrantBase):
         retcode = process.poll()
         return retcode, output
 
-    ### calling OAR
     def oarsub(self, *args):
         command = '{0} process {1}'.format(self.config.executable, ' '.join(args))
         ret, output = self.subprocess_run('oarsub', '-l {0}'.format(self.config.oarsub_options), command)
@@ -239,6 +233,7 @@ class Oar(ReentrantBase):
             for line in lines:
                 if line.startswith('OAR_JOB_ID='):
                     void, jobid = line.split('=')
+                    util.status('{0}: Launched job {1}'.format(time.ctime(), jobid))
                     return jobid.strip()
         return False
 

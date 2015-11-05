@@ -160,19 +160,28 @@ def plot(space, fig, ax, log=True, loglog = False, clipping=0.0, fit=None, norm=
             raise ValueError("For 3D plots, the 'ax' parameter must be an Axes3D instance (use for example gca(projection='3d') to get one)")
 
         cmap = getattr(matplotlib.cm, plotopts.pop('cmap', 'jet'))
-        norm = get_clipped_norm(space.get_masked(), clipping, log)
+        if not norm is None:
+            norm = get_clipped_norm(space.get_masked(), clipping, log)
 
-        gridx, gridy, gridz = space.get_grid()
-        p1 = ax.plot_surface(gridx[0,:,:], gridy[0,:,:], gridz[0,:,:],  facecolors=cmap(norm(space.project(0).get_masked())), shade=False, cstride=1, rstride=1)
-        p2 = ax.plot_surface(gridx[:,-1,:], gridy[:,-1,:], gridz[:,-1,:], facecolors=cmap(norm(space.project(1).get_masked())), shade=False, cstride=1, rstride=1)
-        p3 = ax.plot_surface(gridx[:,:,0], gridy[:,:,0], gridz[:,:,0],  facecolors=cmap(norm(space.project(2).get_masked())), shade=False, cstride=1, rstride=1)
+        data = space.get()
+        mask = numpy.bitwise_or(~numpy.isfinite(data), data == 0)
+        gridx, gridy, gridz = tuple(grid[~mask] for grid in space.get_grid())
+        
+        im = ax.scatter(gridx, gridy, gridz,  c=cmap(norm(data[~mask])), marker = ',', alpha = 0.7,linewidths = 0)
+
+        #p1 = ax.plot_surface(gridx[0,:,:], gridy[0,:,:], gridz[0,:,:],  facecolors=cmap(norm(space.project(0).get_masked())), shade=False, cstride=1, rstride=1)
+        #p2 = ax.plot_surface(gridx[:,-1,:], gridy[:,-1,:], gridz[:,-1,:], facecolors=cmap(norm(space.project(1).get_masked())), shade=False, cstride=1, rstride=1)
+        #p3 = ax.plot_surface(gridx[:,:,0], gridy[:,:,0], gridz[:,:,0],  facecolors=cmap(norm(space.project(2).get_masked())), shade=False, cstride=1, rstride=1)
 
         if labels:
             ax.set_xlabel(space.axes[0].label)
             ax.set_ylabel(space.axes[1].label)
             ax.set_zlabel(space.axes[2].label)
         
-        return p1 + p2 + p3
+        if fig._draggablecbar:
+            fig._draggablecbar.disconnect()
+
+        return im
 
     elif space.dimension > 3:
         raise ValueError("Cannot plot 4 or higher dimensional spaces, use projections or slices to decrease dimensionality.")

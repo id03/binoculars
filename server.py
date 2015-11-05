@@ -104,7 +104,6 @@ if __name__ == '__main__':
     server.q = q
     ip, port = server.server_address
 
-    # interrupt the program with Ctrl-C
     print 'Process server started running at ip {0} and port {1}. Interrupt server with Ctrl-C'.format(ip, port)
     try:
         server.serve_forever()

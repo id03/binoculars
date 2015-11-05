@@ -5,6 +5,8 @@ from PyQt4 import QtGui, QtCore, Qt
 import BINoculars.main, BINoculars.space, BINoculars.plot,  BINoculars.util
 import numpy
 import json
+import itertools
+from mpl_toolkits.mplot3d import Axes3D
 
 import signal
 import subprocess
@@ -234,15 +236,19 @@ class Window(QtGui.QMainWindow):
         edit.addAction(merge) 
         edit.addAction(subtract) 
 
-        start_server = QtGui.QAction("Start server", self)  
-        start_server.triggered.connect(self.run_server)
+        start_server = QtGui.QAction("Start server queue", self)  
+        start_server.triggered.connect(lambda: self.open_server(startq = True))
 
-        stop_server = QtGui.QAction("Stop server", self)  
+        stop_server = QtGui.QAction("Stop server queue", self)  
         stop_server.triggered.connect(self.kill_server)
+
+        recieve = QtGui.QAction("Open for spaces", self)  
+        recieve.triggered.connect(lambda: self.open_server(startq = False))
 
         serve = menu_bar.addMenu("&Serve") 
         serve.addAction(start_server)
         serve.addAction(stop_server)
+        serve.addAction(recieve)
 
         self.tab_widget = QtGui.QTabWidget(self)
         self.tab_widget.setTabsClosable(True)
@@ -328,7 +334,7 @@ class Window(QtGui.QMainWindow):
                 else:
                     widget.addspace(str(name), False)
             except Exception as e:
-                QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(fname, e))
+                QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(str(name), e))
 
     def exportspace(self):
         widget = self.tab_widget.currentWidget()
@@ -381,7 +387,7 @@ class Window(QtGui.QMainWindow):
             except Exception as e:
                 QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(fname, e))
 
-    def run_server(self):
+    def open_server(self, startq = True):
         if len(self.threads) != 0:
             print 'Server already running'
         else:
@@ -393,9 +399,9 @@ class Window(QtGui.QMainWindow):
 
             self.ip, self.port = server.server_address
 
-            cmd = ['python', os.path.join(os.path.dirname(__file__), 'server.py'), str(self.ip), str(self.port)]
-            self.pro = subprocess.Popen(cmd, stdin=None, stdout=None, stderr=None, preexec_fn=os.setsid) 
-
+            if startq:
+                cmd = ['python', os.path.join(os.path.dirname(__file__), 'server.py'), str(self.ip), str(self.port)]
+                self.pro = subprocess.Popen(cmd, stdin=None, stdout=None, stderr=None, preexec_fn=os.setsid) 
 
             server_thread = threading.Thread(target=server.serve_forever)
             server_thread.daemon = True
@@ -407,7 +413,8 @@ class Window(QtGui.QMainWindow):
             self.threads.append(updater)
             updater.start()
 
-            #print 'GUI server started running at ip {0} and port {1}.'.format(self.ip, self.port)
+            if not startq:
+                print 'GUI server started running at ip {0} and port {1}.'.format(self.ip, self.port)
 
     def kill_server(self):
         if len(self.threads) == 0:
@@ -434,19 +441,30 @@ class Window(QtGui.QMainWindow):
         index = names.index('server')
         serverwidget = self.tab_widget.widget(index)
 
-        while not self.q.empty():
-            command, space = self.q.get()
+        while not self.threads[0].fq.empty():
+            command, space = self.threads[0].fq.get()
             serverwidget.table.addfromserver(command, space)
             serverwidget.table.select()
             if serverwidget.auto_update.isChecked():
                 serverwidget.limitwidget.refresh()
 
 class UpdateThread(QtCore.QThread):
+    fq = Queue.Queue()
     data_found = QtCore.pyqtSignal(object)
     def run(self):
-        delay = BINoculars.util.loop_delayer(1)        
+        delay = BINoculars.util.loop_delayer(1)
+        jobs = []
+        labels = []        
         while 1:
             if not self.q.empty():
+                command, space = self.q.get()
+                if command in labels:
+                    jobs[labels.index(command)].append(space)
+                else:
+                    jobs.append([space])
+                    labels.append(command)
+            elif self.q.empty() and len(jobs) > 0:
+                self.fq.put((labels.pop(), BINoculars.space.sum(jobs.pop())))
                 self.data_found.emit('data found')
             else:
                 next(delay)
@@ -473,16 +491,23 @@ class HiddenToolbar(NavigationToolbar2QTAgg):
         self.update_sliders = update_sliders
         self.zoom()
 
+        self.threed = False
+
     def mouse_move(self, event):
-        self.show_coords(event)
+        if not self.threed:
+            self.show_coords(event)
 
     def press_zoom(self, event):
         super(HiddenToolbar, self).press_zoom(event)
-        self.plotaxes = event.inaxes
+        if not self.threed:
+            self.inaxes = event.inaxes
 
     def release_zoom(self, event):
         super(HiddenToolbar, self).release_zoom(event)
-        self.update_sliders(self.plotaxes)
+        if not self.threed:
+            self.update_sliders(self.inaxes)
+
+
 
 class ProjectWidget(QtGui.QWidget):
     def __init__(self, filelist, key = None, projection = None, parent = None):
@@ -510,7 +535,7 @@ class ProjectWidget(QtGui.QWidget):
         self.loggroup.addButton(self.log)
         self.loggroup.addButton(self.loglog)
 
-        self.swap_axes = QtGui.QCheckBox('swap ax', self)
+        self.swap_axes = QtGui.QCheckBox('ax', self)
         self.swap_axes.setChecked(False)
         QtCore.QObject.connect(self.swap_axes, QtCore.SIGNAL("stateChanged(int)"), self.plot)
 
@@ -521,6 +546,10 @@ class ProjectWidget(QtGui.QWidget):
         self.legend = QtGui.QCheckBox('legend', self)
         self.legend.setChecked(True)
         QtCore.QObject.connect(self.legend, QtCore.SIGNAL("stateChanged(int)"), self.plot)
+
+        self.threed = QtGui.QCheckBox('3d', self)
+        self.threed.setChecked(False)
+        QtCore.QObject.connect(self.threed, QtCore.SIGNAL("stateChanged(int)"), self.plot)
 
         self.auto_update = QtGui.QCheckBox('auto', self)
         self.auto_update.setChecked(True)
@@ -568,6 +597,7 @@ class ProjectWidget(QtGui.QWidget):
         self.group = QtGui.QButtonGroup(self)
         for label in ['stack', 'grid']:
             rb = QtGui.QRadioButton(label, self.control_widget)
+            rb.setChecked(True)
             self.group.addButton(rb)
             radiobox.addWidget(rb)
 
@@ -578,6 +608,7 @@ class ProjectWidget(QtGui.QWidget):
         datarangebox = QtGui.QHBoxLayout() 
         datarangebox.addWidget(self.samerange)
         datarangebox.addWidget(self.legend)
+        datarangebox.addWidget(self.threed)
         datarangebox.addWidget(self.swap_axes)
         datarangebox.addWidget(self.auto_update)
 
@@ -691,6 +722,8 @@ class ProjectWidget(QtGui.QWidget):
             return norm
 
     def plot(self):
+        if len(self.table.plotaxes) == 0:
+            return
         self.figure.clear()
         self.parent.statusbar.clearMessage()
 
@@ -709,12 +742,19 @@ class ProjectWidget(QtGui.QWidget):
 
         for i, filename in enumerate(self.table.selection):
             axes = self.table.getax(filename)
-            space = self.table.getspace(filename, axes.restricted_key(self.key))
+            rkey =  axes.restricted_key(self.key)
+            if rkey == None:
+                space = self.table.getspace(filename)
+            else:
+                space = self.table.getspace(filename, rkey)
             projection = [ax for ax in self.projection if ax in space.axes]
             if projection:
                 space = space.project(*projection)
-            if len(space.axes) > 2 or len(space.axes) == 0:
-                self.errormessage('choose suitable number of projections, plotting only in 1D and 2D')
+            dimension = space.dimension
+            if dimension == 0:
+                self.errormessage('Choose suitable number of projections')
+            if dimension == 3 and not self.threed.isChecked():
+                self.errormessage('Switch on 3D plotting, only works with small spaces')
             spaces.append(space)
 
         self.datamin = []
@@ -725,28 +765,37 @@ class ProjectWidget(QtGui.QWidget):
                 data = data[data > 0]
             self.datamin.append(data.min())
             self.datamax.append(data.max())
+
         norm = self.get_normlist()
+
+        if dimension == 1 or dimension == 2:
+            self.toolbar.threed = False
+        else:
+            self.toolbar.threed = True
 
         for i,space in enumerate(spaces):
             filename = self.table.selection[i]
             basename = os.path.splitext(os.path.basename(filename))[0]
             if plotcount > 1:
-                if space.dimension == 1 and (plotoption == 'stack' or plotoption == None):
+                if dimension == 1 and (plotoption == 'stack' or plotoption == None):
                     self.ax = self.figure.add_subplot(111)
-                if space.dimension == 2 and plotoption != 'grid':
+                if dimension == 2 and plotoption != 'grid':
                     sys.stderr.write('warning: stack display not supported for multi-file-plotting, falling back to grid\n')
                     plotoption = 'grid'
-                elif space.dimension > 3:
+                elif dimension > 3:
                     sys.stderr.write('error: cannot display 4 or higher dimensional data, use --project or --slice to decrease dimensionality\n')
                     sys.exit(1)
             else:
                  self.ax = self.figure.add_subplot(111)
 
             if plotoption == 'grid':
-                self.ax = self.figure.add_subplot(plotrows, plotcolumns, i+1)
+                if dimension == 1 or dimension == 2:
+                    self.ax = self.figure.add_subplot(plotrows, plotcolumns, i+1)
+                elif self.threed.isChecked():
+                    self.ax = self.figure.gca(projection='3d')
                 self.ax.set_title(basename)
 
-            if space.dimension == 2 and self.swap_axes.checkState():
+            if dimension == 2 and self.swap_axes.checkState():
                 space = space.reorder(list(ax.label for ax in space.axes)[::-1])
 
             self.ax.space = space
@@ -754,7 +803,7 @@ class ProjectWidget(QtGui.QWidget):
 
             self.figure_images.append(im)
         
-        if space.dimension == 1 and self.legend.checkState():
+        if dimension == 1 and self.legend.checkState():
             self.ax.legend()
         
         self.update_figure_range(self.key_to_str(self.key))
@@ -792,12 +841,13 @@ class ProjectWidget(QtGui.QWidget):
         if len(key) == 0:
             return
         for ax in self.figure.axes:
+            plotaxes = self.table.plotaxes
             xlabel, ylabel = ax.get_xlabel(), ax.get_ylabel()
-            if xlabel in self.table.plotaxes:
-                xindex = self.table.plotaxes.index(xlabel)
+            if xlabel in plotaxes:
+                xindex = plotaxes.index(xlabel)
                 ax.set_xlim(key[xindex][0], key[xindex][1])
-            if ylabel in self.table.plotaxes:
-                yindex = self.table.plotaxes.index(ylabel)
+            if ylabel in plotaxes:
+                yindex = plotaxes.index(ylabel)
                 ax.set_ylim(key[yindex][0], key[yindex][1])
         self.canvas.draw()
 
@@ -854,7 +904,7 @@ class ProjectWidget(QtGui.QWidget):
     def addspace(self,filename = None, add = False):
         if filename == None:
             filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.hdf5'))
-        self.table.addspace(filename, add)
+        self.table.add_space(filename, add)
 
     def save(self):
         dialog = QtGui.QFileDialog(self, "Save image");
@@ -903,118 +953,127 @@ class ProjectWidget(QtGui.QWidget):
 def short_filename(filename):
     return filename.split('/')[-1].split('.')[0]
 
+class SpaceContainer(QtGui.QTableWidgetItem):
+    def __init__(self, label, space=None):
+        super(SpaceContainer, self).__init__(short_filename(label))
+        self.label = label
+        self.space = space
+
+    def get_space(self, key = None):
+        if self.space == None:
+            return BINoculars.space.Space.fromfile(self.label, key = key)
+        else:
+           if key == None:
+                key = Ellipsis
+           return self.space[key]
+
+    def get_ax(self):
+        if self.space == None:
+           return BINoculars.space.Axes.fromfile(self.label)
+        else:
+           return self.space.axes
+
+    def add_to_space(space):
+        if self.space == None:
+            newspace = BINoculars.space.Space.fromfile(self.label) + space
+            newspsace.tofile(self.label)
+        else:
+            self.space += space
+
 class TableWidget(QtGui.QWidget):
     def __init__(self, filelist = [],parent=None):
         super(TableWidget, self).__init__(parent)
 
         hbox = QtGui.QHBoxLayout()
-        self.plotaxes = []
 
-        self.table = QtGui.QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(['filename','labels', 'remove'])
+        self.table = QtGui.QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(['', 'filename','labels', 'remove'])
         
-        for index, width in enumerate([150,50,70]):
+        for index, width in enumerate([25,150,50,70]):
             self.table.setColumnWidth(index, width)
 
         for filename in filelist:
-            self.addspace(filename)
+            self.add_space(filename)
 
         hbox.addWidget(self.table)
         self.setLayout(hbox)
 
-    def addspace(self, filename, add = True, space = None):
-        def remove_callback(filename):
-            return lambda: self.remove(filename)
-
+    def add_space(self, filename, add = True, space = None):
         index = self.table.rowCount()
         self.table.insertRow(index)
 
-        if space == None:
-            axes = BINoculars.space.Axes.fromfile(filename)
-        else:
-            axes = space.axes
-
-        checkboxwidget = QtGui.QCheckBox(short_filename(filename))
-        checkboxwidget.setChecked(True)
-        checkboxwidget.filename = filename
-        checkboxwidget.space = space        
+        checkboxwidget = QtGui.QCheckBox()
+        checkboxwidget.setChecked(add)
         checkboxwidget.clicked.connect(self.select)
         self.table.setCellWidget(index,0, checkboxwidget)
 
-        item = QtGui.QTableWidgetItem(','.join(list(ax.label.lower() for ax in axes)))
-        self.table.setItem(index, 1, item)
+        container = SpaceContainer(filename, space)
+        self.table.setItem(index, 1, container)
+
+        item = QtGui.QTableWidgetItem(','.join(list(ax.label.lower() for ax in container.get_ax())))
+        self.table.setItem(index, 2, item)
 
         buttonwidget = QtGui.QPushButton('remove')
-        buttonwidget.clicked.connect(remove_callback(filename))
-        self.table.setCellWidget(index,2, buttonwidget)
+        buttonwidget.clicked.connect(lambda: self.remove(filename))
+        self.table.setCellWidget(index,3, buttonwidget)
         if add:
             self.select()
 
     def addfromserver(self, command, space):
         if not command in self.filelist:
-            self.addspace(command, add = False, space = space)
+            self.add_space(command, add = False, space = space)
         else:
-            checkbox = self.table.cellWidget(self.filelist.index(short_filename(command)), 0)
-            checkbox.space += space
+            container = self.table.item(self.filelist.index(command), 1)
+            container.add_to_space(space)
 
     def remove(self, filename):
-        table_filenames = list(self.table.cellWidget(index, 0).filename for index in range(self.table.rowCount()))
-        for index, label in enumerate(table_filenames):
-            if filename == label:
-                self.table.removeRow(index)
+        self.table.removeRow(self.filelist.index(filename))
         self.select()
         print 'removed: {0}'.format(filename)
 
     def select(self):
-        self.selection = []
-        axeslist = []
-        for index in range(self.table.rowCount()):
-            checkbox = self.table.cellWidget(index, 0)
-            if checkbox.checkState():
-                self.selection.append(checkbox.filename)
-                if checkbox.space == None:
-                    axeslist.append(BINoculars.space.Axes.fromfile(checkbox.filename))
-                else:
-                    axeslist.append(checkbox.space.axes)
-
-        if len(self.selection) > 0:
-            first = axeslist[0]
-            if all(set(ax.label for ax in first) == set(ax.label for ax in axes) for axes in axeslist):
-                self.plotaxes = BINoculars.space.Axes(tuple(BINoculars.space.union_unequal_axes(ax[i] for ax in axeslist) for i in range(first.dimension)))
-                self.emit(QtCore.SIGNAL('plotaxesChanged'), self.plotaxes)
-            else:
-                self.selection = []
-                self.emit(QtCore.SIGNAL('selectionError'), 'labels of selected spaces not matching')
+        axes = self.plotaxes
+        if len(axes) > 0:
+                self.emit(QtCore.SIGNAL('plotaxesChanged'), axes)
         else:
-            self.emit(QtCore.SIGNAL('selectionError'), 'no spaces selected')
+            self.emit(QtCore.SIGNAL('selectionError'), 'no spaces selected or spaces with non identical labels selected')
+
+    @property
+    def selection(self):
+        return list(container.label for checkbox, container in zip(self.itercheckbox(), self.itercontainer()) if checkbox.checkState())
+
+    @property
+    def plotaxes(self):
+        axes = tuple(container.get_ax() for checkbox, container in zip(self.itercheckbox(), self.itercontainer()) if checkbox.checkState())
+        if len(axes) > 0:
+            try:
+                return BINoculars.space.Axes(BINoculars.space.union_unequal_axes(ax) for ax in zip(*axes))
+            except ValueError:
+                return ()
+        else:
+            return ()
 
     @property
     def filelist(self):
-        return list(self.table.cellWidget(index, 0).filename for index in range(self.table.rowCount()))
+        return list(container.label for container in self.itercontainer())
 
     def getax(self, filename):
         index = self.filelist.index(filename)
-        checkbox = self.table.cellWidget(index, 0)
-        if checkbox.space == None:
-           return BINoculars.space.Axes.fromfile(checkbox.filename)
-        else:
-           return checkbox.space.axes
+        return self.table.item(index, 1).get_ax()
 
     def getspace(self, filename, key = None):
         index = self.filelist.index(filename)
-        checkbox = self.table.cellWidget(index, 0)
-        if checkbox.space == None:
-           return BINoculars.space.Space.fromfile(checkbox.filename, key = key)
-        else:
-           if key == None:
-                key = Ellipsis
-           return checkbox.space[key]
+        return self.table.item(index, 1).get_space(key)
 
+    def itercheckbox(self):
+        return iter(self.table.cellWidget(index, 0) for index in range(self.table.rowCount()))
+
+    def itercontainer(self):
+        return iter(self.table.item(index, 1) for index in range(self.table.rowCount()))
 
 class LimitWidget(QtGui.QWidget):
     def __init__(self, axes, parent=None):
         super(LimitWidget, self).__init__(parent)
-
         self.initUI(axes)
 
     def initUI(self, axes):
@@ -1208,6 +1267,8 @@ def is_empty(key):
 
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
+
+    BINoculars.space.silence_numpy_errors()
 
     main = Window()
     main.resize(1000, 600)

@@ -159,7 +159,7 @@ class Window(QtGui.QMainWindow):
 #----------------------------------------------------------------------------------------------------
 #-----------------------------------------CREATE TABLE-----------------------------------------------
 class Table(QtGui.QWidget):
-    def __init__(self, parent = None):
+    def __init__(self, label,  parent = None):
         super(Table, self).__init__()
         
         # create a QTableWidget
@@ -167,7 +167,7 @@ class Table(QtGui.QWidget):
         self.table.setHorizontalHeaderLabels(['Parameter', 'Value','Comment'])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.verticalHeader().setVisible(False)
-        
+        self.table.setTextElideMode(QtCore.Qt.ElideLeft)
         #create combobox
         self.combobox = QtGui.QComboBox()
         #add items
@@ -179,14 +179,18 @@ class Table(QtGui.QWidget):
         self.connect(self.btn_add_row, QtCore.SIGNAL('clicked()'), self.add_row)
         self.buttonRemove = QtGui.QPushButton('-',self)
         self.connect(self.buttonRemove, QtCore.SIGNAL("clicked()"), self.remove)
-        self.btn_add_row.resize(10,10)
-        self.buttonRemove.resize(10,10) 
         #the dispositon of the table and the butttons
-        layout = QtGui.QGridLayout()
-        layout.addWidget(self.table,1,0,1,0)
-        layout.addWidget(self.btn_add_row,0,0)
-        layout.addWidget(self.buttonRemove,0,1)
-        self.setLayout(layout)
+
+        vbox = QtGui.QVBoxLayout()
+        hbox = QtGui.QHBoxLayout()
+
+        hbox.addWidget(self.btn_add_row)
+        hbox.addWidget(self.buttonRemove)
+
+        vbox.addWidget(label)
+        vbox.addLayout(hbox)
+        vbox.addWidget(self.table)
+        self.setLayout(vbox)
 
     def add_row(self):
         self.table.insertRow(self.table.rowCount())
@@ -261,14 +265,9 @@ class Conf_Tab(QtGui.QWidget):
 
         super(Conf_Tab,self).__init__()
         #we create 3 tables
-        self.Dis = Table()
-        self.Inp = Table()
-        self.Pro = Table()
-
-        label1 = QtGui.QLabel('<strong>Dispatcher :</strong>')
-        label2 = QtGui.QLabel('<strong>Input :</strong>')
-        label3 = QtGui.QLabel('<strong>Projection :<strong>')
-
+        self.Dis = Table(QtGui.QLabel('<strong>Dispatcher :</strong>'))
+        self.Inp = Table(QtGui.QLabel('<strong>Input :</strong>'))
+        self.Pro = Table(QtGui.QLabel('<strong>Projection :<strong>'))
         self.select = QtGui.QComboBox()
         backends = list(backend.lower() for backend in BINoculars.util.get_backends())
         #we add the list of different backends on the select combobox
@@ -278,18 +277,34 @@ class Conf_Tab(QtGui.QWidget):
         self.scan = QtGui.QLineEdit()
         self.scan.setToolTip('scan selection example: 820 824')
 
+        vbox = QtGui.QVBoxLayout()
+        hbox = QtGui.QHBoxLayout() 
+        splitter = QtGui.QSplitter(QtCore.Qt.Horizontal)
+        splitter.addWidget(self.Dis)
+        splitter.addWidget(self.Inp)
+        splitter.addWidget(self.Pro)
+        hbox.addWidget(splitter) 
+
+        commandbox = QtGui.QHBoxLayout() 
+        commandbox.addWidget(self.add)
+        commandbox.addWidget(self.scan)
+
+        vbox.addWidget(self.select)
+        vbox.addLayout(hbox)
+        vbox.addLayout(commandbox)
+
         #the dispositon of all elements of the gui
-        Layout = QtGui.QGridLayout()
-        Layout.addWidget(label1,1,1,1,2)
-        Layout.addWidget(label2,1,0,1,2)
-        Layout.addWidget(label3,1,2,1,2)
-        Layout.addWidget(self.select,0,0)
-        Layout.addWidget(self.Dis,2,1)
-        Layout.addWidget(self.Inp,2,0)
-        Layout.addWidget(self.Pro,2,2) 
-        Layout.addWidget(self.add,3,0)
-        Layout.addWidget(self.scan,3,1)
-        self.setLayout(Layout)
+        #Layout = QtGui.QGridLayout()
+        #Layout.addWidget(label1,1,1,1,2)
+        #Layout.addWidget(label2,1,0,1,2)
+        #Layout.addWidget(label3,1,2,1,2)
+        #Layout.addWidget(self.select,0,0)
+        #Layout.addWidget(self.Dis,2,1)
+        #Layout.addWidget(self.Inp,2,0)
+        #Layout.addWidget(self.Pro,2,2) 
+        #Layout.addWidget(self.add,3,0)
+        #Layout.addWidget(self.scan,3,1)
+        self.setLayout(vbox)
         
         #Here we call all methods for selected an ellement on differents combobox 
         self.Dis.add_to_combo(QtCore.QStringList(BINoculars.util.get_dispatchers()))

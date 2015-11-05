@@ -18,6 +18,8 @@ class SubprocessError(ExceptionBase):
 class BackendError(ExceptionBase):
     pass
 
+class CommunicationError(ExceptionBase):
+    pass
 
 def addmessage(args, errormsg):
     if not args:

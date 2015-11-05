@@ -231,44 +231,61 @@ class ID03Input(backend.InputBase):
         if not len(scans):
             sys.stderr.write('error: no scans selected, nothing to do\n')
         for scanno in scans:
-            scan = self.get_scan(scanno)
+            util.status('processing scan {0}...'.format(scanno))
             if self.config.wait_for_data:
-                target = self.target(scan)
-                if not target == -1 and not self.is_zap(scan):
-                    for s in util.chunk_slicer(target, self.config.target_weight):
-                        if self.wait_for_points(scanno, s.stop, timeout=180):
-                           stop = self.get_scan(scanno).lines()
-                           yield backend.Job(scan=scanno, firstpoint=s.start, lastpoint=stop-1, weight=s.stop-s.start)
-                           break
-                        else:
-                           yield backend.Job(scan=scanno, firstpoint=s.start, lastpoint=s.stop-1, weight=s.stop-s.start)
-                elif not target == -1:
-                    if not self.wait_for_points(scanno, target, timeout=180):
-                        for s in util.chunk_slicer(target, self.config.target_weight):
-                           yield backend.Job(scan=scanno, firstpoint=s.start, lastpoint=s.stop-1, weight=s.stop-s.start)
-                else:
-                    step = self.config.target_weight
-                    for start, stop in itertools.izip(itertools.count(0,step), itertools.count(step,step)):
-                        if self.wait_for_points(scanno, stop, timeout=180):
-                           stop = self.get_scan(scanno).lines()
-                           yield backend.Job(scan=scanno, firstpoint=start, lastpoint=stop-1, weight=stop-start)
-                           break
-                        else:
-                           yield backend.Job(scan=scanno, firstpoint=start, lastpoint=stop-1, weight=stop-start)
+                for job in self.get_delayed_jobs(scanno):
+                    yield job
             else:
-                try:
-                    pointcount = scan.lines()
-                except specfile.error: # no points
-                    continue
-                next(self.get_images(scan, 0, pointcount-1, dry_run=True))# dryrun
+                scan = self.get_scan(scanno)
                 if self.config.pr:
-                    pointcount = self.config.pr[1] - self.config.pr[0]
-                    yield backend.Job(scan=scanno, firstpoint=self.config.pr[0], lastpoint=self.config.pr[1], weight=pointcount)
-                elif self.config.target_weight and pointcount > self.config.target_weight * 1.4:
-                    for s in util.chunk_slicer(pointcount, self.config.target_weight):
-                        yield backend.Job(scan=scanno, firstpoint=s.start, lastpoint=s.stop-1, weight=s.stop-s.start)
+                    pointcount = self.config.pr[1] - self.config.pr[0] + 1
+                    start = self.config.pr[0]
                 else:
-                    yield backend.Job(scan=scanno, firstpoint=0, lastpoint=pointcount-1, weight=pointcount)
+                    start = 0
+                    try:
+                        pointcount = scan.lines()
+                    except specfile.error: # no points
+                        continue
+                next(self.get_images(scan, 0, pointcount-1, dry_run=True))# dryrun
+                if pointcount > self.config.target_weight * 1.4:
+                    for s in util.chunk_slicer(pointcount, self.config.target_weight):
+                        yield backend.Job(scan=scanno, firstpoint=start+s.start, lastpoint=start+s.stop-1, weight=s.stop-s.start)
+                else:
+                    yield backend.Job(scan=scanno, firstpoint=start, lastpoint=start+pointcount-1, weight=pointcount)
+
+    def get_delayed_jobs(self, scanno):
+        scan = self.get_delayed_scan(scanno)
+
+        if self.config.pr:
+            firstpoint, lastpoint = self.config.pr#firstpoint is the first index to be included, lastpoint the last index to be included.
+        else:
+            firstpoint, lastpoint = 0, self.target(scan) - 1
+
+        pointcount = lastpoint - firstpoint + 1
+
+        if self.is_zap(scan):   #wait until the scan is finished.
+            if not self.wait_for_points(scanno, self.target(scan), timeout=self.config.timeout):    #wait for last datapoint
+                for s in util.chunk_slicer(pointcount, self.config.target_weight):
+                   yield backend.Job(scan=scanno, firstpoint=firstpoint+s.start, lastpoint=firstpoint+s.stop-1, weight=s.stop-s.start)
+            else:
+                raise errors.BackendError('Image collection timed out. Zapscan was probably aborted')
+        elif lastpoint >= 0:  #scanlength is known
+            for s in util.chunk_slicer(pointcount, self.config.target_weight):
+                if self.wait_for_points(scanno, firstpoint + s.stop, timeout=self.config.timeout):
+                   stop = self.get_scan(scanno).lines()
+                   yield backend.Job(scan=scanno, firstpoint=firstpoint+s.start, lastpoint=stop-1, weight=s.stop-s.start)
+                   break
+                else:
+                   yield backend.Job(scan=scanno, firstpoint=firstpoint+s.start, lastpoint=firstpoint+s.stop-1, weight=s.stop-s.start)
+        else:    #scanlength is unknown
+            step = int(self.config.target_weight / 1.4)
+            for start, stop in itertools.izip(itertools.count(0,step), itertools.count(step,step)):
+                if self.wait_for_points(scanno, stop, timeout=self.config.timeout):
+                   stop = self.get_scan(scanno).lines()
+                   yield backend.Job(scan=scanno, firstpoint=start, lastpoint=stop-1, weight=stop-start)
+                   break
+                else:
+                   yield backend.Job(scan=scanno, firstpoint=start, lastpoint=stop-1, weight=stop-start)
 
     def process_job(self, job):
         super(ID03Input, self).process_job(job)
@@ -305,7 +322,8 @@ class ID03Input(backend.InputBase):
             self.config.pr = util.parse_tuple(self.config.pr, length=2, type=int)
         self.config.sdd = float(config.pop('sdd'))# sample to detector distance (mm)
         self.config.pixelsize = util.parse_tuple(config.pop('pixelsize'), length=2, type=float)# pixel size x/y (mm) (same dimension as sdd)
-        self.config.wait_for_data = util.parse_bool(config.pop('wait_for_data', 'false'))
+        self.config.wait_for_data = util.parse_bool(config.pop('wait_for_data', 'false'))#Optional, if true wait until the data appears
+        self.config.timeout = int(config.pop('timeout', 180))#Optional, how long the script wait until it assumes the scan is not continuing
 
     def get_destination_options(self, command):
         if not command:
@@ -315,42 +333,58 @@ class ID03Input(backend.InputBase):
         return dict(first=min(scans), last=max(scans), range=','.join(str(scan) for scan in scans))
 
     # CONVENIENCE FUNCTIONS
-    _spec = None
     def get_scan(self, scannumber):
-        if self._spec is None:
-            self._spec = specfilewrapper.Specfile(self.config.specfile)
-        if self.config.wait_for_data:
-            util.status('waiting for scan {0}...'.format(scannumber))
-            delay = util.loop_delayer(5)
-            while 1:
-                try:
-                    return specfilewrapper.Specfile(self.config.specfile).select('{0}.1'.format(scannumber))
-                except specfile.error:
-                    next(delay)
-        else:
-            return self._spec.select('{0}.1'.format(scannumber))
+        spec = specfilewrapper.Specfile(self.config.specfile)
+        return spec.select('{0}.1'.format(scannumber))
 
-    def wait_for_points(self, scanno, stop, timeout=None):
+    def get_delayed_scan(self, scannumber, timeout = None):
         delay = util.loop_delayer(5)
         start = time.time()
-        while self.get_scan(scanno).lines() < stop:
-            util.status('waiting for scan {0}, point {1}...'.format(scanno, stop))
-            next(delay)
-            if timeout is not None and time.time() - start > timeout:
-                util.statusnl('scan {0} aborted at point {1}'.format(scanno, self.get_scan(scanno).lines()))
-                return True
-        return False
+        while 1:
+            try:
+                return self.get_scan(scannumber) #reload entire specfile
+            except specfile.error:
+                if timeout is not None and time.time() - start > timeout:
+                    raise errors.BackendError('Scan timed out. There is no data to process')
+                else:
+                    util.status('waiting for scan {0}...'.format(scannumber))
+                    next(delay)
 
-    @staticmethod
-    def target(scan):
-        if scan.command().startswith('ascan') or scan.command().startswith('hklscan') or scan.command().startswith('a2scan'):
+    def wait_for_points(self, scannumber, stop, timeout=None):
+        delay = util.loop_delayer(1)
+        start = time.time()
+
+        while 1:
+            scan = self.get_scan(scannumber)
+            try:
+                if scan.lines() >= stop:
+                    next(delay)    #time delay between specfile and edf file
+                    return False
+            except specfile.error:
+                pass
+            finally:
+                next(delay)
+
+            util.status('waiting for scan {0}, point {1}...'.format(scannumber, stop))
+            if (timeout is not None and time.time() - start > timeout) or self.is_aborted(scan):
+                try:
+                    util.statusnl('scan {0} aborted at point {1}'.format(scannumber, scan.lines()))
+                    return True
+                except specfile.error:
+                    raise errors.BackendError('Scan was aborted before images were collected. There is no data to process')
+
+
+    def target(self, scan):
+        if any(tuple(scan.command().startswith(pattern) for pattern in ['hklscan', 'a2scan', 'ascan', 'ringscan'])):
             return int(scan.command().split()[-2]) + 1
         elif scan.command().startswith('mesh'):
             return int(scan.command().split()[-6]) * int(scan.command().split()[-2]) + 1
+        elif scan.command().startswith('loopscan'):
+            return int(scan.command().split()[-3])
         elif scan.command().startswith('xascan'):
             params = numpy.array(scan.command().split()[-6:]).astype(float)
             return int(params[2] + 1 + (params[4] - 1) / params[5] * params[2])
-        elif is_zap(scan):
+        elif self.is_zap(scan):
             return int(scan.command().split()[-2])
         else:
             return -1
@@ -358,6 +392,13 @@ class ID03Input(backend.InputBase):
     @staticmethod
     def is_zap(scan):
         return scan.command().startswith('zap')
+
+    @staticmethod
+    def is_aborted(scan):
+        for line in scan.header('C'):
+            if 'Scan aborted' in line:
+                return True
+        return False
 
     def find_edfs(self, pattern, scanno):
         files = glob.glob(pattern)
@@ -496,13 +537,13 @@ class EH1(ID03Input):
       
     def process_image(self, scanparams, pointparams, image):
         gamma, delta, theta, chi, phi, mu, mon, transm, hrx, hry = pointparams
+        wavelength, UB = scanparams
 
         if self.config.hr:
             zerohrx, zerohry = self.config.hr
             chi = (hrx - zerohrx) / numpy.pi * 180. / 1000
             phi = (hry - zerohry) / numpy.pi * 180. / 1000
 
-        wavelength, UB = scanparams
         if self.config.background:
             data = image / mon
         else:
@@ -705,7 +746,6 @@ class GisaxsDetector(ID03Input):
         ccdy, ccdz, theta, chi, phi, mu, mon, transm= pointparams
 
         image = numpy.rot90(image, self.config.drotation)
-        image = numpy.fliplr(image)
 
         wavelength, UB = scanparams
 
@@ -723,11 +763,16 @@ class GisaxsDetector(ID03Input):
         pixelsize = numpy.array(self.config.pixelsize)
         sdd = self.config.sdd 
 
-        app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
-
         directbeam = (self.config.directbeam[0] - (ccdy - self.config.directbeam_coords[0]) * pixelsize[0], self.config.directbeam[1] - (ccdz - self.config.directbeam_coords[1]) * pixelsize[1])
-        gamma_range= app[0] * (numpy.arange(data.shape[0]) - directbeam[0]) - mu
-        delta_range= app[1] * (numpy.arange(data.shape[1]) - directbeam[1])
+        gamma_distance  = - pixelsize[1] * (numpy.arange(data.shape[1]) - directbeam[1])
+        delta_distance  = - pixelsize[0] * (numpy.arange(data.shape[0]) - directbeam[0])
+
+        gamma_range = numpy.arctan2(gamma_distance, sdd) / numpy.pi * 180 - mu
+        delta_range = numpy.arctan2(delta_distance, sdd) / numpy.pi * 180
+
+        #sample pixel distance
+        spd = numpy.sqrt(gamma_distance**2 + delta_distance**2 + sdd**2)
+        data *= spd**2 / sdd
 
         # masking
         gamma_range = gamma_range[self.config.ymask]
@@ -735,6 +780,7 @@ class GisaxsDetector(ID03Input):
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
 
         return intensity, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
+
 
     def parse_config(self, config):
         super(GisaxsDetector, self).parse_config(config)
@@ -763,6 +809,19 @@ class GisaxsDetector(ID03Input):
         params[:, MU] = scan.datacol('mucnt')[sl]
         return params
 
+    def find_edfs(self, pattern, scanno):
+        files = glob.glob(pattern)
+        ret = {}
+        for file in files:
+            try:
+                filename = os.path.basename(file).split('.')[0]
+                scan, point = filename.split('_')[-2:]
+                scan, point = int(scan), int(point)
+                if scan == scanno and point not in ret.keys():
+                    ret[point] = file
+            except ValueError:
+                continue
+        return ret
 
 def load_matrix(filename):
     if filename == None:
@@ -779,4 +838,5 @@ def load_matrix(filename):
             raise ValueError('unknown extension {0}, unable to load matrix!\n'.format(ext))        
     else:
        raise IOError('filename: {0} does not exist. Can not load matrix'.format(filename))
+
 

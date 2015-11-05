@@ -65,12 +65,16 @@ class Axis(object):
                 raise IndexError('stride not supported')
             if key.start is None:
                 start = 0
+            elif key.start < 0:
+                raise IndexError('key out of range')
             elif isinstance(key.start, int):
                 start = key.start
             else:
                 raise IndexError('key start must be integer')
             if key.stop is None:
                 stop = len(self)
+            elif key.stop > len(self):
+                raise IndexError('key out of range')
             elif isinstance(key.stop, int):
                 stop = key.stop
             else:
@@ -164,6 +168,8 @@ class Axis(object):
                start = self.restrict(value.start)
            if value.stop is None:
                stop = None
+           if value.stop == self.max:
+               stop = None
            else:
                stop = self.restrict(value.stop)
            if start is not None and stop is not None and start > stop:
@@ -199,24 +205,22 @@ class Axes(object):
     def fromfile(cls, filename):
         with util.open_h5py(filename, 'r') as fp:
             try:
-                if 'axes' in fp:
-                    # old style, float min/max
+                if 'axes' in fp and 'axes_labels' in fp:
+                    # oldest style, float min/max
                     return cls(tuple(Axis(min, max, res, lbl) for ((min, max, res), lbl) in zip(fp['axes'], fp['axes_labels'])))
+                elif 'axes' in fp:#new
+                    return cls(tuple(Axis(int(imin), int(imax), res, lbl) for ((imin, imax, res), lbl) in zip(fp['axes'].values(), fp['axes'].keys())))
                 else:
-                    # new style, integer min/max
+                    # older style, integer min/max
                     return cls(tuple(Axis(imin, imax, res, lbl) for ((imin, imax), res, lbl) in zip(fp['axes_range'], fp['axes_res'], fp['axes_labels'])))
             except (KeyError, TypeError) as e:
                 raise errors.HDF5FileError('unable to load axes definition from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(filename, e))
 
     def tofile(self, filename):
         with util.open_h5py(filename, 'w') as fp:
-            range = fp.create_dataset('axes_range', [len(self.axes), 2], dtype=int)
-            res = fp.create_dataset('axes_res', [len(self.axes)], dtype=float)
-            labels = fp.create_dataset('axes_labels', [len(self.axes)], dtype=h5py.special_dtype(vlen=str))
-            for i, ax in enumerate(self.axes):
-                range[i, :] = ax.imin, ax.imax
-                res[i] = ax.res
-                labels[i] = ax.label
+            axes = fp.create_group('axes')
+            for ax in self.axes:
+                axes.create_dataset(ax.label, data = [ax.imin, ax.imax, ax.res])
 
     def toarray(self):
         return numpy.vstack(numpy.hstack([str(ax.imin), str(ax.imax), str(ax.res), ax.label]) for ax in self.axes)
@@ -284,22 +288,34 @@ class Axes(object):
 class EmptySpace(object):
     """Convenience object for sum() and friends. Treated as zero for addition.
     Does not share a base class with Space for simplicity."""
-
+    def __init__(self,config=None, metadata=None):
+        self.config = config
+        self.metadata = metadata
+        
     def __add__(self, other):
-        if not isinstance(other, Space):
+        if not isinstance(other, Space) and not isinstance(other, EmptySpace):
             return NotImplemented
         return other
 
     def __radd__(self, other):
-        if not isinstance(other, Space):
+        if not isinstance(other, Space) and not isinstance(other, EmptySpace):
             return NotImplemented
         return other
 
     def __iadd__(self, other):
-        if not isinstance(other, Space):
+        if not isinstance(other, Space) and not isinstance(other, EmptySpace):
             return NotImplemented
         return other
 
+    def tofile(self, filename):
+        """Store EmptySpace in HDF5 file."""
+        with util.atomic_write(filename) as tmpname:
+            with util.open_h5py(tmpname, 'w') as fp:
+                fp.attrs['type'] = 'Empty'           
+
+    def __repr__(self):
+        return '{0.__class__.__name__}'.format(self)
+  
 
 class Space(object):
     """Main data-storing object in BINoculars. 
@@ -617,6 +633,7 @@ class Space(object):
         intensity = intensity[valid]
         if not intensity.size:
             return
+
         coordinates = tuple(coord[valid] for coord in coordinates)
 
         indices = numpy.array(tuple(ax.get_index(coord) for (ax, coord) in zip(self.axes, coordinates)))
@@ -631,13 +648,28 @@ class Space(object):
         self.contributions.ravel()[:contributions.size] += contributions
 
     @classmethod
-    def from_image(cls, resolutions, labels, coordinates, intensity):
+    def from_image(cls, resolutions, labels, coordinates, intensity, limits = None):
         """Create Space from image data. 
 
         resolutions   n-tuple of axis resolutions
         labels          n-tuple of axis labels
         coordinates   n-tuple of data coordinate arrays
         intensity     data intensity array"""
+
+        if limits is not None:
+            invalid = numpy.zeros(intensity.shape).astype(numpy.bool)
+            for coord, sl in zip(coordinates, limits):
+                if sl.start == None and sl.stop != None:
+                    invalid += coord > sl.stop
+                elif sl.start != None and sl.stop == None:
+                    invalid += coord < sl.start
+                elif sl.start != None and sl.stop != None:
+                    invalid += numpy.bitwise_or(coord < sl.start, coord > sl.stop)
+
+            if numpy.all(invalid == True):
+                return EmptySpace()
+            coordinates = tuple(coord[~invalid] for coord in coordinates)
+            intensity = intensity[~invalid]
 
         axes = tuple(Axis(coord.min(), coord.max(), res, label) for res, label, coord in zip(resolutions, labels, coordinates))
         newspace = cls(axes)
@@ -648,6 +680,7 @@ class Space(object):
         """Store Space in HDF5 file."""
         with util.atomic_write(filename) as tmpname:
             with util.open_h5py(tmpname, 'w') as fp:
+                fp.attrs['type'] = 'Space'
                 self.config.tofile(fp)
                 self.axes.tofile(fp)
                 self.metadata.tofile(fp)
@@ -658,10 +691,14 @@ class Space(object):
     def fromfile(cls, file, key=None):
         """Load Space from HDF5 file.
 
-        file      filename string or h5py.File instance
+        file      filename string or h5py.Group instance
         key       sliced (subset) loading, should be an n-tuple of slice()s in data coordinates"""
         try:
             with util.open_h5py(file, 'r') as fp:
+                if 'type' in fp.attrs.keys():
+                    if fp.attrs['type'] == 'Empty':
+                        return EmptySpace()
+                
                 axes = Axes.fromfile(fp)
                 config = util.ConfigFile.fromfile(fp)
                 metadata = util.MetaData.fromfile(fp)
@@ -678,6 +715,7 @@ class Space(object):
                     fp['contributions'].read_direct(space.contributions, key)
                 except (KeyError, TypeError) as e:
                     raise errors.HDF5FileError('unable to load Space from HDF5 file {0}, is it a valid BINoculars file? (original error: {1!r})'.format(file, e))
+
         except IOError as e:
             raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(file, e))
         return space
@@ -711,7 +749,9 @@ def union_unequal_axes(axes):
 
 def sum(spaces):
     """Calculate sum of iterable of Space instances."""
-    spaces = tuple(spaces)
+    spaces = tuple(space for space in spaces if not isinstance(space, EmptySpace))
+    if len(spaces) == 0:
+        return EmptySpace()
     if len(spaces) == 1:
         return spaces[0]
     if len(set(space.dimension for space in spaces)) != 1:

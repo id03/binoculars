@@ -285,7 +285,7 @@ def parse_multi_range(s):
     ranges = s.split(',')
     for r in ranges:
         out.extend(parse_range(r))
-    return numpy.asarray(out)
+    return out
 
 def parse_tuple(s, length=None, type=str):
     t = tuple(type(i) for i in s.split(','))
@@ -301,6 +301,25 @@ def parse_bool(s):
         return False
     raise ValueError("invalid input for boolean: '{0}'".format(s))
 
+def parse_pairs(s):
+    if not s:
+        return s
+    pairs = s.split(',')
+    limits = []
+    for pair in pairs:
+        mi, ma = tuple(m.strip() for m in pair.split(':'))
+        if mi == '' and ma == '':
+            limits.append(slice(None))
+        elif mi == '':
+            limits.append(slice(None, float(ma)))
+        elif ma == '':
+            limits.append(slice(float(mi), None))
+        else:
+            if float(ma) < float(mi):
+                raise ValueError("invalid input. maximum is larger than minimum: '{0}'".format(s))
+            else:
+                limits.append(slice(float(mi), float(ma)))
+    return limits
 
 class MetaBase(object):
     def __init__(self, label = None, section = None):
@@ -458,12 +477,15 @@ class ConfigFile(MetaBase):
         with open_h5py(filename, 'r') as fp:
             try:
                 config = fp['configuration']
-                if 'command' in config.attrs.keys():
+                if 'command' in config.attrs:
                     configobj.command = json.loads(config.attrs['command'])
+                for section in config:
+                    if isinstance(config[section],  h5py._hl.group.Group):#new
+                        setattr(configobj, section, dict((key, config[section][key].value) for key in config[section]))
+                    else:#old
+                        setattr(configobj, section, dict(config[section]))
             except KeyError as e:
-                config = [] # when config is not present, proceed without Error
-            for section in config:
-                setattr(configobj, section, dict(config[section]))
+                pass # when config is not present, proceed without Error
         return configobj
 
     @classmethod
@@ -484,17 +506,14 @@ class ConfigFile(MetaBase):
 
     def tofile(self, filename):
         with open_h5py(filename, 'w') as fp:
-            dt = h5py.special_dtype(vlen=str)
             conf = fp.create_group('configuration')
             conf.attrs['origin'] = str(self.origin)
             conf.attrs['command'] = json.dumps(self.command)
             for section in self.sections:
+                sectiongroup = conf.create_group(section)
                 s = getattr(self, section)
-                if len(s):
-                    dataset = conf.create_dataset(section, (len(s),2), dtype=dt)
-                    for i,entry in zip(range(len(s)), s):
-                        dataset[i, 0] = entry
-                        dataset[i, 1] = s[entry]
+                for key in s.keys():
+                    sectiongroup.create_dataset(key, data = s[key])
 
     def totxtfile(self, filename):
         with open(filename, 'w') as fp:
@@ -633,12 +652,19 @@ def space_to_txt(space, filename):
 
 @contextlib.contextmanager
 def open_h5py(file, mode):
-    if isinstance(file, h5py.File):
+    if isinstance(file, h5py._hl.group.Group):
         yield file
     else:
         with h5py.File(file, mode) as fp:
-            yield fp
-
+            if mode == 'w':
+                if not 'binoculars' in fp:
+                    fp.create_group('binoculars')
+                yield fp['binoculars']
+            if mode == 'r':
+                if 'binoculars' in fp:
+                    yield fp['binoculars']
+                else:
+                    yield fp
 
 ### VARIOUS
 
@@ -682,6 +708,19 @@ def cluster_jobs(jobs, target_weight):
                 size += jobs[i].weight
                 cluster.append(jobs.pop(i))
         yield cluster
+
+def cluster_jobs2(jobs, target_weight):
+    """Taking the first n jobs that together add up to target_weight.
+       Here as opposed to cluster_jobs the total number of jobs does not have to be known beforehand
+    """
+    jobslist = []
+    for job in jobs:
+       jobslist.append(job)
+       if sum(j.weight for j in jobslist) >= target_weight:
+           yield jobslist[:]
+           jobslist = []
+    if len(jobslist) > 0:#yield the remainder of the jobs
+        yield jobslist[:]
 
 def loop_delayer(delay):
     """Delay a loop such that it runs at most once every 'delay' seconds. Usage example:
@@ -812,12 +851,14 @@ def serialize(space, command):
     message.seek(0)
     message.write(struct.pack('QQQQQQ', commandlength, configlength, metalength, arraylength, photonlength, contributionlength))
     message.seek(0)
+
     return message
 
 def packet_slicer(length, size = 1024):#limit the communication to 1024 bytes
-    packets = [size] * (length / size)
-    packets.append(length % size)
-    return packets
+    while length > size:
+        length -= size
+        yield size
+    yield length
 
 def socket_send(ip, port, mssg):
     try:
@@ -840,10 +881,13 @@ def socket_recieve(RequestHandler):#pass one the handler to deal with incoming d
     def get_msg(length):
         msg = StringIO.StringIO()
         for packet in packet_slicer(length):
-            msg.write(RequestHandler.request.recv(packet))
+            p = RequestHandler.request.recv(packet, socket.MSG_WAITALL) #wait for full mssg
+            msg.write(p)
+        if msg.len != length:
+            raise  errors.CommunicationError('recieved message is too short. expected length {0}, recieved length {1}'.format(length, msg.len))
         msg.seek(0)
         return msg
 
-    command, config, metadata, axes, photons, contributions = tuple(get_msg(msglength) for msglength in struct.unpack('QQQQQQ',RequestHandler.request.recv(48)))
+    command, config, metadata, axes, photons, contributions = tuple(get_msg(msglength) for msglength in struct.unpack('QQQQQQ',RequestHandler.request.recv(48, socket.MSG_WAITALL)))
     return command.read(), config.read(), metadata.read(), numpy.load(axes), numpy.load(photons), numpy.load(contributions)
 

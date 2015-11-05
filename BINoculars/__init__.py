@@ -123,13 +123,17 @@ def plotspace(space, log=True, clipping=0.0, fit=None, norm=None, colorbar=True,
     import BINoculars.plot, BINoculars.space
 
     if isinstance(space, BINoculars.space.Space):
+        if space.dimension == 3:
+            from mpl_toolkits.mplot3d import Axes3D
+            ax = pyplot.gcf().gca(projection='3d')
+            return BINoculars.plot.plot(space, pyplot.gcf(), ax, log=log, clipping=clipping, fit=None, norm=norm, colorbar=colorbar, labels=labels, **plotopts)        
         if fit is not None and space.dimension == 2:
             ax = pyplot.gcf().add_subplot(121)
             BINoculars.plot.plot(space, pyplot.gcf(), ax, log=log, clipping=clipping, fit=None, norm=norm, colorbar=colorbar, labels=labels, **plotopts)        
             ax = pyplot.gcf().add_subplot(122)
-            BINoculars.plot.plot(space, pyplot.gcf(), ax, log=log, clipping=clipping, fit=fit, norm=norm, colorbar=colorbar, labels=labels, **plotopts)        
+            return BINoculars.plot.plot(space, pyplot.gcf(), ax, log=log, clipping=clipping, fit=fit, norm=norm, colorbar=colorbar, labels=labels, **plotopts)        
         else:
-            BINoculars.plot.plot(space, pyplot.gcf(), pyplot.gca(), log=log, clipping=clipping, fit=fit, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
+            return BINoculars.plot.plot(space, pyplot.gcf(), pyplot.gca(), log=log, clipping=clipping, fit=fit, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
     else:
         raise TypeError("'{0!r}' is not a BINoculars space".format(space))
 

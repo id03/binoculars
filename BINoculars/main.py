@@ -88,9 +88,10 @@ class Main(object):
             labels = self.projection.get_axis_labels()
             for intensity, params in self.input.process_job(job):
                 coords = self.projection.project(*params)
-                yield space.Space.from_image(res, labels, coords, intensity)
+                yield space.Space.from_image(res, labels, coords, intensity, limits = self.projection.config.limits)
         jobspace = space.chunked_sum(generator(), chunksize=25)
-        jobspace.metadata.add_dataset(self.input.metadata)
+        if isinstance(jobspace, space.Space):
+            jobspace.metadata.add_dataset(self.input.metadata)
         return jobspace
 
     def clone_config(self):
@@ -123,7 +124,8 @@ class Split(Main): #completely ignores the dispatcher, just yields a space per i
         labels = self.projection.get_axis_labels()
         for intensity, params in self.input.process_job(job):
             coords = self.projection.project(*params)
-            yield space.Space.from_image(res, labels, coords, intensity)
+            yield space.Space.from_image(res, labels, coords, intensity, limits = self.projection.config.limits)
+
 
     def run(self):
         for job in self.input.generate_jobs(self.command):

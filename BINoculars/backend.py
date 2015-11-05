@@ -5,11 +5,15 @@ class ProjectionBase(util.ConfigurableObject):
     def parse_config(self, config):
         super(ProjectionBase, self).parse_config(config)
         res = config.pop('resolution')# or just give 1 number for all dimensions
+        self.config.limits = util.parse_pairs(config.pop('limits', None))#Optional, set the limits of the space object in projected coordinates. Syntax is same as numpy e.g. '0.3:-0.6, -1:5, :'
         labels = self.get_axis_labels()
+        if not self.config.limits is None:
+            if len(self.config.limits) != len(labels):
+                raise errors.ConfigError('dimension mismatch between projection axes ({0}) and limits specification ({1}) in {2}'.format(labels, self.config.limits, self.__class__.__name__))
         if ',' in res:
             self.config.resolution = util.parse_tuple(res, type=float)
             if not len(labels) == len(self.config.resolution):
-                raise errors.ConfigError('dimension mismatch between projection axes ({0}) and resolution specification ({1}) in {2}', labels, self.config.resolution, self.__class__.__name__)
+                raise errors.ConfigError('dimension mismatch between projection axes ({0}) and resolution specification ({1}) in {2}'.format(labels, self.config.resolution, self.__class__.__name__))
         else:
             self.config.resolution = tuple([float(res)] * len(labels))
 
