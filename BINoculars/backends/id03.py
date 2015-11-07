@@ -488,7 +488,7 @@ class ID03Input(backend.InputBase):
             else:
                 try:
                     uccdtagline = scan.header('UCCD')[0]
-                    UCCD = os.path.dirname(uccdtagline[6:]).split(os.sep)
+                    UCCD = os.path.split(os.path.dirname(uccdtagline.split()[-1]))
                 except:
                     print 'warning: UCCD tag not found, use imagefolder for proper file specification'
                     UCCD = []
