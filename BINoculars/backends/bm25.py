@@ -85,6 +85,7 @@ class EDFInput(backend.InputBase):
             yield backend.Job(images=imgs, firstimage=s.start, lastimage=s.stop-1, weight=s.stop-s.start)
 
     def process_job(self, job):
+        super(EDFInput, self).process_job(job)
         images = self.get_images(job.images, job.firstimage, job.lastimage) # iterator!
         
         for image in images:

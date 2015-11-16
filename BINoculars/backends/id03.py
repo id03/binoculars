@@ -469,7 +469,7 @@ class ID03Input(backend.InputBase):
                 zapscanno = int(scanheaderC[2].split(' ')[-1]) # is different from scanno should be changed in spec!
                 try:
                     uccdtagline = scanheaderC[0]
-                    UCCD = uccdtagline[22:].split(os.sep)
+                    UCCD = os.path.split(uccdtagline.split()[-1]) 
                 except:
                     print 'warning: UCCD tag not found, use imagefolder for proper file specification'
                     UCCD = []
@@ -488,7 +488,7 @@ class ID03Input(backend.InputBase):
             else:
                 try:
                     uccdtagline = scan.header('UCCD')[0]
-                    UCCD = os.path.dirname(uccdtagline[6:]).split(os.sep)
+                    UCCD = os.path.split(os.path.dirname(uccdtagline.split()[-1]))
                 except:
                     print 'warning: UCCD tag not found, use imagefolder for proper file specification'
                     UCCD = []

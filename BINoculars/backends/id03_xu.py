@@ -80,6 +80,7 @@ class ID03Input(backend.InputBase):
                 yield backend.Job(scan=scanno, firstpoint=0, lastpoint=pointcount-1, weight=pointcount)
 
     def process_job(self, job):
+        super(ID03Input, self).process_job(job)
         scan = self.get_scan(job.scan)
         
         scanparams = self.get_scan_params(scan) # wavelength, UB
@@ -146,7 +147,7 @@ class ID03Input(backend.InputBase):
     def get_images(self, scan, first, last, dry_run=False):
         try:
             uccdtagline = scan.header('UCCD')[0]
-            UCCD = os.path.dirname(uccdtagline[6:]).split(os.sep)
+            UCCD = os.path.split(os.path.dirname(uccdtagline.split()[-1]))
         except:
             print 'warning: UCCD tag not found, use imagefolder for proper file specification'
             UCCD = []
@@ -169,7 +170,7 @@ class ID03Input(backend.InputBase):
            except Exception as e:
                raise errors.ConfigError("invalid 'imagefolder' specification '{0}': {1}".format(self.config.imagefolder, e))
        else:
-           imagefolder = os.path.join(UCCD[:-1])
+           imagefolder = os.path.join(*UCCD)
 
        if not os.path.exists(imagefolder):
            raise ValueError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))

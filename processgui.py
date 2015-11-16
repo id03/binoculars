@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 BINoculars gui for data processing
 Created on 2015-06-04
