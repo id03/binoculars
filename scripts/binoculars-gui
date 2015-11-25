@@ -3,23 +3,39 @@
 import sys
 import os
 import glob
-from PyQt4 import QtGui, QtCore, Qt
-import binoculars.main, binoculars.space, binoculars.plot,  binoculars.util
 import numpy
 import json
 import itertools
-from mpl_toolkits.mplot3d import Axes3D
-
 import signal
 import subprocess
-
 import Queue
 import socket
 import SocketServer
 import threading
-
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationToolbar2QTAgg
 import matplotlib.figure, matplotlib.image
+
+from mpl_toolkits.mplot3d import Axes3D
+from PyQt4 import QtGui, QtCore, Qt
+from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationToolbar2QTAgg
+
+def set_src():
+    import sys
+    import os.path as osp
+    dirpath = osp.join(osp.dirname(osp.abspath(__file__)), osp.pardir)
+    sys.path.insert(0, osp.abspath(dirpath))
+
+try:
+    import binoculars.main
+    import binoculars.space
+    import binoculars.plot
+    import binoculars.util
+except ImportError:
+    # try to use code from src distribution
+    set_src()
+    import binoculars.main
+    import binoculars.space
+    import binoculars.plot
+    import binoculars.util
 
 #RangeSlider is taken from https://www.mail-archive.com/pyqt@riverbankcomputing.com/msg22889.html
 class RangeSlider(QtGui.QSlider):

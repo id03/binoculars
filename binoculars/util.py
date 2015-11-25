@@ -651,14 +651,13 @@ def space_to_txt(space, filename):
         numpy.savetxt(fp, data, fmt='%.6g', delimiter='\t')
 
 @contextlib.contextmanager
-def open_h5py(file, mode):
-    if isinstance(file, h5py._hl.group.Group):
-        yield file
+def open_h5py(fn, mode):
+    if isinstance(fn, h5py._hl.group.Group):
+        yield fn
     else:
-        with h5py.File(file, mode) as fp:
+        with h5py.File(fn, mode) as fp:
             if mode == 'w':
-                if not 'binoculars' in fp:
-                    fp.create_group('binoculars')
+                fp.create_group('binoculars')
                 yield fp['binoculars']
             if mode == 'r':
                 if 'binoculars' in fp:

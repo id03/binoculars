@@ -7,15 +7,25 @@ author: Remy Nencib (remy.nencib@esrf.r)
 
 import sys
 import os
-import glob
-import traceback
-from PyQt4 import QtGui, QtCore, Qt
-import sys,os 
-import itertools
-import inspect
-import glob
-import binoculars.util, binoculars.main
 import time
+
+from PyQt4 import QtGui, QtCore
+
+
+def set_src():
+    import sys
+    import os.path as osp
+    dirpath = osp.join(osp.dirname(osp.abspath(__file__)), osp.pardir)
+    sys.path.insert(0, osp.abspath(dirpath))
+
+try:
+    import binoculars.main
+    import binoculars.util
+except ImportError:
+    # try to use code from src distribution
+    set_src()
+    import binoculars.main
+    import binoculars.util
 
 #--------------------------------------------CREATE MAIN WINDOW----------------------------------------
 class Window(QtGui.QMainWindow):
@@ -25,7 +35,7 @@ class Window(QtGui.QMainWindow):
         self.initUI()
         self.tab_widget = QtGui.QTabWidget(self)
         self.setCentralWidget(self.tab_widget)
-        #add the close button for tabs
+        # add the close button for tabs
         close = self.tab_widget.setTabsClosable(True)
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
 

@@ -645,7 +645,7 @@ class Space(object):
         contributions = numpy.bincount(indices)
     
         self.photons.ravel()[:photons.size] += photons
-        self.contributions.ravel()[:contributions.size] += contributions
+        self.contributions.ravel()[:contributions.size] += contributions.astype(self.contributions.dtype)
 
     @classmethod
     def from_image(cls, resolutions, labels, coordinates, intensity, limits = None):
@@ -680,7 +680,6 @@ class Space(object):
         """Store Space in HDF5 file."""
         with util.atomic_write(filename) as tmpname:
             with util.open_h5py(tmpname, 'w') as fp:
-                fp.attrs['type'] = 'Space'
                 self.config.tofile(fp)
                 self.axes.tofile(fp)
                 self.metadata.tofile(fp)
