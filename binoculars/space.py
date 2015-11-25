@@ -645,7 +645,7 @@ class Space(object):
         contributions = numpy.bincount(indices)
     
         self.photons.ravel()[:photons.size] += photons
-        self.contributions.ravel()[:contributions.size] += contributions.astype(self.contributions.dtype)
+        self.contributions.ravel()[:contributions.size] += contributions
 
     @classmethod
     def from_image(cls, resolutions, labels, coordinates, intensity, limits = None):

@@ -5,22 +5,7 @@ import os
 import argparse
 import numpy
 
-
-def set_src():
-    import sys
-    import os.path as osp
-    dirpath = osp.join(osp.dirname(osp.abspath(__file__)), osp.pardir)
-    sys.path.insert(0, osp.abspath(dirpath))
-
-try:
-    import binoculars.space
-    import binoculars.util
-except ImportError:
-    # try to use code from src distribution
-    set_src()
-    import binoculars.space
-    import binoculars.util
-
+import binoculars.space, binoculars.util
 
 ### INFO
 def command_info(args):

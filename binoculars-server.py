@@ -1,12 +1,9 @@
-#!/usr/bin/env python
-'''Serverqueue where jobs can be submitted. Jobs will be calculated on
-the spot or passed on to the OAR cluster if so specified in the
-configfile. Jobs can be submitted in a json dictionary. The keyword
-'command' and 'configfilename' supply a string with the command and
-the path to the configfile. Everything else is assumed to be an
-override in the configfile. If an override cannot be parsed the job
-will start anyway without the override. The processingqueue cannot be
-interrupted.
+'''
+Serverqueue where jobs can be submitted. Jobs will be calculated on the spot or passed on to the OAR
+cluster if so specified in the configfile. Jobs can be submitted in a json dictionary.
+The keyword 'command' and 'configfilename' supply a string with the command and the path to the configfile.
+Everything else is assumed to be an override in the configfile. If an override cannot be parsed the job
+will start anyway without the override. The processingqueue cannot be interrupted.
 
 '''
 import socket
@@ -14,27 +11,12 @@ import threading
 import SocketServer
 import time
 import sys
+import binoculars.util, binoculars.main
 import traceback
+import re
 import json
 import os
 import Queue
-
-
-def set_src():
-    import sys
-    import os.path as osp
-    dirpath = osp.join(osp.dirname(osp.abspath(__file__)), osp.pardir)
-    sys.path.insert(0, osp.abspath(dirpath))
-
-try:
-    import binoculars.main
-    import binoculars.util
-except ImportError:
-    # try to use code from src distribution
-    set_src()
-    import binoculars.main
-    import binoculars.util
-
 
 class ProcessTCPHandler(SocketServer.BaseRequestHandler):
     def handle(self):

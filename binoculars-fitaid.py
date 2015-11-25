@@ -1,39 +1,16 @@
-#!/usr/bin/env python
-
 import h5py
 import sys
 import numpy
 import os.path
-import itertools
-import matplotlib.figure, matplotlib.image
-
 from PyQt4 import QtGui, QtCore, Qt
+import binoculars.main, binoculars.space, binoculars.plot, binoculars.fit, binoculars.util
 from scipy.interpolate import griddata
+
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationToolbar2QTAgg
+import matplotlib.figure, matplotlib.image
 from matplotlib.pyplot import Rectangle
+import itertools
 from scipy.spatial import qhull
-
-def set_src():
-    import sys
-    import os.path as osp
-    dirpath = osp.join(osp.dirname(osp.abspath(__file__)), osp.pardir)
-    sys.path.insert(0, osp.abspath(dirpath))
-
-try:
-    import binoculars.main
-    import binoculars.space
-    import binoculars.plot
-    import binoculars.fit
-    import binoculars.util
-except ImportError:
-    # try to use code from src distribution
-    set_src()
-    import binoculars.main
-    import binoculars.space
-    import binoculars.plot
-    import binoculars.fit
-    import binoculars.util
-
 
 class Window(QtGui.QMainWindow):
     def __init__(self, parent=None):
