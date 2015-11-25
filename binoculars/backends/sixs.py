@@ -391,7 +391,6 @@ class FlyScanUHV(SIXS):
         maskmatrix = load_matrix(self.config.maskmatrix)
         if maskmatrix is not None:
             mask = numpy.bitwise_or(detector.mask, maskmatrix)
-            print mask
         else:
             mask = detector.mask
 
