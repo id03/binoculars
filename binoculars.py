@@ -5,7 +5,7 @@ import os
 import argparse
 import numpy
 
-import BINoculars.space, BINoculars.util
+import binoculars.space, binoculars.util
 
 ### INFO
 def command_info(args):
@@ -18,19 +18,19 @@ def command_info(args):
     if args.output:
         if len(args.infile)>1:
             print 'only one space file argument is support with extractconfig -> using the first'
-        config = BINoculars.util.ConfigFile.fromfile(args.infile[0])
+        config = binoculars.util.ConfigFile.fromfile(args.infile[0])
         config.totxtfile(args.output)
     else:
         for f in args.infile:
             try:
-                axes = BINoculars.space.Axes.fromfile(f)
+                axes = binoculars.space.Axes.fromfile(f)
             except Exception as e:
                 print '{0}: unable to load Space: {1!r}'.format(f, e)
             else:
                 print '{0} \n{1!r}'.format(f, axes)
             if args.config:
                 try:
-                    config = BINoculars.util.ConfigFile.fromfile(f)
+                    config = binoculars.util.ConfigFile.fromfile(f)
                 except Exception as e:
                     print '{0}: unable to load util.ConfigFile: {1!r}'.format(f, e)
                 else:
@@ -41,7 +41,7 @@ def command_info(args):
 def command_convert(args):
     parser = argparse.ArgumentParser(prog='binoculars convert')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
-    BINoculars.util.argparse_common_arguments(parser, 'project', 'slice', 'pslice', 'rebin', 'transform', 'subtract')
+    binoculars.util.argparse_common_arguments(parser, 'project', 'slice', 'pslice', 'rebin', 'transform', 'subtract')
     parser.add_argument('--read-trusted-zpi', action='store_true', help='read legacy .zpi files, ONLY FROM A TRUSTED SOURCE!')
     parser.add_argument('infile', help='input file, must be a .hdf5')
     parser.add_argument('outfile', help='output file, can be .hdf5 or .edf or .txt')
@@ -49,30 +49,30 @@ def command_convert(args):
     args = parser.parse_args(args)
     
     if args.wait:
-        BINoculars.util.statusnl('waiting for {0} to appear'.format(args.infile))
-        BINoculars.util.wait_for_file(args.infile)
-        BINoculars.util.statusnl('processing...')
+        binoculars.util.statusnl('waiting for {0} to appear'.format(args.infile))
+        binoculars.util.wait_for_file(args.infile)
+        binoculars.util.statusnl('processing...')
 
     if args.infile.endswith('.zpi'):
         if not args.read_trusted_zpi:
             print 'error: .zpi files are unsafe, use --read-trusted-zpi to open'
             sys.exit(1)
-        space = BINoculars.util.zpi_load(args.infile)
+        space = binoculars.util.zpi_load(args.infile)
     else:
-        space = BINoculars.space.Space.fromfile(args.infile)
+        space = binoculars.space.Space.fromfile(args.infile)
     ext = os.path.splitext(args.outfile)[-1]
 
     if args.subtract:
-        space -= BINoculars.space.Space.fromfile(args.subtract)
+        space -= binoculars.space.Space.fromfile(args.subtract)
 
-    space, info = BINoculars.util.handle_ordered_operations(space, args)
+    space, info = binoculars.util.handle_ordered_operations(space, args)
 
     if ext == '.edf':
-        BINoculars.util.space_to_edf(space, args.outfile)
+        binoculars.util.space_to_edf(space, args.outfile)
         print 'saved at {0}'.format(args.outfile)
 
     elif ext == '.txt':
-        BINoculars.util.space_to_txt(space, args.outfile)
+        binoculars.util.space_to_txt(space, args.outfile)
         print 'saved at {0}'.format(args.outfile)
 
     elif ext == '.hdf5':
@@ -87,19 +87,19 @@ def command_convert(args):
 ### PLOT
 def command_plot(args):
     import matplotlib.pyplot as pyplot
-    import BINoculars.fit, BINoculars.plot
+    import binoculars.fit, binoculars.plot
 
     parser = argparse.ArgumentParser(prog='binoculars plot')
     parser.add_argument('infile', nargs='+')
-    BINoculars.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'pslice', 'subtract', 'rebin', 'transform')
+    binoculars.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'pslice', 'subtract', 'rebin', 'transform')
     parser.add_argument('--multi', default=None, choices=('grid', 'stack'))
     parser.add_argument('--fit', default = None)
     parser.add_argument('--guess', default = None)
     args = parser.parse_args(args)
 
     if args.subtract:
-        subtrspace = BINoculars.space.Space.fromfile(args.subtract)
-        subtrspace, subtrinfo = BINoculars.util.handle_ordered_operations(subtrspace, args, auto3to2=True)
+        subtrspace = binoculars.space.Space.fromfile(args.subtract)
+        subtrspace, subtrinfo = binoculars.util.handle_ordered_operations(subtrspace, args, auto3to2=True)
         args.nolog = True
 
     guess = []
@@ -114,12 +114,12 @@ def command_plot(args):
     plotrows = int(numpy.ceil(float(plotcount) / plotcolumns))
 
     for i, filename in enumerate(args.infile):
-        space = BINoculars.space.Space.fromfile(filename)
-        space, info = BINoculars.util.handle_ordered_operations(space, args, auto3to2=True)
+        space = binoculars.space.Space.fromfile(filename)
+        space, info = binoculars.util.handle_ordered_operations(space, args, auto3to2=True)
 
         fitdata = None
         if args.fit:
-            fit = BINoculars.fit.get_class_by_name(args.fit)(space, guess)
+            fit = binoculars.fit.get_class_by_name(args.fit)(space, guess)
             print fit
             if fit.success:
                 fitdata = fit.fitdata
@@ -144,7 +144,7 @@ def command_plot(args):
 
         if args.multi == 'grid':
             pyplot.subplot(plotrows, plotcolumns, i+1)
-        BINoculars.plot.plot(space, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit=fitdata)
+        binoculars.plot.plot(space, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit=fitdata)
 
         if plotcount > 1 and args.multi == 'grid':
             pyplot.gca().set_title(basename)
@@ -169,7 +169,7 @@ def command_plot(args):
             #print 'saved at {0}'.format(args.savefile)
         else:
             filename = '{0}_plot.pdf'.format(os.path.splitext(args.infile[0])[0])
-            filename = BINoculars.util.find_unused_filename(filename)
+            filename = binoculars.util.find_unused_filename(filename)
             pyplot.savefig(filename)
             #print 'saved at {0}'.format(filename)
     else:
@@ -179,7 +179,7 @@ def command_plot(args):
 ### FIT
 def command_fit(args):
     import matplotlib.pyplot as pyplot
-    import BINoculars.fit, BINoculars.plot
+    import binoculars.fit, binoculars.plot
 
     parser = argparse.ArgumentParser(prog='binoculars fit')
     parser.add_argument('infile')
@@ -187,10 +187,10 @@ def command_fit(args):
     parser.add_argument('resolution')
     parser.add_argument('func')
     parser.add_argument('--follow', action='store_true', help='use the result of the previous fit as guess for the next')
-    BINoculars.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog')
+    binoculars.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog')
     args = parser.parse_args(args)
 
-    axes = BINoculars.space.Axes.fromfile(args.infile)
+    axes = binoculars.space.Axes.fromfile(args.infile)
     axindex = axes.index(args.axis)
     ax = axes[axindex]
     axlabel = ax.label
@@ -209,17 +209,17 @@ def command_fit(args):
 
     if args.savepdf or args.savefile:
         if args.savefile:
-            filename = BINoculars.util.filename_enumerator(args.savefile)
+            filename = binoculars.util.filename_enumerator(args.savefile)
         else:
-            filename = BINoculars.util.filename_enumerator('{0}_fit.pdf'.format(basename))
+            filename = binoculars.util.filename_enumerator('{0}_fit.pdf'.format(basename))
 
-    fitclass = BINoculars.fit.get_class_by_name(args.func)
+    fitclass = binoculars.fit.get_class_by_name(args.func)
 
     for start, stop in zip(bins[:-1], bins[1:]):
         info = []
         key = [slice(None) for i in axes]
         key[axindex] = slice(start, stop)
-        newspace =  BINoculars.space.Space.fromfile(args.infile, key)
+        newspace =  binoculars.space.Space.fromfile(args.infile, key)
         left, right = newspace.axes[axindex].min,newspace.axes[axindex].max
         if newspace.dimension == axes.dimension:
             newspace = newspace.project(axindex)
@@ -248,13 +248,13 @@ def command_fit(args):
                 if newspace.dimension == 1:
                     pyplot.figure(figsize=(12, 9))
                     pyplot.subplot(111)
-                    BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
+                    binoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
                 elif newspace.dimension == 2:
                     pyplot.figure(figsize=(12, 9))
                     pyplot.subplot(121)
-                    BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = None)
+                    binoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = None)
                     pyplot.subplot(122)
-                    BINoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
+                    binoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
 
                 info.append('sliced in {0} from {1} to {2}'.format(axlabel, left, right))
                 pyplot.suptitle('{0}'.format(' '.join(info)))
@@ -300,10 +300,10 @@ def command_fit(args):
 
 ### PROCESS
 def command_process(args):
-    import BINoculars.main
+    import binoculars.main
 
-    BINoculars.util.register_python_executable(__file__)
-    BINoculars.main.Main.from_args(args)# start of main thread
+    binoculars.util.register_python_executable(__file__)
+    binoculars.main.Main.from_args(args)# start of main thread
 
 
 
@@ -325,7 +325,7 @@ run binoculars COMMAND --help more info on that command
 
 
 if __name__ == '__main__':
-    BINoculars.space.silence_numpy_errors()
+    binoculars.space.silence_numpy_errors()
 
     subcommands = {'info': command_info, 'convert': command_convert, 'plot': command_plot, 'fit': command_fit, 'process': command_process}
     

@@ -11,7 +11,7 @@ import threading
 import SocketServer
 import time
 import sys
-import BINoculars.util, BINoculars.main
+import binoculars.util, binoculars.main
 import traceback
 import re
 import json
@@ -66,11 +66,11 @@ def process(run_event, ip, port, q):
             overrides = parse_job(job)[1]# [1] are the succesfully parsed jobs
             print 'Start processing: {0}'.format(command)
             try:
-                configobj = BINoculars.util.ConfigFile.fromtxtfile(configfilename, overrides = overrides)
-                if BINoculars.util.parse_bool(configobj.dispatcher['send_to_gui']):
+                configobj = binoculars.util.ConfigFile.fromtxtfile(configfilename, overrides = overrides)
+                if binoculars.util.parse_bool(configobj.dispatcher['send_to_gui']):
                     configobj.dispatcher['host'] = ip
                     configobj.dispatcher['port'] = port
-                BINoculars.main.Main.from_object(configobj, [command])
+                binoculars.main.Main.from_object(configobj, [command])
                 print 'Succesfully finished processing: {0}.'.format(command)
             except Exception as exc:
                 errorfilename = 'error_{0}.txt'.format(command)
@@ -90,7 +90,7 @@ if __name__ == '__main__':
 
     q = Queue.Queue()
 
-    BINoculars.util.register_python_executable(os.path.join(os.path.dirname(__file__), 'binoculars.py'))
+    binoculars.util.register_python_executable(os.path.join(os.path.dirname(__file__), 'binoculars.py'))
 
     HOST, PORT = socket.gethostbyname(socket.gethostname()), 0
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-BINoculars gui for data processing
+binoculars gui for data processing
 Created on 2015-06-04
 author: Remy Nencib (remy.nencib@esrf.r)
 """
@@ -14,7 +14,7 @@ import sys,os
 import itertools
 import inspect
 import glob
-import BINoculars.util, BINoculars.main
+import binoculars.util, binoculars.main
 import time
 
 #--------------------------------------------CREATE MAIN WINDOW----------------------------------------
@@ -118,7 +118,7 @@ class Window(QtGui.QMainWindow):
             if pd.wasCanceled(): 
                 raise KeyboardInterrupt
             QtGui.QApplication.processEvents()
-            return BINoculars.main.Main.from_object(cfg, command)
+            return binoculars.main.Main.from_object(cfg, command)
         try:
             for index in range(self.ListCommand.rowCount()):
                 pd.setValue(index)
@@ -270,7 +270,7 @@ class Conf_Tab(QtGui.QWidget):
         self.Inp = Table(QtGui.QLabel('<strong>Input :</strong>'))
         self.Pro = Table(QtGui.QLabel('<strong>Projection :<strong>'))
         self.select = QtGui.QComboBox()
-        backends = list(backend.lower() for backend in BINoculars.util.get_backends())
+        backends = list(backend.lower() for backend in binoculars.util.get_backends())
         #we add the list of different backends on the select combobox
         self.select.addItems(QtCore.QStringList(backends))
         self.add = QtGui.QPushButton('add')
@@ -308,32 +308,32 @@ class Conf_Tab(QtGui.QWidget):
         self.setLayout(vbox)
         
         #Here we call all methods for selected an ellement on differents combobox 
-        self.Dis.add_to_combo(QtCore.QStringList(BINoculars.util.get_dispatchers()))
+        self.Dis.add_to_combo(QtCore.QStringList(binoculars.util.get_dispatchers()))
         self.select.activated['QString'].connect(self.DataCombo)
         self.Inp.combobox.activated.connect(self.DataTableInp)
         self.Pro.combobox.activated.connect(self.DataTableInpPro)
         self.Dis.combobox.activated.connect(self.DataTableInpDis) 
 
     def DataCombo(self,text):
-        self.Inp.add_to_combo(QtCore.QStringList(BINoculars.util.get_inputs(str(text))))
-        self.Pro.add_to_combo(QtCore.QStringList(BINoculars.util.get_projections(str(text))))
+        self.Inp.add_to_combo(QtCore.QStringList(binoculars.util.get_inputs(str(text))))
+        self.Pro.add_to_combo(QtCore.QStringList(binoculars.util.get_projections(str(text))))
         self.DataTableInp()
         self.DataTableInpPro()
         self.DataTableInpDis()
       
     def DataTableInp(self):
         backend = str(self.select.currentText())
-        inp = BINoculars.util.get_input_configkeys(backend, str(self.Inp.combobox.currentText()))
+        inp = binoculars.util.get_input_configkeys(backend, str(self.Inp.combobox.currentText()))
         self.Inp.addDataConf(inp)
 
     def DataTableInpPro(self):
         backend = str(self.select.currentText())
-        proj = BINoculars.util.get_projection_configkeys(backend, str(self.Pro.combobox.currentText()))
+        proj = binoculars.util.get_projection_configkeys(backend, str(self.Pro.combobox.currentText()))
         self.Pro.addDataConf(proj)
 
     def DataTableInpDis(self):
         backend = str(self.select.currentText())
-        disp = BINoculars.util.get_dispatcher_configkeys(str(self.Dis.combobox.currentText()))
+        disp = binoculars.util.get_dispatcher_configkeys(str(self.Dis.combobox.currentText()))
         self.Dis.addDataConf(disp)
 
     #The save method we take all ellements on tables and we put them in this format {0} = {1} #{2}
@@ -373,7 +373,7 @@ class Conf_Tab(QtGui.QWidget):
                 value = '{0}:{1}'.format(str(self.select.currentText()).strip(),value)
             inPro[key] = value
 
-        cfg = BINoculars.util.ConfigFile('processgui {0}'.format(time.strftime('%d %b %Y %H:%M:%S', time.localtime())))
+        cfg = binoculars.util.ConfigFile('processgui {0}'.format(time.strftime('%d %b %Y %H:%M:%S', time.localtime())))
         setattr(cfg, 'input', inInp)
         setattr(cfg, 'dispatcher', inDis)
         setattr(cfg, 'projection', inPro)
@@ -381,7 +381,7 @@ class Conf_Tab(QtGui.QWidget):
 
     #This method take elements on a text file or the binocular script and put them on tables
     def read_data(self, filename):
-        cfg = BINoculars.util.ConfigFile.fromtxtfile(str(filename))    
+        cfg = binoculars.util.ConfigFile.fromtxtfile(str(filename))    
         input_type = cfg.input['type']
         backend, value = input_type.strip(' ').split(':')
         self.select.setCurrentIndex(self.select.findText(backend, QtCore.Qt.MatchFixedString))

@@ -4,7 +4,7 @@ import sys
 import os
 import glob
 from PyQt4 import QtGui, QtCore, Qt
-import BINoculars.main, BINoculars.space, BINoculars.plot,  BINoculars.util
+import binoculars.main, binoculars.space, binoculars.plot,  binoculars.util
 import numpy
 import json
 import itertools
@@ -277,7 +277,7 @@ class Window(QtGui.QMainWindow):
     def loadproject(self, filename = None):
         if not filename:
             dialog = QtGui.QFileDialog(self, "Load project");
-            dialog.setFilter('BINoculars project file (*.proj)');
+            dialog.setFilter('binoculars project file (*.proj)');
             dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
             dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
             if not dialog.exec_():
@@ -299,7 +299,7 @@ class Window(QtGui.QMainWindow):
     def saveproject(self):
         widget = self.tab_widget.currentWidget()
         dialog = QtGui.QFileDialog(self, "Save project");
-        dialog.setFilter('BINoculars project file (*.proj)');
+        dialog.setFilter('binoculars project file (*.proj)');
         dialog.setDefaultSuffix('proj');
         dialog.setFileMode(QtGui.QFileDialog.AnyFile);
         dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
@@ -320,7 +320,7 @@ class Window(QtGui.QMainWindow):
             self.newproject()
 
         dialog = QtGui.QFileDialog(self, "Import spaces");
-        dialog.setFilter('BINoculars space file (*.hdf5)');
+        dialog.setFilter('binoculars space file (*.hdf5)');
         dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
         dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
         if not dialog.exec_():
@@ -357,7 +357,7 @@ class Window(QtGui.QMainWindow):
     def merge(self):
         widget = self.tab_widget.currentWidget()
         dialog = QtGui.QFileDialog(self, "save mesh");
-        dialog.setFilter('BINoculars space file (*.hdf5)');
+        dialog.setFilter('binoculars space file (*.hdf5)');
         dialog.setDefaultSuffix('hdf5');
         dialog.setFileMode(QtGui.QFileDialog.AnyFile);
         dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
@@ -374,7 +374,7 @@ class Window(QtGui.QMainWindow):
 
     def subtract(self):
         dialog = QtGui.QFileDialog(self, "subtract space");
-        dialog.setFilter('BINoculars space file (*.hdf5)');
+        dialog.setFilter('binoculars space file (*.hdf5)');
         dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
         dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
         if not dialog.exec_():
@@ -402,7 +402,7 @@ class Window(QtGui.QMainWindow):
             self.ip, self.port = server.server_address
 
             if startq:
-                cmd = ['python', os.path.join(os.path.dirname(__file__), 'server.py'), str(self.ip), str(self.port)]
+                cmd = ['python', os.path.join(os.path.dirname(__file__), 'binoculars-server.py'), str(self.ip), str(self.port)]
                 self.pro = subprocess.Popen(cmd, stdin=None, stdout=None, stderr=None, preexec_fn=os.setsid) 
 
             server_thread = threading.Thread(target=server.serve_forever)
@@ -454,7 +454,7 @@ class UpdateThread(QtCore.QThread):
     fq = Queue.Queue()
     data_found = QtCore.pyqtSignal(object)
     def run(self):
-        delay = BINoculars.util.loop_delayer(1)
+        delay = binoculars.util.loop_delayer(1)
         jobs = []
         labels = []        
         while 1:
@@ -466,7 +466,7 @@ class UpdateThread(QtCore.QThread):
                     jobs.append([space])
                     labels.append(command)
             elif self.q.empty() and len(jobs) > 0:
-                self.fq.put((labels.pop(), BINoculars.space.sum(jobs.pop())))
+                self.fq.put((labels.pop(), binoculars.space.sum(jobs.pop())))
                 self.data_found.emit('data found')
             else:
                 next(delay)
@@ -476,12 +476,12 @@ class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
 
 class SpaceTCPHandler(SocketServer.BaseRequestHandler):
     def handle(self):
-        command, config, metadata, axes, photons, contributions = BINoculars.util.socket_recieve(self)
-        space = BINoculars.space.Space(BINoculars.space.Axes.fromarray(axes))
-        space.config = BINoculars.util.ConfigFile.fromserial(config)
+        command, config, metadata, axes, photons, contributions = binoculars.util.socket_recieve(self)
+        space = binoculars.space.Space(binoculars.space.Axes.fromarray(axes))
+        space.config = binoculars.util.ConfigFile.fromserial(config)
         space.config.command = command
         space.config.origin = 'server'
-        space.metadata = BINoculars.util.MetaData.fromserial(metadata)
+        space.metadata = binoculars.util.MetaData.fromserial(metadata)
         space.photons = photons
         space.contributions = contributions
         self.server.q.put((command, space))
@@ -801,7 +801,7 @@ class ProjectWidget(QtGui.QWidget):
                 space = space.reorder(list(ax.label for ax in space.axes)[::-1])
 
             self.ax.space = space
-            im = BINoculars.plot.plot(space, self.figure, self.ax, log = log, loglog = loglog, label = basename, norm = norm[i])         
+            im = binoculars.plot.plot(space, self.figure, self.ax, log = log, loglog = loglog, label = basename, norm = norm[i])         
 
             self.figure_images.append(im)
         
@@ -814,7 +814,7 @@ class ProjectWidget(QtGui.QWidget):
     def merge(self, filename):
         try:
             spaces = tuple(self.table.getspace(selected_filename) for selected_filename in self.table.selection)
-            newspace = BINoculars.space.sum(BINoculars.space.make_compatible(spaces))
+            newspace = binoculars.space.sum(binoculars.space.make_compatible(spaces))
             newspace.tofile(filename)
             map(self.table.remove, self.table.selection)
             self.table.addspace(filename, True)
@@ -823,11 +823,11 @@ class ProjectWidget(QtGui.QWidget):
 
     def subtractspace(self, filename):
         try:
-            subtractspace = BINoculars.space.Space.fromfile(filename)
+            subtractspace = binoculars.space.Space.fromfile(filename)
             spaces = tuple(self.table.getspace(selected_filename) for selected_filename in self.table.selection)
             newspaces = tuple(space - subtractspace for space in spaces)
             for space, selected_filename in zip(newspaces, self.table.selection):
-                newfilename = BINoculars.util.find_unused_filename(selected_filename)
+                newfilename = binoculars.util.find_unused_filename(selected_filename)
                 space.tofile(newfilename)
                 self.table.remove(selected_filename)
                 self.table.addspace(newfilename, True)
@@ -935,14 +935,14 @@ class ProjectWidget(QtGui.QWidget):
                 space = space.project(*projection)
 
             space.trim()
-            outfile = BINoculars.util.find_unused_filename(fname)
+            outfile = binoculars.util.find_unused_filename(fname)
 
             if ext == '.edf':
-                BINoculars.util.space_to_edf(space, outfile)
+                binoculars.util.space_to_edf(space, outfile)
                 self.parent.statusbar.showMessage('saved at {0}'.format(outfile))
 
             elif ext == '.txt':
-                BINoculars.util.space_to_txt(space, outfile)
+                binoculars.util.space_to_txt(space, outfile)
                 self.parent.statusbar.showMessage('saved at {0}'.format(outfile))
 
             elif ext == '.hdf5':
@@ -963,7 +963,7 @@ class SpaceContainer(QtGui.QTableWidgetItem):
 
     def get_space(self, key = None):
         if self.space == None:
-            return BINoculars.space.Space.fromfile(self.label, key = key)
+            return binoculars.space.Space.fromfile(self.label, key = key)
         else:
            if key == None:
                 key = Ellipsis
@@ -971,13 +971,13 @@ class SpaceContainer(QtGui.QTableWidgetItem):
 
     def get_ax(self):
         if self.space == None:
-           return BINoculars.space.Axes.fromfile(self.label)
+           return binoculars.space.Axes.fromfile(self.label)
         else:
            return self.space.axes
 
     def add_to_space(space):
         if self.space == None:
-            newspace = BINoculars.space.Space.fromfile(self.label) + space
+            newspace = binoculars.space.Space.fromfile(self.label) + space
             newspsace.tofile(self.label)
         else:
             self.space += space
@@ -1049,7 +1049,7 @@ class TableWidget(QtGui.QWidget):
         axes = tuple(container.get_ax() for checkbox, container in zip(self.itercheckbox(), self.itercontainer()) if checkbox.checkState())
         if len(axes) > 0:
             try:
-                return BINoculars.space.Axes(BINoculars.space.union_unequal_axes(ax) for ax in zip(*axes))
+                return binoculars.space.Axes(binoculars.space.union_unequal_axes(ax) for ax in zip(*axes))
             except ValueError:
                 return ()
         else:
@@ -1270,7 +1270,7 @@ def is_empty(key):
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
 
-    BINoculars.space.silence_numpy_errors()
+    binoculars.space.silence_numpy_errors()
 
     main = Window()
     main.resize(1000, 600)

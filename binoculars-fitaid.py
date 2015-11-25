@@ -3,7 +3,7 @@ import sys
 import numpy
 import os.path
 from PyQt4 import QtGui, QtCore, Qt
-import BINoculars.main, BINoculars.space, BINoculars.plot, BINoculars.fit, BINoculars.util
+import binoculars.main, binoculars.space, binoculars.plot, binoculars.fit, binoculars.util
 from scipy.interpolate import griddata
 
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationToolbar2QTAgg
@@ -44,7 +44,7 @@ class Window(QtGui.QMainWindow):
 
     def newproject(self):
         dialog = QtGui.QFileDialog(self, "project filename");
-        dialog.setFilter('BINoculars fit file (*.fit)');
+        dialog.setFilter('binoculars fit file (*.fit)');
         dialog.setDefaultSuffix('fit');
         dialog.setFileMode(QtGui.QFileDialog.AnyFile);
         dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave);
@@ -63,7 +63,7 @@ class Window(QtGui.QMainWindow):
     def loadproject(self, filename = None):
         if not filename:
             dialog = QtGui.QFileDialog(self, "Load project");
-            dialog.setFilter('BINoculars fit file (*.fit)');
+            dialog.setFilter('binoculars fit file (*.fit)');
             dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
             dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
             if not dialog.exec_():
@@ -89,7 +89,7 @@ class Window(QtGui.QMainWindow):
             
         if not filename:
             dialog = QtGui.QFileDialog(self, "Import spaces");
-            dialog.setFilter('BINoculars space file (*.hdf5)');
+            dialog.setFilter('binoculars space file (*.hdf5)');
             dialog.setFileMode(QtGui.QFileDialog.ExistingFiles);
             dialog.setAcceptMode(QtGui.QFileDialog.AcceptOpen);
             if not dialog.exec_():
@@ -141,9 +141,9 @@ class TopWidget(QtGui.QWidget):
 
         self.functions = list()
         self.function_box = QtGui.QComboBox()        
-        for function in dir(BINoculars.fit):
-            cls = getattr(BINoculars.fit, function)
-            if isinstance(cls, type) and issubclass(cls, BINoculars.fit.PeakFitBase):
+        for function in dir(binoculars.fit):
+            cls = getattr(binoculars.fit, function)
+            if isinstance(cls, type) and issubclass(cls, binoculars.fit.PeakFitBase):
                 self.functions.append(cls)
                 self.function_box.addItem(function)
         self.function_box.setCurrentIndex(self.function_box.findText('PolarLorentzian2D'))
@@ -345,7 +345,7 @@ class TableWidget(QtGui.QWidget):
         self.table.insertRow(index)
 
 
-        axes = BINoculars.space.Axes.fromfile(filename) 
+        axes = binoculars.space.Axes.fromfile(filename) 
 
         checkboxwidget = QtGui.QCheckBox()
         checkboxwidget.rodkey = rodkey
@@ -428,14 +428,14 @@ class FitData(object):
                     if not spacename:
                         raise IOError('Select proper input')
                     db[rodkey].attrs['filename'] = spacename
-                self.axdict[rodkey] = BINoculars.space.Axes.fromfile(spacename)    
+                self.axdict[rodkey] = binoculars.space.Axes.fromfile(spacename)    
 
     def create_rod(self, rodkey, spacename):
         with h5py.File(self.filename,'a') as db:
             if rodkey not in db.keys():
                 db.create_group(rodkey)
                 db[rodkey].attrs['filename'] =  spacename
-                self.axdict[rodkey] = BINoculars.space.Axes.fromfile(spacename)
+                self.axdict[rodkey] = binoculars.space.Axes.fromfile(spacename)
 
     def delete_rod(self, rodkey):
         with h5py.File(self.filename,'a') as db:
@@ -503,7 +503,7 @@ class RodData(FitData):
         axindex = axes.index(self.axis)
         ax = axes[axindex]
 
-        bins = BINoculars.space.get_bins(ax, self.resolution)
+        bins = binoculars.space.get_bins(ax, self.resolution)
         return bins, ax, axindex
        
     def rodlength(self):
@@ -511,7 +511,7 @@ class RodData(FitData):
         return numpy.alen(bins) - 1 
 
     def get_index_value(self, index):
-        return BINoculars.space.get_axis_values(self.axdict[self.rodkey], self.axis, self.resolution)[index]
+        return binoculars.space.get_axis_values(self.axdict[self.rodkey], self.axis, self.resolution)[index]
 
     def get_key(self, index):
         axes = self.axdict[self.rodkey]
@@ -524,7 +524,7 @@ class RodData(FitData):
     def space_from_index(self, index):
         with h5py.File(self.filename,'a') as db:
              filename = db[self.rodkey].attrs['filename']
-        return BINoculars.space.Space.fromfile(filename, self.get_key(index)).project(self.axis)
+        return binoculars.space.Space.fromfile(filename, self.get_key(index)).project(self.axis)
 
     def save_data(self, index, key, data):         
         with h5py.File(self.filename,'a') as db:
@@ -587,7 +587,7 @@ class RodData(FitData):
         with h5py.File(self.filename,'a') as db:
             group = db[self.rodkey][self.slicekey]['attrs']
             if key in group.keys():
-                return BINoculars.space.get_axis_values(axes, self.axis, self.resolution), numpy.ma.array(group[key], mask = numpy.array(group[mkey]))
+                return binoculars.space.get_axis_values(axes, self.axis, self.resolution), numpy.ma.array(group[key], mask = numpy.array(group[mkey]))
                  
     def load_loc(self, index):
         loc = list()   
@@ -666,15 +666,15 @@ class FitWidget(QtGui.QWidget):
         if fitdata is not None:
             if space.dimension == 1:
                 self.ax = self.figure.add_subplot(111)
-                BINoculars.plot.plot(space, self.figure, self.ax, fit = fitdata)
+                binoculars.plot.plot(space, self.figure, self.ax, fit = fitdata)
             elif space.dimension == 2:
                 self.ax = self.figure.add_subplot(121)
-                BINoculars.plot.plot(space, self.figure, self.ax, fit = None)
+                binoculars.plot.plot(space, self.figure, self.ax, fit = None)
                 self.ax = self.figure.add_subplot(122)
-                BINoculars.plot.plot(space, self.figure, self.ax, fit = fitdata)
+                binoculars.plot.plot(space, self.figure, self.ax, fit = fitdata)
         else:
             self.ax = self.figure.add_subplot(111)
-            BINoculars.plot.plot(space, self.figure, self.ax)
+            binoculars.plot.plot(space, self.figure, self.ax)
         self.figure.suptitle('{0}, res = {1}, {2} = {3}'.format(self.database.rodkey, self.database.resolution, label, info))
         self.canvas.draw()
 
@@ -972,15 +972,15 @@ class IntegrateWidget(QtGui.QWidget):
         if interdata is not None:
             if space.dimension == 1:
                 self.ax = self.figure.add_subplot(111)
-                BINoculars.plot.plot(space, self.figure, self.ax, fit = interdata)
+                binoculars.plot.plot(space, self.figure, self.ax, fit = interdata)
             elif space.dimension == 2:
                 self.ax = self.figure.add_subplot(121)
-                BINoculars.plot.plot(space, self.figure, self.ax, fit = None)
+                binoculars.plot.plot(space, self.figure, self.ax, fit = None)
                 self.ax = self.figure.add_subplot(122)
-                BINoculars.plot.plot(space, self.figure, self.ax, fit = interdata)
+                binoculars.plot.plot(space, self.figure, self.ax, fit = interdata)
         else:
             self.ax = self.figure.add_subplot(111)
-            BINoculars.plot.plot(space, self.figure, self.ax)
+            binoculars.plot.plot(space, self.figure, self.ax)
 
         self.figure.suptitle('{0}, res = {1}, {2} = {3}'.format(self.database.rodkey, self.database.resolution, label, info))
 
