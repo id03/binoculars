@@ -101,7 +101,7 @@ def get_clipped_norm(data, clipping=0.0, log=True):
         return matplotlib.colors.Normalize(vmin, vmax)
 
 
-def plot(space, fig, ax, log=True, loglog = False, clipping=0.0, fit=None, norm=None, colorbar=True, labels=True, **plotopts):
+def plot(space, fig, ax, log=True, loglog = False, clipping=0.0, fit=None, norm=None, colorbar=True, labels=True, interpolation='nearest', **plotopts):
     if space.dimension == 1:
         data = space.get_masked()
         xrange = numpy.ma.array(space.axes[0][:], mask=data.mask)
@@ -142,9 +142,9 @@ def plot(space, fig, ax, log=True, loglog = False, clipping=0.0, fit=None, norm=
             norm = get_clipped_norm(data, clipping, log)
 
         if fit is not None:
-            im = ax.imshow(fit.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm = norm, **plotopts)
+            im = ax.imshow(fit.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm = norm, interpolation=interpolation, **plotopts)
         else:
-            im = ax.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm = norm,  **plotopts)
+            im = ax.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm = norm, interpolation=interpolation,  **plotopts)
 
         if labels:
             ax.set_xlabel(space.axes[0].label)
