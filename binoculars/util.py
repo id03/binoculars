@@ -288,6 +288,8 @@ def parse_multi_range(s):
     return out
 
 def parse_tuple(s, length=None, type=str):
+    if not s:
+        return s
     t = tuple(type(i) for i in s.split(','))
     if length is not None and len(t) != length:
         raise ValueError('invalid tuple length: expected {0} got {1}'.format(length, len(t)))
