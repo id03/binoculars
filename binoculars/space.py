@@ -209,7 +209,11 @@ class Axes(object):
                     # oldest style, float min/max
                     return cls(tuple(Axis(min, max, res, lbl) for ((min, max, res), lbl) in zip(fp['axes'], fp['axes_labels'])))
                 elif 'axes' in fp:#new
-                    return cls(tuple(Axis(int(imin), int(imax), res, lbl) for ((imin, imax, res), lbl) in zip(fp['axes'].values(), fp['axes'].keys())))
+                    try:
+                        axes = tuple(Axis(int(imin), int(imax), res, lbl) for ((index, fmin, fmax, res, imin, imax), lbl) in zip(fp['axes'].values(), fp['axes'].keys()))
+                        return cls(tuple(axes[int(values[0])] for values in fp['axes'].values()))#reorder the axes to the way in which they were saved
+                    except ValueError:
+                        return cls(tuple(Axis(int(imin), int(imax), res, lbl) for ((imin, imax, res), lbl) in zip(fp['axes'].values(), fp['axes'].keys())))
                 else:
                     # older style, integer min/max
                     return cls(tuple(Axis(imin, imax, res, lbl) for ((imin, imax), res, lbl) in zip(fp['axes_range'], fp['axes_res'], fp['axes_labels'])))
@@ -219,8 +223,8 @@ class Axes(object):
     def tofile(self, filename):
         with util.open_h5py(filename, 'w') as fp:
             axes = fp.create_group('axes')
-            for ax in self.axes:
-                axes.create_dataset(ax.label, data = [ax.imin, ax.imax, ax.res])
+            for index, ax in enumerate(self.axes):
+                axes.create_dataset(ax.label, data = [index, ax.min, ax.max, ax.res, ax.imin, ax.imax])
 
     def toarray(self):
         return numpy.vstack(numpy.hstack([str(ax.imin), str(ax.imax), str(ax.res), ax.label]) for ax in self.axes)
