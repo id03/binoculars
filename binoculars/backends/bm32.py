@@ -25,9 +25,9 @@ class pixels(backend.ProjectionBase):
 class HKLProjection(backend.ProjectionBase):
     # arrays: gamma, delta
     # scalars: theta, mu, chi, phi
-    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        R = SixCircle.getHKL(wavelength, UB, gamma=gamma, delta=delta, theta=theta, mu=mu, chi=chi, phi=phi)
-        shape = gamma.size, delta.size
+    def project(self, wavelength, UB, beta, delta, omega, alfa, chi, phi):
+        R = SixCircle.getHKL(wavelength, UB, gamma=beta, delta=delta, theta=omega, mu=alfa, chi=chi, phi=phi)
+        shape = beta.size, delta.size
         H = R[0,:].reshape(shape)
         K = R[1,:].reshape(shape)
         L = R[2,:].reshape(shape)
@@ -37,78 +37,12 @@ class HKLProjection(backend.ProjectionBase):
         return 'H', 'K', 'L'
 
 class HKProjection(HKLProjection):
-    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        H, K, L = super(HKProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
+    def project(self, wavelength, UB, beta, delta, omega, alfa, chi, phi):
+        H, K, L = super(HKProjection, self).project( wavelength, UB, beta, delta, omega, alfa, chi, phi)
         return (H, K)
 
     def get_axis_labels(self):
         return 'H', 'K'
-
-class specularangles(backend.ProjectionBase):
-    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        delta,gamma = numpy.meshgrid(delta,gamma)
-        mu *= numpy.pi/180
-        delta *= numpy.pi/180
-        gamma *= numpy.pi/180
-        chi *= numpy.pi/180
-        phi *= numpy.pi/180
-        theta *= numpy.pi/180
-
-
-        def mat(u, th):
-            ux, uy, uz = u[0], u[1], u[2]
-            sint = numpy.sin(th)
-            cost = numpy.cos(th)
-            mcost = (1 - numpy.cos(th))
-
-            return numpy.matrix([[cost + ux**2 * mcost, ux * uy * mcost - uz * sint, ux * uz * mcost + uy * sint],
-                             [uy * ux * mcost + uz * sint, cost + uy**2 * mcost, uy * uz - ux * sint],
-                             [uz * ux * mcost - uy * sint, uz * uy * mcost + ux * sint, cost + uz**2 * mcost]])
-
-
-        def rot(vx, vy, vz, u, th):
-            R = mat(u, th)
-            return R[0,0] * vx + R[0,1] * vy + R[0,2] * vz, R[1,0] * vx + R[1,1] * vy + R[1,2] * vz, R[2,0] * vx + R[2,1] * vy + R[2,2] * vz 
-
-        #what are the angles of kin and kout in the sample frame?
-
-        #angles in the hexapod frame
-        koutx, kouty, koutz = numpy.sin(- numpy.pi / 2 + gamma) * numpy.cos(delta), numpy.sin(- numpy.pi / 2 + gamma) * numpy.sin(delta), numpy.cos(- numpy.pi / 2 + gamma)
-        kinx, kiny, kinz =  numpy.sin(numpy.pi / 2 - mu), 0 , numpy.cos(numpy.pi / 2 - mu)
-
-        #now we rotate the frame around hexapod rotation th
-        xaxis = numpy.array(rot(1,0,0, numpy.array([0,0,1]), theta))
-        yaxis = numpy.array(rot(0,1,0, numpy.array([0,0,1]), theta))
-
-        #first we rotate the sample around the xaxis
-        koutx, kouty, koutz = rot(koutx, kouty, koutz, xaxis,  chi)
-        kinx, kiny, kinz = rot(kinx, kiny, kinz, xaxis, chi)
-        yaxis = numpy.array(rot(yaxis[0], yaxis[1], yaxis[2], xaxis, chi))# we also have to rotate the yaxis
-
-        #then we rotate the sample around the yaxis
-        koutx, kouty, koutz = rot(koutx, kouty, koutz, yaxis,  phi)
-        kinx, kiny, kinz = rot(kinx, kiny, kinz, yaxis, phi)
-
-        #to calculate the equivalent gamma, delta and mu in the sample frame we rotate the frame around the sample z which is 0,0,1
-        back = numpy.arctan2(kiny, kinx)
-        koutx, kouty, koutz = rot(koutx, kouty, koutz, numpy.array([0,0,1]) ,  -back)
-        kinx, kiny, kinz = rot(kinx, kiny, kinz, numpy.array([0,0,1]) , -back)
-
-        mu = numpy.arctan2(kinz, kinx) * numpy.ones_like(delta)
-        delta = numpy.pi - numpy.arctan2(kouty, koutx)
-        gamma = numpy.pi - numpy.arctan2(koutz, koutx)
-
-        delta[delta > numpy.pi] -= 2 * numpy.pi
-        gamma[gamma > numpy.pi] -= 2 * numpy.pi
-
-        mu *= 1 / numpy.pi * 180
-        delta *= 1 / numpy.pi * 180
-        gamma *= 1 / numpy.pi * 180
-
-        return (gamma - mu , gamma + mu , delta)
-
-    def get_axis_labels(self):
-        return 'g-m','g+m','delta'
 
 class ThetaLProjection(backend.ProjectionBase):
     # arrays: gamma, delta
@@ -304,7 +238,7 @@ class BM32Input(backend.InputBase):
         for file in files:
             try:
                 filename = os.path.basename(file).split('.')[0]
-                imno = int(filename.split('-')[-1])
+                imno = int(filename.split('_')[-1].split('-')[-1])
                 ret[imno] = file
             except ValueError:
                 continue
@@ -387,7 +321,7 @@ class EH1(BM32Input):
         header = edf.GetHeader(0)
 
         if not self.config.centralpixel:
-            self.config.centralpixel = (int(header['x_beam']), int(header['y_beam']))
+            self.config.centralpixel = (int(header['y_beam']), int(header['x_beam']))
         if not self.config.sdd:
             self.config.sdd = float(header['det_sample_dist'])
 
@@ -423,6 +357,7 @@ class EH1(BM32Input):
 
         intensity = numpy.rot90(intensity)
         intensity = numpy.fliplr(intensity)
+        intensity = numpy.flipud(intensity)
 
         #polarisation correction
         delta_grid, beta_grid = numpy.meshgrid(delta_range, beta_range)
@@ -436,8 +371,8 @@ class EH1(BM32Input):
 
         DEL, OME, ALF, BET, CHI, PHI, MON, TRANSM = range(8)
         params = numpy.zeros((last - first + 1, 8)) # gamma delta theta chi phi mu mon transm
-        params[:, CHI] = 0#scan.motorpos('CHI')
-        params[:, PHI] = 0#scan.motorpos('PHI')
+        params[:, CHI] = 0    #scan.motorpos('CHI')
+        params[:, PHI] = 0    #scan.motorpos('PHI')
 
         params[:, OME] = scan.datacol('omecnt')[sl]
         params[:, BET] = scan.datacol('betcnt')[sl]
