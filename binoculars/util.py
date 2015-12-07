@@ -802,16 +802,19 @@ def atomic_write(filename):
             fp.write(...)
     """
 
-    tmpfile = '{0}-{1}.tmp'.format(os.path.splitext(filename)[0], uniqid())
-    try:
-        yield tmpfile
-    except:
-        raise
+    if isinstance(filename, h5py._hl.group.Group):
+        yield filename
     else:
-        best_effort_atomic_rename(tmpfile, filename)
-    finally:
-        if os.path.exists(tmpfile):
-            os.remove(tmpfile)
+        tmpfile = '{0}-{1}.tmp'.format(os.path.splitext(filename)[0], uniqid())
+        try:
+            yield tmpfile
+        except:
+            raise
+        else:
+            best_effort_atomic_rename(tmpfile, filename)
+        finally:
+            if os.path.exists(tmpfile):
+                os.remove(tmpfile)
 
 def zpi_save(obj, filename):
     with atomic_write(filename) as tmpfile:
