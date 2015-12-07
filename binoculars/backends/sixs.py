@@ -395,10 +395,12 @@ class FlyScanUHV(SIXS):
         else:
             mask = detector.mask
 
-        intensity = numpy.ma.array(data = dataframe.image[index, ...], mask = mask)
+        intensity = dataframe.image[index, ...]
+        weights = numpy.ones_like(intensity)
+        weights *= ~mask 
         #util.status('{4}| gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu, time.ctime(time.time())))
 
-        return intensity, (index, dataframe, pixels)
+        return intensity, weights, (index, dataframe, pixels)
 
     def get_pixels(self, detector):
         detector = ALL_DETECTORS[detector.name]()

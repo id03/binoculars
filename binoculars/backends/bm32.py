@@ -320,6 +320,8 @@ class EH1(BM32Input):
         image = edf.GetData(0)
         header = edf.GetHeader(0)
 
+        weights = numpy.ones_like(image)
+
         if not self.config.centralpixel:
             self.config.centralpixel = (int(header['y_beam']), int(header['x_beam']))
         if not self.config.sdd:
@@ -349,22 +351,28 @@ class EH1(BM32Input):
         if self.config.maskmatrix is not None:
             if self.config.maskmatrix.shape != data.shape:
                 raise errors.BackendError('The mask matrix does not have the same shape as the images')
-            data = numpy.ma.array(data, mask = ~self.config.maskmatrix)
+            weights *= self.config.maskmatrix
 
         delta_range = delta_range[self.config.ymask]
         beta_range = beta_range[self.config.xmask]
+
+        weights = self.apply_mask(weights, self.config.xmask, self.config.ymask)
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
 
         intensity = numpy.rot90(intensity)
         intensity = numpy.fliplr(intensity)
         intensity = numpy.flipud(intensity)
 
+        weights = numpy.rot90(weights)
+        weights = numpy.fliplr(weights)
+        weights = numpy.flipud(weights)
+
         #polarisation correction
         delta_grid, beta_grid = numpy.meshgrid(delta_range, beta_range)
         Pver = 1 - numpy.sin(delta_grid * numpy.pi / 180.)**2 * numpy.cos(beta_grid * numpy.pi / 180.)**2
         #intensity /= Pver
  
-        return intensity, (wavelength, UB, beta_range, delta_range, omega, alfa, chi, phi)
+        return intensity, weights, (wavelength, UB, beta_range, delta_range, omega, alfa, chi, phi)
 
     def get_point_params(self, scan, first, last):
         sl = slice(first, last+1)

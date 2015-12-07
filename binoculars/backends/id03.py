@@ -539,6 +539,8 @@ class EH1(ID03Input):
         gamma, delta, theta, chi, phi, mu, mon, transm, hrx, hry = pointparams
         wavelength, UB = scanparams
 
+        weights = numpy.ones_like(image)
+
         if self.config.hr:
             zerohrx, zerohry = self.config.hr
             chi = (hrx - zerohrx) / numpy.pi * 180. / 1000
@@ -568,18 +570,20 @@ class EH1(ID03Input):
         if self.config.maskmatrix is not None:
             if self.config.maskmatrix.shape != data.shape:
                 raise errors.BackendError('The mask matrix does not have the same shape as the images')
-            data = numpy.ma.array(data, mask = ~self.config.maskmatrix)
+            weights *= self.config.maskmatrix
 
         gamma_range = gamma_range[self.config.ymask]
         delta_range = delta_range[self.config.xmask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
+        weights = self.apply_mask(weights, self.config.xmask, self.config.ymask)
 
         #polarisation correction
         delta_grid, gamma_grid = numpy.meshgrid(delta_range, gamma_range)
         Pver = 1 - numpy.sin(delta_grid * numpy.pi / 180.)**2 * numpy.cos(gamma_grid * numpy.pi / 180.)**2
         intensity /= Pver
  
-        return intensity, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
+        return intensity, weights, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
+
 
     def get_point_params(self, scan, first, last):
         sl = slice(first, last+1)
@@ -649,9 +653,11 @@ class EH2(ID03Input):
             self.config.UB = util.parse_tuple(self.config.UB, length=9, type=float)
         
     def process_image(self, scanparams, pointparams, image):
-
         gamma, delta, theta, chi, phi, mu, mon, transm = pointparams
         wavelength, UB = scanparams
+
+        weights = numpy.ones_like(image)
+
         if self.config.background:
             data = image / mon
         else:
@@ -675,24 +681,27 @@ class EH2(ID03Input):
         delta_range = app[1] * (numpy.arange(data.shape[1]) - centralpixel[1]) + delta
 
         # masking
-
         if self.config.maskmatrix is not None:
             if self.config.maskmatrix.shape != data.shape:
                 raise errors.BackendError('The mask matrix does not have the same shape as the images')
-            data = numpy.ma.array(data, mask = ~self.config.maskmatrix)
+            weights *= self.config.maskmatrix
 
         gamma_range = gamma_range[self.config.xmask]
         delta_range = delta_range[self.config.ymask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
+        weights = self.apply_mask(weights, self.config.xmask, self.config.ymask)
+
         intensity = numpy.fliplr(intensity)
         intensity = numpy.rot90(intensity)
+        weights = numpy.fliplr(weights)#TODO: should be done more efficiently. Will prob change with new HKL calculations
+        weights = numpy.rot90(weights)
         
         #polarisation correction
         delta_grid, gamma_grid = numpy.meshgrid(delta_range, gamma_range)
         Phor = 1 - (numpy.sin(mu * numpy.pi / 180.) * numpy.sin(delta_grid * numpy.pi / 180.) * numpy.cos(gamma_grid* numpy.pi / 180.) + numpy.cos(mu* numpy.pi / 180.) * numpy.sin(gamma_grid* numpy.pi / 180.))**2
         intensity /= Phor
 
-        return intensity, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
+        return intensity, weights, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
 
     def get_point_params(self, scan, first, last):
         sl = slice(first, last+1)
@@ -702,7 +711,6 @@ class EH2(ID03Input):
         params[:, CHI] = scan.motorpos('Chi')
         params[:, PHI] = scan.motorpos('Phi')
  
-        
         if self.is_zap(scan):
             if 'th' in scan.alllabels():
                 th = scan.datacol('th')[sl]
@@ -737,15 +745,13 @@ class EH2(ID03Input):
             params[:, MU] = scan.datacol('mucnt')[sl]
         return params
 
-
-
 class GisaxsDetector(ID03Input):
     monitor_counter = 'mon'
 
     def process_image(self, scanparams, pointparams, image):
         ccdy, ccdz, theta, chi, phi, mu, mon, transm= pointparams
 
-        image = numpy.rot90(image, self.config.drotation)
+        weights = numpy.ones_like(image)
 
         wavelength, UB = scanparams
 
@@ -775,16 +781,21 @@ class GisaxsDetector(ID03Input):
         data *= spd**2 / sdd
 
         # masking
+        if self.config.maskmatrix is not None:
+            if self.config.maskmatrix.shape != data.shape:
+                raise errors.BackendError('The mask matrix does not have the same shape as the images')
+            weights *= self.config.maskmatrix
+
         gamma_range = gamma_range[self.config.ymask]
         delta_range = delta_range[self.config.xmask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
+        weights = self.apply_mask(weights, self.config.xmask, self.config.ymask)
 
-        return intensity, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
+        return intensity, weights, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
 
 
     def parse_config(self, config):
         super(GisaxsDetector, self).parse_config(config)
-        self.config.drotation = int(config.pop('drotation', 0)) #Optional; Rotation of the detector, takes standard orientation by default. input 1 for 90 dgree rotation, 2 for 180 and 3 for 270.
         self.config.directbeam = util.parse_tuple(config.pop('directbeam'), length=2, type=int)      
         self.config.directbeam_coords = util.parse_tuple(config.pop('directbeam_coords'), length=2, type=float) #Coordinates of ccdy and ccdz at the direct beam position
 

@@ -86,9 +86,9 @@ class Main(object):
         def generator():
             res = self.projection.config.resolution
             labels = self.projection.get_axis_labels()
-            for intensity, params in self.input.process_job(job):
+            for intensity, weights, params in self.input.process_job(job):
                 coords = self.projection.project(*params)
-                yield space.Space.from_image(res, labels, coords, intensity, limits = self.projection.config.limits)
+                yield space.Space.from_image(res, labels, coords, intensity, weights, limits = self.projection.config.limits)
         jobspace = space.chunked_sum(generator(), chunksize=25)
         if isinstance(jobspace, space.Space):
             jobspace.metadata.add_dataset(self.input.metadata)
@@ -122,9 +122,9 @@ class Split(Main): #completely ignores the dispatcher, just yields a space per i
     def process_job(self, job):
         res = self.projection.config.resolution
         labels = self.projection.get_axis_labels()
-        for intensity, params in self.input.process_job(job):
+        for intensity, weights, params in self.input.process_job(job):
             coords = self.projection.project(*params)
-            yield space.Space.from_image(res, labels, coords, intensity, limits = self.projection.config.limits)
+            yield space.Space.from_image(res, labels, coords, intensity, weights, limits = self.projection.config.limits)
 
 
     def run(self):

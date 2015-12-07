@@ -227,7 +227,7 @@ class EH2(ID03Input):
 
         # no polarization correction for the moment!
         
-        return intensity, (mu, theta, delta, gamma, gamT,
+        return intensity, numpy.ones_like(intensity), (mu, theta, delta, gamma, gamT,#weights added to API. keeps functionality identical with wights of one
                            self.ty, wavelength, UB, self.qconv)
 
     def get_point_params(self, scan, first, last):

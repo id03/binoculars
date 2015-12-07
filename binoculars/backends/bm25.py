@@ -210,7 +210,7 @@ class EH2SCD(EDFInput):
         # masking
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
  
-        return intensity, (mu, th, phi, chi, cty, ctx, ctz, cth, ctr,
+        return intensity, numpy.ones_like(intensity), (mu, th, phi, chi, cty, ctx, ctz, cth, ctr,## weights added to API. Treated here like before
                            wavelength, UB, self.qconv)
 
     @staticmethod

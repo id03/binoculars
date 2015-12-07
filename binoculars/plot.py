@@ -160,13 +160,12 @@ def plot(space, fig, ax, log=True, loglog = False, clipping=0.0, fit=None, norm=
             raise ValueError("For 3D plots, the 'ax' parameter must be an Axes3D instance (use for example gca(projection='3d') to get one)")
 
         cmap = getattr(matplotlib.cm, plotopts.pop('cmap', 'jet'))
-        if not norm is None:
+        if norm is None:
             norm = get_clipped_norm(space.get_masked(), clipping, log)
 
         data = space.get()
         mask = numpy.bitwise_or(~numpy.isfinite(data), data == 0)
         gridx, gridy, gridz = tuple(grid[~mask] for grid in space.get_grid())
-        
         im = ax.scatter(gridx, gridy, gridz,  c=cmap(norm(data[~mask])), marker = ',', alpha = 0.7,linewidths = 0)
 
         #p1 = ax.plot_surface(gridx[0,:,:], gridy[0,:,:], gridz[0,:,:],  facecolors=cmap(norm(space.project(0).get_masked())), shade=False, cstride=1, rstride=1)

@@ -40,7 +40,7 @@ class InputBase(util.ConfigurableObject):
 
     def parse_config(self, config):
         super(InputBase, self).parse_config(config)
-        self.config.target_weight = int(config.pop('target_weight', 0))## approximate number of images per job, only useful when running on the oar cluster
+        self.config.target_weight = int(config.pop('target_weight', 1000))## approximate number of images per job, only useful when running on the oar cluster
 
     def generate_jobs(self, command):
         """Receives command from user, yields Job() instances"""

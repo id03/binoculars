@@ -343,7 +343,7 @@ class Space(object):
         self.metadata = metadata
         
         self.photons = numpy.zeros([len(ax) for ax in self.axes], order='C')
-        self.contributions = numpy.zeros(self.photons.shape, dtype=numpy.uint32, order='C')
+        self.contributions = numpy.zeros(self.photons.shape, order='C')
 
     @property
     def dimension(self):
@@ -457,7 +457,10 @@ class Space(object):
     def get_masked(self):
         """Returns photons/contributions, but with divide-by-zero's masked out."""
         return numpy.ma.array(data=self.get(), mask=(self.contributions == 0))
-        
+
+    def get_variance(self):
+        return numpy.ma.array(data=1 / self.contributions, mask = (self.contributions == 0))
+
     def get_grid(self):
         """Returns the data coordinates of each grid point, as n-tuple of n-dimensinonal arrays.
         Basically numpy.mgrid() in data coordinates."""
@@ -475,7 +478,7 @@ class Space(object):
         return tuple(ax[key] for ax, key in zip(self.axes, numpy.unravel_index(numpy.argmax(array), array.shape)))
 
     def __add__(self, other):
-        if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
+        if isinstance(other, numbers.Number):
             new = self.copy()
             new.photons += other * self.contributions
             return new 
@@ -490,7 +493,7 @@ class Space(object):
         return new
 
     def __iadd__(self, other):
-        if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
+        if isinstance(other, numbers.Number):
             self.photons += other * self.contributions
             return self
         if not isinstance(other, Space):
@@ -508,36 +511,21 @@ class Space(object):
         return self
 
     def __sub__(self, other):
-        if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
-            new = self.copy()
-            new.photons -= other * self.contributions
-            return new 
-        elif not isinstance(other, Space):
-            return NotImplemented
-        if self.axes != other.axes or not (self.contributions == other.contributions).all():
-            # TODO: we could be a bit more helpful if all axes are compatible
-            raise ValueError('cannot subtract spaces that are not identical (axes + contributions)')
-        new = self.copy()
-        new.photons -= other.photons # don't call __isub__ here because the compatibility check is labourous
-        return new
+        return self.__add__(other * -1)
 
     def __isub__(self, other):
-        if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
-            self.photons -= other * self.contributions
-            return self
-        elif not isinstance(other, Space):
-            return NotImplemented
-        if self.axes != other.axes or not (self.contributions == other.contributions).all():
-             raise ValueError('cannot subtract spaces that are not identical (axes + contributions)')
-        self.photons -= other.photons
-        return self
+        return self.__iadd__(other * -1)
 
-    def __mul__(self, other):#to test more advanced background subtraction routines
-        if type(other) == float or type(other) == int:
-            self.photons *= other
+    def __mul__(self, other):
+        if isinstance(other, numbers.Number):
+            new = self.__class__(self.axes, self.config, self.metadata)
+            #we would like to keep 1/contributions as the variance
+            #var(aX) = a**2var(X)
+            new.photons = self.photons / other
+            new.contributions = self.contributions / other**2
+            return new
         else:
             return NotImplemented
-        return self
 
     def trim(self):
         """Reduce total size of Space by trimming zero-contribution data points on the boundaries."""
@@ -549,35 +537,7 @@ class Space(object):
         self.photons = self.photons[slices].copy()
         self.contributions = self.contributions[slices].copy()
 
-    def rebin(self, factors):
-        """Increase bin size (= decrease resolution).
-
-        factor   even integer or n-tuple of even integers"""
-        if isinstance(factors, int):
-            factors = [factors] * len(self.axes)
-        elif len(factors) != len(self.axes):
-            raise ValueError('dimension mismatch between factors and axes')
-        if not all(isinstance(factor, int) for factor in factors) or not all(factor == 1 or factor % 2 == 0 for factor in factors):
-            raise ValueError('binning factors must be even integers')
-
-        lefts, rights, newaxes = zip(*[ax.rebin(factor) for ax, factor in zip(self.axes, factors)])
-        tempshape = tuple(size + left + right + factor for size, left, right, factor in zip(self.photons.shape, lefts, rights, factors))
-
-        photons = numpy.zeros(tempshape, order='C')
-        contributions = numpy.zeros(tempshape, dtype=numpy.uint32, order='C')
-        pad = tuple(slice(left, left+size) for left, factor, size in zip(lefts, factors, self.photons.shape))
-        photons[pad] = self.photons
-        contributions[pad] = self.contributions
-
-        new = self.__class__(newaxes)
-        for offsets in itertools.product(*[range(factor) for factor in factors]):
-            stride = tuple(slice(offset, offset + len(ax)*factor, factor) for offset, ax, factor in zip(offsets, newaxes, factors))
-            new.photons += photons[stride]
-            new.contributions += contributions[stride]
-
-        return new
-
-    def rebin2(self, resolutions):
+    def rebin(self, resolutions):
         """Change bin size.
     
         resolution    n-tuple of floats, new resolution of each axis"""
@@ -586,16 +546,11 @@ class Space(object):
         if resolutions == tuple(ax.res for ax in self.axes):
             return self
 
-        labels = tuple(ax.label for ax in self.axes)
-        coordinates = tuple(grid.flatten() for grid in self.get_grid())
-
-        contribution_space = self.from_image(resolutions, labels, coordinates, self.contributions.flatten())
-        contributions = contribution_space.photons.astype(int)
-        del contribution_space
-
-        new = self.from_image(resolutions, labels, coordinates, self.photons.flatten())
-        new.contributions = contributions
-        return new
+        # gather data and transform        
+        coords = self.get_grid()
+        intensity = self.get()
+        weights = self.contributions
+        return self.from_image(resolutions, labels, coords, intensity, weights)
 
     def reorder(self, labels):
         """Change order of axes."""
@@ -609,50 +564,44 @@ class Space(object):
         
     def transform_coordinates(self, resolutions, labels, transformation):
         # gather data and transform
-        intensity = self.get_masked()
+        
         coords = self.get_grid()
         transcoords = transformation(*coords)
+        intensity = self.get()
+        weights = self.contributions
 
-        # get rid of invalids & masked intensities
-        valid = ~__builtin__.sum((~numpy.isfinite(t) for t in transcoords), intensity.mask)
+        # get rid of invalid coords
+        valid = reduce(numpy.bitwise_and, intertools.chain((numpy.isfinite(t) for t in transcoords)), (weights > 0, ))
         transcoords = tuple(t[valid] for t in transcoords)
 
-        return self.from_image(resolutions, labels, transcoords, intensity[valid])
+        return self.from_image(resolutions, labels, transcoords, intensity[valid], weights[valid])
 
-    def process_image(self, coordinates, intensity):
+    def process_image(self, coordinates, intensity, weights):
         """Load image data into Space.
 
         coordinates  n-tuple of data coordinate arrays
-        intensity    data intensity array"""
+        intensity    data intensity array
+        weights      weights array, supply numpy.ones_like(intensity) for equal weights"""
         if len(coordinates) != len(self.axes):
             raise ValueError('dimension mismatch between coordinates and axes')
 
-        if isinstance(intensity, numpy.ma.core.MaskedArray):
-            mask = intensity.mask
-            intensity = intensity.data
-            valid = numpy.bitwise_and(numpy.isfinite(intensity), ~mask)        
-        else:
-            valid = numpy.isfinite(intensity)
-
-        intensity = intensity[valid]
-        if not intensity.size:
-            return
-
-        coordinates = tuple(coord[valid] for coord in coordinates)
+        intensity = numpy.nan_to_num(intensity).flatten()#invalids should be handeled by setting weight to 0, this ensures the weights can do that         
+        weights = weights.flatten()
 
         indices = numpy.array(tuple(ax.get_index(coord) for (ax, coord) in zip(self.axes, coordinates)))
         for i in range(0, len(self.axes)):
             for j in range(i+1, len(self.axes)):
                 indices[i,:] *= len(self.axes[j])
-        indices = indices.sum(axis=0).astype(int)
-        photons = numpy.bincount(indices, weights=intensity)
-        contributions = numpy.bincount(indices)
-    
+        indices = indices.sum(axis=0).astype(int).flatten()
+
+        photons = numpy.bincount(indices, weights=intensity * weights)
+        contributions = numpy.bincount(indices, weights=weights)
+
         self.photons.ravel()[:photons.size] += photons
-        self.contributions.ravel()[:contributions.size] += contributions.astype(self.contributions.dtype)
+        self.contributions.ravel()[:contributions.size] += contributions
 
     @classmethod
-    def from_image(cls, resolutions, labels, coordinates, intensity, limits = None):
+    def from_image(cls, resolutions, labels, coordinates, intensity, weights, limits = None):
         """Create Space from image data. 
 
         resolutions   n-tuple of axis resolutions
@@ -674,10 +623,11 @@ class Space(object):
                 return EmptySpace()
             coordinates = tuple(coord[~invalid] for coord in coordinates)
             intensity = intensity[~invalid]
+            weights = weights[~invalid]
 
         axes = tuple(Axis(coord.min(), coord.max(), res, label) for res, label, coord in zip(resolutions, labels, coordinates))
         newspace = cls(axes)
-        newspace.process_image(coordinates, intensity)
+        newspace.process_image(coordinates, intensity, weights)
         return newspace
 
     def tofile(self, filename):
