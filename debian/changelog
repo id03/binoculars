@@ -1,0 +1,5 @@
+binoculars (0.0.1) unstable; urgency=medium
+
+  * Initial release (Closes: #656633)
+
+ -- Picca Frédéric-Emmanuel <picca@debian.org>  Wed, 25 Nov 2015 14:25:10 +0200

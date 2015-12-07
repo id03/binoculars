@@ -1,8 +1,8 @@
-import BINoculars
+import binoculars
 
 # to load a binoculars space file in a python script use the load function. You can supply a key if you do not
 # want to load the entire space. By default the space is loaded entirely.
-space = BINoculars.load('test.hdf5')
+space = binoculars.load('test.hdf5')
 
 # if you quickly want to see what the content of the space is you can print the space. This will provide information about the 
 # dimension, the labels, and the range of the space, but not of the data in the space.
@@ -25,19 +25,19 @@ data = space.get_masked()
 grid = space.get_grid()
 
 # you can add two spaces provided they have the same labels and the same resolution. The range of the space can be arbitrary. 
-total = BINoculars.load('test.hdf5') + BINoculars.load('test1.hdf5')
+total = binoculars.load('test.hdf5') + binoculars.load('test1.hdf5')
 
 # you can view the configuration settings used to create the space.
-BINoculars.info(space)
+binoculars.info(space)
 
 # if you now want to reuse this configuration file as an input you can extract the configuration file by
 space.config.totxtfile('config.txt')
 
 # You can save the space in another format by changing the extension, currently only txt and hdf5 supported, and EDF if you have PyMca installed
-BINoculars.save('test.txt', space)
+binoculars.save('test.txt', space)
 
-# you can plot a space in a python script, or in an interactive terminal using the BINoculars.plotspace function. This function
-# automatically puts the right coordinates on the axes. Check the advanced options by typing 'help(BINoculars.plotspace)'
+# you can plot a space in a python script, or in an interactive terminal using the binoculars.plotspace function. This function
+# automatically puts the right coordinates on the axes. Check the advanced options by typing 'help(binoculars.plotspace)'
 import matplotlib.pyplot as pyplot
-BINoculars.plotspace(specular)
+binoculars.plotspace(specular)
 pyplot.show()

@@ -58,15 +58,18 @@ class Input(backend.InputBase):
 
     def process_job(self, job):
         '''
-        This methods is a generator that returns the intensity and a tuple of coordinates that
+        This methods is a generator that returns the intensity, the weights and a tuple of coordinates that
         will be used for projection. The input is a backend.job object. This objects contains attributes that are supplied
-        as keyword arguments in the generate_jobs method when backend.Job is instantiated.
+        as keyword arguments in the generate_jobs method when backend.Job is instantiated. You can wet here the weights according
+        the behaviour of your detector. To select normal averaging give the weights the value of ones. This array should be the same shape as
+        the intensity array.
 
         This example backend simulates a random path through angular space starting at the origin.
         an example image will be generated using a three dimensional 10-slit interference function.
         The angles are with respect to the sample where af and delta are the angular coordinates
         of the pixels and ai and omega are the in plane and out of plane angles of the incoming beam.
         '''
+        super(Input, self).process_job(job)# call super to fix metadeta handling        
         scan = job.scan
  
         #reflects a scan with 100 datapoints
@@ -74,7 +77,6 @@ class Input(backend.InputBase):
         adelta = numpy.linspace(0, numpy.random.random() * 20, 100)
         aai = numpy.linspace(0, numpy.random.random() * 20, 100)
         aomega = numpy.linspace(0, numpy.random.random() * 20, 100)
-
         for af, delta, ai, omega in zip(aaf, adelta, aai, aomega):
             print 'af: {0}, delta: {1}, ai: {2}, omega: {3}'.format(af, delta, ai, omega)
 
@@ -105,8 +107,9 @@ class Input(backend.InputBase):
 
             #simulating the image
             data = numpy.abs(numpy.sin(qx * 10) / numpy.sin(qx) * numpy.sin(qy * 10) / numpy.sin(qy) * numpy.sin(qz * 10) / numpy.sin(qz))**2
+            weights = numpy.ones_like(data)
 
-            yield data.flatten(), (self.config.wavelength, af, delta, omega, ai)
+            yield data, weights, (self.config.wavelength, af, delta, omega, ai)
 
     def parse_config(self, config):
         '''

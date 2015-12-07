@@ -1,0 +1,34 @@
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: binoculars
+Source: https://github.com/id03/binoculars/releases
+
+Files: *
+Copyright: 2012-2015 European Synchrotron Radiation Facility
+           Willem Onderwaater <onderwaa@esrf.fr>
+	   Sander Roobol <roobol@physics.leidenuniv.nl>
+License: GPL-3.0+
+
+Files: debian/*
+Copyright: 2015 Picca Frédéric-Emmanuel <picca@debian.org>
+License: GPL-3.0+
+
+License: GPL-3.0+
+ This package is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 3 of the License, or
+ (at your option) any later version.
+ .
+ This package is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ .
+ You should have received a copy of the GNU General Public License
+ along with this program. If not, see <http://www.gnu.org/licenses/>
+ .
+ On Debian systems, the complete text of the GNU General
+ Public License version 3 can be found in "/usr/share/common-licenses/GPL-3".
+
+License: public-domain
+ You can use this free for any purpose. It's in the public domain. It
+ has no warranty

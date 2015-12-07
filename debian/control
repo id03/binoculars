@@ -1,0 +1,85 @@
+Source: binoculars
+Maintainer: Debian Science Maintainers <debian-science-maintainers@lists.alioth.debian.org>
+Uploaders: Picca Frédéric-Emmanuel <picca@debian.org>
+Section: science
+Priority: extra
+Build-Depends: debhelper (>= 9),
+               dh-python,
+	       python-numpy,
+               python-all-dev,
+	       python-pyfai,
+	       python-sphinx,
+Standards-Version: 3.9.6
+Vcs-Browser: https://anonscm.debian.org/cgit/debian-science/packages/binoculars.git
+Vcs-Git: git://anonscm.debian.org/debian-science/packages/binoculars.git
+Homepage: https://github.com/id03/binoculars
+
+Package: binoculars
+Architecture: all
+Depends: ${misc:Depends},
+         ${python:Depends},
+         ${shlibs:Depends},
+         python-binoculars (>= ${source:Version})
+Description: Data reduction and analysis software for two-dimensional detectors in surface X-ray diffraction
+ BINoculars is a tool for data reduction and analysis of large sets of
+ surface diffraction data that have been acquired with a
+ two-dimensional X-ray detector. The intensity of each pixel of a
+ two-dimensional detector is projected onto a three-dimensional grid
+ in reciprocal-lattice coordinates using a binning algorithm. This
+ allows for fast acquisition and processing of high-resolution data
+ sets and results in a significant reduction of the size of the data
+ set. The subsequent analysis then proceeds in reciprocal space. It
+ has evolved from the specific needs of the ID03 beamline at the ESRF,
+ but it has a modular design and can be easily adjusted and extended
+ to work with data from other beamlines or from other measurement
+ techniques.
+
+Package: python-binoculars
+Architecture: all
+Section: python
+Depends: ${misc:Depends},
+         ${python:Depends},
+         ${shlibs:Depends},
+	 python-h5py,
+         python-matplotlib,
+	 python-pyfai,
+	 pymca,
+	 python-qt4,
+	 python-scipy,
+Suggests: python-xrayutilities
+Description: Data reduction and analysis software for two-dimensional detectors in surface X-ray diffraction - Python2
+ BINoculars is a tool for data reduction and analysis of large sets of
+ surface diffraction data that have been acquired with a
+ two-dimensional X-ray detector. The intensity of each pixel of a
+ two-dimensional detector is projected onto a three-dimensional grid
+ in reciprocal-lattice coordinates using a binning algorithm. This
+ allows for fast acquisition and processing of high-resolution data
+ sets and results in a significant reduction of the size of the data
+ set. The subsequent analysis then proceeds in reciprocal space. It
+ has evolved from the specific needs of the ID03 beamline at the ESRF,
+ but it has a modular design and can be easily adjusted and extended
+ to work with data from other beamlines or from other measurement
+ techniques.
+ .
+ This is the Python 2 version of the package.
+
+Package: python-binoculars-doc
+Architecture: all
+Section: doc
+Depends: ${misc:Depends},
+         ${sphinxdoc:Depends},
+Description: Data reduction and analysis software for two-dimensional detectors in surface X-ray diffraction - Documentation
+ BINoculars is a tool for data reduction and analysis of large sets of
+ surface diffraction data that have been acquired with a
+ two-dimensional X-ray detector. The intensity of each pixel of a
+ two-dimensional detector is projected onto a three-dimensional grid
+ in reciprocal-lattice coordinates using a binning algorithm. This
+ allows for fast acquisition and processing of high-resolution data
+ sets and results in a significant reduction of the size of the data
+ set. The subsequent analysis then proceeds in reciprocal space. It
+ has evolved from the specific needs of the ID03 beamline at the ESRF,
+ but it has a modular design and can be easily adjusted and extended
+ to work with data from other beamlines or from other measurement
+ techniques.
+ .
+ This is the common documentation package.

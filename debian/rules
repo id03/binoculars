@@ -1,0 +1,19 @@
+#!/usr/bin/make -f
+
+export PYBUILD_NAME=binoculars
+
+%:
+	dh $@ --with python2,sphinxdoc --buildsystem=pybuild
+
+override_dh_auto_build:
+	dh_auto_build
+	PYTHONPATH=. http_proxy='127.0.0.1:9' sphinx-build -N -bhtml doc/source build/html # HTML generator
+
+override_dh_install:
+	dh_numpy
+	dh_install
+# move the scripts into fabio-viewer
+	dh_install -p binoculars debian/python-binoculars/usr/bin usr/
+# remove all scripts installed by pybuild
+	rm -rf debian/python-binoculars/usr/bin
+

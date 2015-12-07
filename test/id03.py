@@ -1,6 +1,6 @@
-from BINoculars.backends import id03
-import BINoculars.util
-import BINoculars.space
+from binoculars.backends import id03
+import binoculars.util
+import binoculars.space
 import os
 import numpy
 
@@ -9,7 +9,7 @@ import unittest
 class TestCase(unittest.TestCase):
     def setUp(self):
         cfg_unparsed = {}
-        specfile = os.path.join(os.path.split(os.getcwd())[0], 'BINoculars-binaries/examples/dataset/sixc_tutorial.spec' )
+        specfile = os.path.join(os.path.split(os.getcwd())[0], 'binoculars-binaries/examples/dataset/sixc_tutorial.spec' )
         cfg_unparsed['specfile'] = specfile
         cfg_unparsed['sdd'] = '1000'
         cfg_unparsed['pixelsize'] = '0.055, 0.055'
@@ -24,10 +24,14 @@ class TestCase(unittest.TestCase):
         jobs = list(self.id03input.generate_jobs(['820']))
         destination_opts = self.id03input.get_destination_options(['820'])
         imagedata = self.id03input.process_job(jobs[0])
-        intensity, coords = imagedata.next()
+        intensity, weights, coords = imagedata.next()
         projected = self.projection.project(*coords)
-        space = BINoculars.space.Space.from_image((1,1), ('x','y'), projected, intensity)
-        print space
+        space1 = binoculars.space.Space.from_image((1,1), ('x','y'), projected, intensity, weights)
+
+        intensity, weights, coords = imagedata.next()
+        projected = self.projection.project(*coords)
+        space2 = binoculars.space.Space.from_image((1,1), ('x','y'), projected, intensity, weights)
+        print space1 - space2
 
     def tearDown(self):
         os.remove('mask.npy')

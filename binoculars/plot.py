@@ -101,7 +101,7 @@ def get_clipped_norm(data, clipping=0.0, log=True):
         return matplotlib.colors.Normalize(vmin, vmax)
 
 
-def plot(space, fig, ax, log=True, loglog = False, clipping=0.0, fit=None, norm=None, colorbar=True, labels=True, **plotopts):
+def plot(space, fig, ax, log=True, loglog = False, clipping=0.0, fit=None, norm=None, colorbar=True, labels=True, interpolation='nearest', **plotopts):
     if space.dimension == 1:
         data = space.get_masked()
         xrange = numpy.ma.array(space.axes[0][:], mask=data.mask)
@@ -142,9 +142,9 @@ def plot(space, fig, ax, log=True, loglog = False, clipping=0.0, fit=None, norm=
             norm = get_clipped_norm(data, clipping, log)
 
         if fit is not None:
-            im = ax.imshow(fit.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm = norm, **plotopts)
+            im = ax.imshow(fit.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm = norm, interpolation=interpolation, **plotopts)
         else:
-            im = ax.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm = norm,  **plotopts)
+            im = ax.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm = norm, interpolation=interpolation,  **plotopts)
 
         if labels:
             ax.set_xlabel(space.axes[0].label)
@@ -160,13 +160,12 @@ def plot(space, fig, ax, log=True, loglog = False, clipping=0.0, fit=None, norm=
             raise ValueError("For 3D plots, the 'ax' parameter must be an Axes3D instance (use for example gca(projection='3d') to get one)")
 
         cmap = getattr(matplotlib.cm, plotopts.pop('cmap', 'jet'))
-        if not norm is None:
+        if norm is None:
             norm = get_clipped_norm(space.get_masked(), clipping, log)
 
         data = space.get()
         mask = numpy.bitwise_or(~numpy.isfinite(data), data == 0)
         gridx, gridy, gridz = tuple(grid[~mask] for grid in space.get_grid())
-        
         im = ax.scatter(gridx, gridy, gridz,  c=cmap(norm(data[~mask])), marker = ',', alpha = 0.7,linewidths = 0)
 
         #p1 = ax.plot_surface(gridx[0,:,:], gridy[0,:,:], gridz[0,:,:],  facecolors=cmap(norm(space.project(0).get_masked())), shade=False, cstride=1, rstride=1)

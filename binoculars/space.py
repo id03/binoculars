@@ -1,6 +1,5 @@
 import itertools
 import numbers
-import __builtin__
 import numpy
 import h5py
 
@@ -209,7 +208,11 @@ class Axes(object):
                     # oldest style, float min/max
                     return cls(tuple(Axis(min, max, res, lbl) for ((min, max, res), lbl) in zip(fp['axes'], fp['axes_labels'])))
                 elif 'axes' in fp:#new
-                    return cls(tuple(Axis(int(imin), int(imax), res, lbl) for ((imin, imax, res), lbl) in zip(fp['axes'].values(), fp['axes'].keys())))
+                    try:
+                        axes = tuple(Axis(int(imin), int(imax), res, lbl) for ((index, fmin, fmax, res, imin, imax), lbl) in zip(fp['axes'].values(), fp['axes'].keys()))
+                        return cls(tuple(axes[int(values[0])] for values in fp['axes'].values()))#reorder the axes to the way in which they were saved
+                    except ValueError:
+                        return cls(tuple(Axis(int(imin), int(imax), res, lbl) for ((imin, imax, res), lbl) in zip(fp['axes'].values(), fp['axes'].keys())))
                 else:
                     # older style, integer min/max
                     return cls(tuple(Axis(imin, imax, res, lbl) for ((imin, imax), res, lbl) in zip(fp['axes_range'], fp['axes_res'], fp['axes_labels'])))
@@ -219,8 +222,8 @@ class Axes(object):
     def tofile(self, filename):
         with util.open_h5py(filename, 'w') as fp:
             axes = fp.create_group('axes')
-            for ax in self.axes:
-                axes.create_dataset(ax.label, data = [ax.imin, ax.imax, ax.res])
+            for index, ax in enumerate(self.axes):
+                axes.create_dataset(ax.label, data = [index, ax.min, ax.max, ax.res, ax.imin, ax.imax])
 
     def toarray(self):
         return numpy.vstack(numpy.hstack([str(ax.imin), str(ax.imax), str(ax.res), ax.label]) for ax in self.axes)
@@ -317,6 +320,7 @@ class EmptySpace(object):
         return '{0.__class__.__name__}'.format(self)
   
 
+
 class Space(object):
     """Main data-storing object in BINoculars. 
     Data is represented on an n-dimensional rectangular grid. Per grid point,
@@ -339,8 +343,8 @@ class Space(object):
         self.metadata = metadata
         
         self.photons = numpy.zeros([len(ax) for ax in self.axes], order='C')
-        self.contributions = numpy.zeros(self.photons.shape, dtype=numpy.uint32, order='C')
-
+        self.contributions = numpy.zeros(self.photons.shape, order='C')
+       
     @property
     def dimension(self):
         return self.axes.dimension
@@ -371,7 +375,7 @@ class Space(object):
 
     @property
     def metadata(self):
-        """util.ConfigFile instance describing configuration file used to create this Space instance"""
+        """util.MetaData instance describing metadata used to create this Space instance"""
         return self._metadata
 
     @metadata.setter
@@ -434,7 +438,6 @@ class Space(object):
         newspace = self.__class__(newaxes, self.config, self.metadata)
         newspace.photons = self.photons.sum(axis=index)
         newspace.contributions = self.contributions.sum(axis=index)
-
         if more_axes:
             return newspace.project(more_axes[0], *more_axes[1:])
         else:
@@ -453,7 +456,10 @@ class Space(object):
     def get_masked(self):
         """Returns photons/contributions, but with divide-by-zero's masked out."""
         return numpy.ma.array(data=self.get(), mask=(self.contributions == 0))
-        
+
+    def get_variance(self):
+        return numpy.ma.array(data=1 / self.contributions, mask = (self.contributions == 0))
+
     def get_grid(self):
         """Returns the data coordinates of each grid point, as n-tuple of n-dimensinonal arrays.
         Basically numpy.mgrid() in data coordinates."""
@@ -471,7 +477,7 @@ class Space(object):
         return tuple(ax[key] for ax, key in zip(self.axes, numpy.unravel_index(numpy.argmax(array), array.shape)))
 
     def __add__(self, other):
-        if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
+        if isinstance(other, numbers.Number):
             new = self.copy()
             new.photons += other * self.contributions
             return new 
@@ -486,7 +492,7 @@ class Space(object):
         return new
 
     def __iadd__(self, other):
-        if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
+        if isinstance(other, numbers.Number):
             self.photons += other * self.contributions
             return self
         if not isinstance(other, Space):
@@ -504,36 +510,21 @@ class Space(object):
         return self
 
     def __sub__(self, other):
-        if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
-            new = self.copy()
-            new.photons -= other * self.contributions
-            return new 
-        elif not isinstance(other, Space):
-            return NotImplemented
-        if self.axes != other.axes or not (self.contributions == other.contributions).all():
-            # TODO: we could be a bit more helpful if all axes are compatible
-            raise ValueError('cannot subtract spaces that are not identical (axes + contributions)')
-        new = self.copy()
-        new.photons -= other.photons # don't call __isub__ here because the compatibility check is labourous
-        return new
+        return self.__add__(other * -1)
 
     def __isub__(self, other):
-        if isinstance(other, numbers.Number):#to test more advanced background subtraction routines
-            self.photons -= other * self.contributions
-            return self
-        elif not isinstance(other, Space):
-            return NotImplemented
-        if self.axes != other.axes or not (self.contributions == other.contributions).all():
-             raise ValueError('cannot subtract spaces that are not identical (axes + contributions)')
-        self.photons -= other.photons
-        return self
+        return self.__iadd__(other * -1)
 
-    def __mul__(self, other):#to test more advanced background subtraction routines
-        if type(other) == float or type(other) == int:
-            self.photons *= other
+    def __mul__(self, other):
+        if isinstance(other, numbers.Number):
+            new = self.__class__(self.axes, self.config, self.metadata)
+            #we would like to keep 1/contributions as the variance
+            #var(aX) = a**2var(X)
+            new.photons = self.photons / other
+            new.contributions = self.contributions / other**2
+            return new
         else:
             return NotImplemented
-        return self
 
     def trim(self):
         """Reduce total size of Space by trimming zero-contribution data points on the boundaries."""
@@ -545,35 +536,7 @@ class Space(object):
         self.photons = self.photons[slices].copy()
         self.contributions = self.contributions[slices].copy()
 
-    def rebin(self, factors):
-        """Increase bin size (= decrease resolution).
-
-        factor   even integer or n-tuple of even integers"""
-        if isinstance(factors, int):
-            factors = [factors] * len(self.axes)
-        elif len(factors) != len(self.axes):
-            raise ValueError('dimension mismatch between factors and axes')
-        if not all(isinstance(factor, int) for factor in factors) or not all(factor == 1 or factor % 2 == 0 for factor in factors):
-            raise ValueError('binning factors must be even integers')
-
-        lefts, rights, newaxes = zip(*[ax.rebin(factor) for ax, factor in zip(self.axes, factors)])
-        tempshape = tuple(size + left + right + factor for size, left, right, factor in zip(self.photons.shape, lefts, rights, factors))
-
-        photons = numpy.zeros(tempshape, order='C')
-        contributions = numpy.zeros(tempshape, dtype=numpy.uint32, order='C')
-        pad = tuple(slice(left, left+size) for left, factor, size in zip(lefts, factors, self.photons.shape))
-        photons[pad] = self.photons
-        contributions[pad] = self.contributions
-
-        new = self.__class__(newaxes)
-        for offsets in itertools.product(*[range(factor) for factor in factors]):
-            stride = tuple(slice(offset, offset + len(ax)*factor, factor) for offset, ax, factor in zip(offsets, newaxes, factors))
-            new.photons += photons[stride]
-            new.contributions += contributions[stride]
-
-        return new
-
-    def rebin2(self, resolutions):
+    def rebin(self, resolutions):
         """Change bin size.
     
         resolution    n-tuple of floats, new resolution of each axis"""
@@ -582,16 +545,11 @@ class Space(object):
         if resolutions == tuple(ax.res for ax in self.axes):
             return self
 
-        labels = tuple(ax.label for ax in self.axes)
-        coordinates = tuple(grid.flatten() for grid in self.get_grid())
-
-        contribution_space = self.from_image(resolutions, labels, coordinates, self.contributions.flatten())
-        contributions = contribution_space.photons.astype(int)
-        del contribution_space
-
-        new = self.from_image(resolutions, labels, coordinates, self.photons.flatten())
-        new.contributions = contributions
-        return new
+        # gather data and transform        
+        coords = self.get_grid()
+        intensity = self.get()
+        weights = self.contributions
+        return self.from_image(resolutions, labels, coords, intensity, weights)
 
     def reorder(self, labels):
         """Change order of axes."""
@@ -605,50 +563,44 @@ class Space(object):
         
     def transform_coordinates(self, resolutions, labels, transformation):
         # gather data and transform
-        intensity = self.get_masked()
+        
         coords = self.get_grid()
         transcoords = transformation(*coords)
+        intensity = self.get()
+        weights = self.contributions
 
-        # get rid of invalids & masked intensities
-        valid = ~__builtin__.sum((~numpy.isfinite(t) for t in transcoords), intensity.mask)
+        # get rid of invalid coords
+        valid = reduce(numpy.bitwise_and, intertools.chain((numpy.isfinite(t) for t in transcoords)), (weights > 0, ))
         transcoords = tuple(t[valid] for t in transcoords)
 
-        return self.from_image(resolutions, labels, transcoords, intensity[valid])
+        return self.from_image(resolutions, labels, transcoords, intensity[valid], weights[valid])
 
-    def process_image(self, coordinates, intensity):
+    def process_image(self, coordinates, intensity, weights):
         """Load image data into Space.
 
         coordinates  n-tuple of data coordinate arrays
-        intensity    data intensity array"""
+        intensity    data intensity array
+        weights      weights array, supply numpy.ones_like(intensity) for equal weights"""
         if len(coordinates) != len(self.axes):
             raise ValueError('dimension mismatch between coordinates and axes')
 
-        if isinstance(intensity, numpy.ma.core.MaskedArray):
-            mask = intensity.mask
-            intensity = intensity.data
-            valid = numpy.bitwise_and(numpy.isfinite(intensity), ~mask)        
-        else:
-            valid = numpy.isfinite(intensity)
-
-        intensity = intensity[valid]
-        if not intensity.size:
-            return
-
-        coordinates = tuple(coord[valid] for coord in coordinates)
+        intensity = numpy.nan_to_num(intensity).flatten()#invalids should be handeled by setting weight to 0, this ensures the weights can do that         
+        weights = weights.flatten()
 
         indices = numpy.array(tuple(ax.get_index(coord) for (ax, coord) in zip(self.axes, coordinates)))
         for i in range(0, len(self.axes)):
             for j in range(i+1, len(self.axes)):
                 indices[i,:] *= len(self.axes[j])
-        indices = indices.sum(axis=0).astype(int)
-        photons = numpy.bincount(indices, weights=intensity)
-        contributions = numpy.bincount(indices)
-    
+        indices = indices.sum(axis=0).astype(int).flatten()
+
+        photons = numpy.bincount(indices, weights=intensity * weights)
+        contributions = numpy.bincount(indices, weights=weights)
+
         self.photons.ravel()[:photons.size] += photons
         self.contributions.ravel()[:contributions.size] += contributions
 
     @classmethod
-    def from_image(cls, resolutions, labels, coordinates, intensity, limits = None):
+    def from_image(cls, resolutions, labels, coordinates, intensity, weights, limits = None):
         """Create Space from image data. 
 
         resolutions   n-tuple of axis resolutions
@@ -670,10 +622,11 @@ class Space(object):
                 return EmptySpace()
             coordinates = tuple(coord[~invalid] for coord in coordinates)
             intensity = intensity[~invalid]
+            weights = weights[~invalid]
 
         axes = tuple(Axis(coord.min(), coord.max(), res, label) for res, label, coord in zip(resolutions, labels, coordinates))
         newspace = cls(axes)
-        newspace.process_image(coordinates, intensity)
+        newspace.process_image(coordinates, intensity, weights)
         return newspace
 
     def tofile(self, filename):
@@ -720,6 +673,78 @@ class Space(object):
             raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(file, e))
         return space
 
+class Multiverse(object):
+    """A collection of spaces with basic support for addition.
+       Only to be used when processing data. This makes it possible to 
+       process multiple limit sets in a combination of scans"""
+
+    def __init__(self, spaces):
+        self.spaces = list(spaces)
+
+    @property
+    def dimension(self):
+        return len(self.spaces)
+
+    def __add__(self, other):
+        if not isinstance(other, Multiverse):
+            return NotImplemented
+        if not self.dimension == other.dimension:
+            raise ValueError('cannot add multiverses with different dimensionality')
+        return self.__class__(tuple(s + o for s,o in zip(self.spaces, other.spaces)))
+
+    def __iadd__(self, other):
+        if not isinstance(other, Multiverse):
+            return NotImplemented
+        if not self.dimension == other.dimension:
+            raise ValueError('cannot add multiverses with different dimensionality')
+        for index, o in enumerate(other.spaces):
+            self.spaces[index] += o
+        return self
+
+    def tofile(self, filename):
+        with util.atomic_write(filename) as tmpname:
+            with util.open_h5py(tmpname, 'w') as fp:
+                fp.attrs['type'] = 'Multiverse'
+                for index, sp in enumerate(self.spaces):
+                    spacegroup = fp.create_group('space_{0}'.format(index))
+                    sp.tofile(spacegroup)
+
+    @classmethod
+    def fromfile(cls, file):
+        """Load Multiverse from HDF5 file."""
+        try:
+            with util.open_h5py(file, 'r') as fp:
+                if 'type' in fp.attrs:
+                    if fp.attrs['type'] == 'Multiverse':
+                        return cls(tuple(Space.fromfile(fp[label]) for label in fp))
+                    else:
+                        raise TypeError('This is not a multiverse')
+                else:
+                    raise TypeError('This is not a multiverse')
+        except IOError as e:
+            raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(file, e))
+
+    def __repr__(self):
+        return '{0.__class__.__name__}\n{1}'.format(self, self.spaces)
+
+class EmptyVerse(object):
+    """Convenience object for sum() and friends. Treated as zero for addition."""
+        
+    def __add__(self, other):
+        if not isinstance(other, Multiverse):
+            return NotImplemented
+        return other
+
+    def __radd__(self, other):
+        if not isinstance(other, Multiverse):
+            return NotImplemented
+        return other
+
+    def __iadd__(self, other):
+        if not isinstance(other, Multiverse):
+            return NotImplemented
+        return other
+ 
 def union_axes(axes):
     axes = tuple(axes)
     if len(axes) == 1:
@@ -764,15 +789,19 @@ def sum(spaces):
         newspace += space
     return newspace
 
-# hybrid sum() / __iadd__()
-def chunked_sum(spaces, chunksize=10):
-    """Calculate sum of iterable of Space instances. Creates intermediate sums to avoid growing a large space at every summation.
+def verse_sum(verses):
+    i = iter(M.spaces for M in verses)
+    return Multiverse(sum(spaces) for spaces in itertools.izip(*i))
 
-    spaces     iterable of Space instances
-    chunksize  number of Space instances in each intermediate sum"""
-    result = EmptySpace()
-    for chunk in util.grouper(spaces, chunksize):
-        result += sum(space for space in chunk)
+# hybrid sum() / __iadd__()
+def chunked_sum(verses, chunksize=10):
+    """Calculate sum of iterable of Multiverse instances. Creates intermediate sums to avoid growing a large space at every summation.
+
+    verses     iterable of Multiverse instances
+    chunksize  number of Multiverse instances in each intermediate sum"""
+    result = EmptyVerse()
+    for chunk in util.grouper(verses, chunksize):
+        result += verse_sum(M for M in chunk)
     return result
 
 def iterate_over_axis(space, axis, resolution = None):
@@ -856,5 +885,6 @@ def make_compatible(spaces):
     if not resmax == resmin:
         print 'Warning: Not all spaces have the same resolution. Resolution will be changed to: {0}'.format(resmax)
     return tuple(space.reorder(ax0).rebin2(resmax) for space in spaces)
+
 
 
