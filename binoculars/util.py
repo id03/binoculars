@@ -20,6 +20,7 @@ import json
 import socket
 import StringIO
 import binascii
+import re
 
 ### ARGUMENT HANDLING
 
@@ -306,22 +307,27 @@ def parse_bool(s):
 def parse_pairs(s):
     if not s:
         return s
-    pairs = s.split(',')
     limits = []
-    for pair in pairs:
-        mi, ma = tuple(m.strip() for m in pair.split(':'))
-        if mi == '' and ma == '':
-            limits.append(slice(None))
-        elif mi == '':
-            limits.append(slice(None, float(ma)))
-        elif ma == '':
-            limits.append(slice(float(mi), None))
-        else:
-            if float(ma) < float(mi):
-                raise ValueError("invalid input. maximum is larger than minimum: '{0}'".format(s))
+    for lim in re.findall('\[(.*?)\]', s):
+        parsed = []
+        for pair in re.split(',', lim):
+            mi, ma = tuple(m.strip() for m in pair.split(':'))
+            if mi == '' and ma == '':
+                parsed.append(slice(None))
+            elif mi == '':
+                parsed.append(slice(None, float(ma)))
+            elif ma == '':
+                parsed.append(slice(float(mi), None))
             else:
-                limits.append(slice(float(mi), float(ma)))
+                if float(ma) < float(mi):
+                    raise ValueError("invalid input. maximum is larger than minimum: '{0}'".format(s))
+                else:
+                    parsed.append(slice(float(mi), float(ma)))
+        limits.append(parsed)
     return limits
+
+def limit_to_filelabel(s):
+    return tuple('[{0}]'.format(lim.replace('-', 'm').replace(':', '-').replace(' ','')) for lim in re.findall('\[(.*?)\]', s))
 
 class MetaBase(object):
     def __init__(self, label = None, section = None):

@@ -8,7 +8,7 @@ from . import util, errors, space
 
 
 class Destination(object):
-    type = filename = overwrite = value = config = None
+    type = filename = overwrite = value = config = limits = None
     opts = {}
     
     def set_final_filename(self, filename, overwrite):
@@ -20,6 +20,9 @@ class Destination(object):
         if opts is not False:
             self.opts = opts
 
+    def set_limits(self, limits):
+        self.limits = limits
+
     def set_config(self, conf):
         self.config = conf
 
@@ -30,26 +33,38 @@ class Destination(object):
     def set_memory(self):
         self.type = 'memory'
 
-    def store(self, space):
+    def store(self, verse):
         self.value = None
+        if verse.dimension == 0:
+            raise ValueError('Empty output, Multiverse contains no spaces')
         if self.type == 'memory':
-            self.value = space
+            self.value = verse
         elif self.type == 'tmp':
-            space.tofile(self.filename)
+            verse.tofile(self.filename)
         elif self.type == 'final':
-            fn = self.final_filename()
-            space.config = self.config
-            space.tofile(fn)
+            for sp, fn in zip(verse.spaces, self.final_filenames()):
+                sp.config = self.config
+                sp.tofile(fn)
 
     def retrieve(self):
         if self.type == 'memory':
             return self.value
 
-    def final_filename(self):
-        fn = self.filename.format(**self.opts)
-        if not self.overwrite:
-            fn = util.find_unused_filename(fn)
-        return fn
+    def final_filenames(self):
+        fns = []
+        if not self.limits == None:
+            base, ext = os.path.splitext(self.filename)
+            for limlabel in util.limit_to_filelabel(self.limits):
+                fn =  (base + '_' + limlabel + ext).format(**self.opts)
+                if not self.overwrite:
+                    fn = util.find_unused_filename(fn)
+                fns.append(fn)
+        else:
+            fn = self.filename.format(**self.opts)
+            if not self.overwrite:
+                fn = util.find_unused_filename(fn)
+            fns.append(fn)
+        return fns
 
 class DispatcherBase(util.ConfigurableObject):
     def __init__(self, config, main):
@@ -66,15 +81,21 @@ class DispatcherBase(util.ConfigurableObject):
         self.config.port = config.pop('port', None)# port of the running gui awaiting the spaces
         self.config.send_to_gui = util.parse_bool(config.pop('send_to_gui', 'false'))#previewing the data, if true, also specify host and port
 
-    def send(self, spaces):#provides the possiblity to send the results to the gui over the network
+    def send(self, verses):#provides the possiblity to send the results to the gui over the network
         if self.config.send_to_gui or (self.config.host is not None and self.config.host is not None):#only continue of ip is specified and send_to_server is flagged
-             for sp in spaces:
-                if isinstance(sp, space.Space):
-                    util.socket_send(self.config.host, int(self.config.port), util.serialize(sp, ','.join(self.main.config.command)))
-                yield sp
+             for M in verses:
+                if self.config.destination.limits is None:
+                    sp = M.spaces[0]
+                    if isinstance(sp, space.Space):
+                        util.socket_send(self.config.host, int(self.config.port), util.serialize(sp, ','.join(self.main.config.command)))
+                else:
+                    for sp, label in zip(M.spaces, util.limit_to_filelabel(self.config.destination.limits)):
+                        if isinstance(sp, space.Space):
+                            util.socket_send(self.config.host, int(self.config.port), util.serialize(sp, '{0}_{1}'.format(','.join(self.main.config.command), label)))
+                yield M
         else:
-            for sp in spaces:
-                yield sp
+             for M in verses:
+                yield M
          
     def has_specific_task(self):
         return False
@@ -210,11 +231,11 @@ class Oar(ReentrantBase):
         if self.config.action != 'process' or (not self.config.jobs and not self.config.sum) or command:
             raise errors.SubprocessError("invalid command, too many parameters or no jobs/sum given")
 
-        jobs = sum = space.EmptySpace()
+        jobs = sum = space.EmptyVerse()
         if self.config.jobs:
-            jobs = space.sum(self.send(self.main.process_job(job) for job in self.config.jobs))
+            jobs = space.verse_sum(self.send(self.main.process_job(job) for job in self.config.jobs))
         if self.config.sum:
-            sum = space.chunked_sum(space.Space.fromfile(src) for src in util.yield_when_exists(self.config.sum))
+            sum = space.chunked_sum(space.Multiverse.fromfile(src) for src in util.yield_when_exists(self.config.sum))
         self.config.destination.store(jobs + sum)
 
     ### calling OAR

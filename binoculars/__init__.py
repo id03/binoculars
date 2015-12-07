@@ -10,11 +10,11 @@ def run(args):
             All additonal configuration file overides can be included
 
         Returns
-        A binoculars space
+        A tuple of binoculars spaces
 
         Examples:
         >>> space = binoculars.run('config.txt 10')
-        >>> space
+        >>> space[0]
         Axes (3 dimensions, 2848 points, 33.0 kB) {
             Axis qx (min=-0.01, max=0.0, res=0.01, count=2)
             Axis qy (min=-0.04, max=-0.01, res=0.01, count=4)
@@ -25,11 +25,12 @@ def run(args):
     import binoculars.main
     binoculars.util.register_python_executable(__file__)
     main = binoculars.main.Main.from_args(args.split(' '))
-    if isinstance(main.result, binoculars.space.Space):
-        return main.result
+    
+    if isinstance(main.result, binoculars.space.Multiverse):
+        return main.result.spaces
     if type(main.result) == bool:
-        filename = main.dispatcher.config.destination.final_filename()
-        return binoculars.space.Space.fromfile(filename)
+        filenames = main.dispatcher.config.destination.final_filenames()
+        return tuple(binoculars.space.Space.fromfile(fn) for fn in filenames)
 
 def load(filename, key = None):
     ''' Parameters

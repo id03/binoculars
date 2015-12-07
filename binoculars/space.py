@@ -1,6 +1,5 @@
 import itertools
 import numbers
-import __builtin__
 import numpy
 import h5py
 
@@ -321,6 +320,7 @@ class EmptySpace(object):
         return '{0.__class__.__name__}'.format(self)
   
 
+
 class Space(object):
     """Main data-storing object in BINoculars. 
     Data is represented on an n-dimensional rectangular grid. Per grid point,
@@ -344,7 +344,7 @@ class Space(object):
         
         self.photons = numpy.zeros([len(ax) for ax in self.axes], order='C')
         self.contributions = numpy.zeros(self.photons.shape, order='C')
-
+       
     @property
     def dimension(self):
         return self.axes.dimension
@@ -375,7 +375,7 @@ class Space(object):
 
     @property
     def metadata(self):
-        """util.ConfigFile instance describing configuration file used to create this Space instance"""
+        """util.MetaData instance describing metadata used to create this Space instance"""
         return self._metadata
 
     @metadata.setter
@@ -438,7 +438,6 @@ class Space(object):
         newspace = self.__class__(newaxes, self.config, self.metadata)
         newspace.photons = self.photons.sum(axis=index)
         newspace.contributions = self.contributions.sum(axis=index)
-
         if more_axes:
             return newspace.project(more_axes[0], *more_axes[1:])
         else:
@@ -634,6 +633,7 @@ class Space(object):
         """Store Space in HDF5 file."""
         with util.atomic_write(filename) as tmpname:
             with util.open_h5py(tmpname, 'w') as fp:
+                fp.attrs['type'] = 'Space'
                 self.config.tofile(fp)
                 self.axes.tofile(fp)
                 self.metadata.tofile(fp)
@@ -673,6 +673,78 @@ class Space(object):
             raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(file, e))
         return space
 
+class Multiverse(object):
+    """A collection of spaces with basic support for addition.
+       Only to be used when processing data. This makes it possible to 
+       process multiple limit sets in a combination of scans"""
+
+    def __init__(self, spaces):
+        self.spaces = list(spaces)
+
+    @property
+    def dimension(self):
+        return len(self.spaces)
+
+    def __add__(self, other):
+        if not isinstance(other, Multiverse):
+            return NotImplemented
+        if not self.dimension == other.dimension:
+            raise ValueError('cannot add multiverses with different dimensionality')
+        return self.__class__(tuple(s + o for s,o in zip(self.spaces, other.spaces)))
+
+    def __iadd__(self, other):
+        if not isinstance(other, Multiverse):
+            return NotImplemented
+        if not self.dimension == other.dimension:
+            raise ValueError('cannot add multiverses with different dimensionality')
+        for index, o in enumerate(other.spaces):
+            self.spaces[index] += o
+        return self
+
+    def tofile(self, filename):
+        with util.atomic_write(filename) as tmpname:
+            with util.open_h5py(tmpname, 'w') as fp:
+                fp.attrs['type'] = 'Multiverse'
+                for index, sp in enumerate(self.spaces):
+                    spacegroup = fp.create_group('space_{0}'.format(index))
+                    sp.tofile(spacegroup)
+
+    @classmethod
+    def fromfile(cls, file):
+        """Load Multiverse from HDF5 file."""
+        try:
+            with util.open_h5py(file, 'r') as fp:
+                if 'type' in fp.attrs:
+                    if fp.attrs['type'] == 'Multiverse':
+                        return cls(tuple(Space.fromfile(fp[label]) for label in fp))
+                    else:
+                        raise TypeError('This is not a multiverse')
+                else:
+                    raise TypeError('This is not a multiverse')
+        except IOError as e:
+            raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(file, e))
+
+    def __repr__(self):
+        return '{0.__class__.__name__}\n{1}'.format(self, self.spaces)
+
+class EmptyVerse(object):
+    """Convenience object for sum() and friends. Treated as zero for addition."""
+        
+    def __add__(self, other):
+        if not isinstance(other, Multiverse):
+            return NotImplemented
+        return other
+
+    def __radd__(self, other):
+        if not isinstance(other, Multiverse):
+            return NotImplemented
+        return other
+
+    def __iadd__(self, other):
+        if not isinstance(other, Multiverse):
+            return NotImplemented
+        return other
+ 
 def union_axes(axes):
     axes = tuple(axes)
     if len(axes) == 1:
@@ -717,15 +789,19 @@ def sum(spaces):
         newspace += space
     return newspace
 
-# hybrid sum() / __iadd__()
-def chunked_sum(spaces, chunksize=10):
-    """Calculate sum of iterable of Space instances. Creates intermediate sums to avoid growing a large space at every summation.
+def verse_sum(verses):
+    i = iter(M.spaces for M in verses)
+    return Multiverse(sum(spaces) for spaces in itertools.izip(*i))
 
-    spaces     iterable of Space instances
-    chunksize  number of Space instances in each intermediate sum"""
-    result = EmptySpace()
-    for chunk in util.grouper(spaces, chunksize):
-        result += sum(space for space in chunk)
+# hybrid sum() / __iadd__()
+def chunked_sum(verses, chunksize=10):
+    """Calculate sum of iterable of Multiverse instances. Creates intermediate sums to avoid growing a large space at every summation.
+
+    verses     iterable of Multiverse instances
+    chunksize  number of Multiverse instances in each intermediate sum"""
+    result = EmptyVerse()
+    for chunk in util.grouper(verses, chunksize):
+        result += verse_sum(M for M in chunk)
     return result
 
 def iterate_over_axis(space, axis, resolution = None):
@@ -809,5 +885,6 @@ def make_compatible(spaces):
     if not resmax == resmin:
         print 'Warning: Not all spaces have the same resolution. Resolution will be changed to: {0}'.format(resmax)
     return tuple(space.reorder(ax0).rebin2(resmax) for space in spaces)
+
 
 

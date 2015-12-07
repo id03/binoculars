@@ -42,10 +42,12 @@ class Main(object):
         self.input = backend.get_input(config.input)
 
         self.dispatcher.config.destination.set_final_options(self.input.get_destination_options(command))
+        if 'limits' in self.config.projection:
+            self.dispatcher.config.destination.set_limits(self.config.projection['limits'])
         if command:
             self.dispatcher.config.destination.set_config(spaceconf)
         self.run(command)
-
+ 
     @classmethod
     def from_args(cls, args):
         args = parse_args(args)
@@ -86,13 +88,17 @@ class Main(object):
         def generator():
             res = self.projection.config.resolution
             labels = self.projection.get_axis_labels()
-            for intensity, weights, params in self.input.process_job(job):
+            for intensity, weights, params in self.input.process_job(job):             
                 coords = self.projection.project(*params)
-                yield space.Space.from_image(res, labels, coords, intensity, weights, limits = self.projection.config.limits)
-        jobspace = space.chunked_sum(generator(), chunksize=25)
-        if isinstance(jobspace, space.Space):
-            jobspace.metadata.add_dataset(self.input.metadata)
-        return jobspace
+                if self.projection.config.limits == None:
+                    yield space.Multiverse((space.Space.from_image(res, labels, coords, intensity, weights = weights), ))
+                else:
+                    yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights = weights, limits = limits) for limits in self.projection.config.limits)
+        jobverse = space.chunked_sum(generator(), chunksize=25)
+        for sp in jobverse.spaces:
+            if isinstance(sp, space.Space):
+                sp.metadata.add_dataset(self.input.metadata)
+        return jobverse
 
     def clone_config(self):
         config = util.ConfigSectionGroup()
@@ -122,14 +128,17 @@ class Split(Main): #completely ignores the dispatcher, just yields a space per i
     def process_job(self, job):
         res = self.projection.config.resolution
         labels = self.projection.get_axis_labels()
-        for intensity, weights, params in self.input.process_job(job):
+        for intensity, weights, params in self.input.process_job(job):                   
             coords = self.projection.project(*params)
-            yield space.Space.from_image(res, labels, coords, intensity, weights, limits = self.projection.config.limits)
-
+            if self.projection.config.limits == None:
+                yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights = weights))
+            else:
+                yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights = weights, limits = limits) for limits in self.projection.config.limits)
 
     def run(self):
         for job in self.input.generate_jobs(self.command):
-            for space in self.process_job(job):
-                yield space
+            for verse in self.process_job(job):
+                yield verse
+
 
 
