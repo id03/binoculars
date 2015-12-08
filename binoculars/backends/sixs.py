@@ -62,7 +62,6 @@ class Pixels(backend.ProjectionBase):
         return 'x', 'y'
 
 
-
 class HKLProjection(backend.ProjectionBase):
     # scalars: mu, theta, [chi, phi, "omitted"] delta, gamR, gamT, ty, wavelength
     # 3x3 matrix: UB
@@ -110,6 +109,43 @@ class HKProjection(HKLProjection):
         return 'H', 'K'
 
 
+class QxQyQzProjection(backend.ProjectionBase):
+    def project(self, index, dataframe, pixels):
+        # put the detector at the right position
+
+        # TODO factorize with HklProjection
+        UB = numpy.array([[2* math.pi, 0           , 0],
+                          [0         , 0           , 2* math.pi],
+                          [0         , -2 * math.pi, 0]])
+
+        s_axes = rotation_axes(dataframe.diffractometer.axes.graph,
+                               dataframe.diffractometer.axes.sample)
+        d_axes = rotation_axes(dataframe.diffractometer.axes.graph,
+                               dataframe.diffractometer.axes.detector)
+
+        # the ki vector should be in the NexusFile or easily extracted
+        # from the hkl library.
+        ki = [1, 0, 0]
+        k = 2 * math.pi / dataframe.source.wavelength
+        values = dataframe.mu[index], dataframe.omega[index], dataframe.delta[index], dataframe.gamma[index]
+        s_values = values[0], values[1]
+        d_values = values[0], values[2], values[3]
+        R = reduce(numpy.dot, (zip_with(M, numpy.radians(s_values), s_axes)))
+        P = reduce(numpy.dot, (zip_with(M, numpy.radians(d_values), d_axes)))
+        RUB_1 = inv(numpy.dot(R, UB))
+        RUB_1P = numpy.dot(RUB_1, P)
+        # rotate the detector around x of 90 degrees
+        RUB_1P = numpy.dot(RUB_1P, M(math.pi/2., [1, 0, 0]))
+        kf = normalized(pixels, axis=0)
+        hkl_f = numpy.tensordot(RUB_1P, kf, axes=1)
+        hkl_i = numpy.dot(RUB_1, ki)
+        hkl = hkl_f - hkl_i[:, numpy.newaxis, numpy.newaxis]
+
+        qx, qy, qz = hkl * k
+        return qx, qy, qz
+
+    def get_axis_labels(self):
+        return "Qx", "Qy", "Qz"
 
 def get_nxclass(hfile, nxclass, path="/"):
     """
