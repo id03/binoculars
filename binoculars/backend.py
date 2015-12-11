@@ -4,8 +4,8 @@ from . import util, errors, dispatcher
 class ProjectionBase(util.ConfigurableObject):
     def parse_config(self, config):
         super(ProjectionBase, self).parse_config(config)
-        res = config.pop('resolution')# or just give 1 number for all dimensions
-        self.config.limits = util.parse_pairs(config.pop('limits', None))#Optional, set the limits of the space object in projected coordinates. Syntax is same as numpy e.g. '0.3:-0.6, -1:5, :'
+        res = config.pop('resolution')  # or just give 1 number for all dimensions
+        self.config.limits = util.parse_pairs(config.pop('limits', None))  # Optional, set the limits of the space object in projected coordinates. Syntax is same as numpy e.g. '0.3:-0.6, -1:5, :'
         labels = self.get_axis_labels()
         if not self.config.limits is None:
             for lim in self.config.limits:
@@ -26,14 +26,14 @@ class ProjectionBase(util.ConfigurableObject):
 
 
 class Job(object):
-    weight = 1. # estimate of job difficulty (arbitrary units)
+    weight = 1.  # estimate of job difficulty (arbitrary units)
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
 
 class InputBase(util.ConfigurableObject):
-    """Generate and process Job()s. 
+    """Generate and process Job()s.
 
     Note: there is no guarantee that generate_jobs() and process_jobs() will
     be called on the same instance, not even in the same process or on the
@@ -41,7 +41,7 @@ class InputBase(util.ConfigurableObject):
 
     def parse_config(self, config):
         super(InputBase, self).parse_config(config)
-        self.config.target_weight = int(config.pop('target_weight', 1000))## approximate number of images per job, only useful when running on the oar cluster
+        self.config.target_weight = int(config.pop('target_weight', 1000))  # # approximate number of images per job, only useful when running on the oar cluster
 
     def generate_jobs(self, command):
         """Receives command from user, yields Job() instances"""
@@ -63,11 +63,14 @@ class InputBase(util.ConfigurableObject):
 def get_dispatcher(config, main, default=None):
     return _get_backend(config, 'dispatcher', dispatcher.DispatcherBase, default=default, args=[main])
 
+
 def get_input(config, default=None):
     return _get_backend(config, 'input', InputBase, default=default)
 
+
 def get_projection(config, default=None):
     return _get_backend(config, 'projection', ProjectionBase, default=default)
+
 
 def _get_backend(config, section, basecls, default=None, args=[], kwargs={}):
     if isinstance(config, util.ConfigSection):
@@ -98,7 +101,7 @@ def _get_backend(config, section, basecls, default=None, args=[], kwargs={}):
     names = dict((name.lower(), name) for name in dir(module))
     if clsname in names:
         cls = getattr(module, names[clsname])
-        
+
         if issubclass(cls, basecls):
             return cls(config, *args, **kwargs)
         else:

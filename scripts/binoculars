@@ -22,7 +22,7 @@ except ImportError:
     import binoculars.util
 
 
-### INFO
+# INFO
 def command_info(args):
     parser = argparse.ArgumentParser(prog='binoculars info')
     parser.add_argument('infile', nargs='+', help='input files, must be .hdf5')
@@ -31,7 +31,7 @@ def command_info(args):
     args = parser.parse_args(args)
 
     if args.output:
-        if len(args.infile)>1:
+        if len(args.infile) > 1:
             print 'only one space file argument is support with extractconfig -> using the first'
         config = binoculars.util.ConfigFile.fromfile(args.infile[0])
         config.totxtfile(args.output)
@@ -52,7 +52,7 @@ def command_info(args):
                     print '{!r}'.format(config)
 
 
-### CONVERT
+# CONVERT
 def command_convert(args):
     parser = argparse.ArgumentParser(prog='binoculars convert')
     parser.add_argument('--wait', action='store_true', help='wait for input files to appear')
@@ -62,7 +62,7 @@ def command_convert(args):
     parser.add_argument('outfile', help='output file, can be .hdf5 or .edf or .txt')
 
     args = parser.parse_args(args)
-    
+
     if args.wait:
         binoculars.util.statusnl('waiting for {0} to appear'.format(args.infile))
         binoculars.util.wait_for_file(args.infile)
@@ -99,17 +99,18 @@ def command_convert(args):
         sys.exit(1)
 
 
-### PLOT
+# PLOT
 def command_plot(args):
     import matplotlib.pyplot as pyplot
-    import binoculars.fit, binoculars.plot
+    import binoculars.fit
+    import binoculars.plot
 
     parser = argparse.ArgumentParser(prog='binoculars plot')
     parser.add_argument('infile', nargs='+')
     binoculars.util.argparse_common_arguments(parser, 'savepdf', 'savefile', 'clip', 'nolog', 'project', 'slice', 'pslice', 'subtract', 'rebin', 'transform')
     parser.add_argument('--multi', default=None, choices=('grid', 'stack'))
-    parser.add_argument('--fit', default = None)
-    parser.add_argument('--guess', default = None)
+    parser.add_argument('--fit', default=None)
+    parser.add_argument('--guess', default=None)
     args = parser.parse_args(args)
 
     if args.subtract:
@@ -168,7 +169,7 @@ def command_plot(args):
         label = basename
     else:
         label = '{0} files'.format(plotcount)
-    
+
     if args.subtract:
         label = '{0} (subtracted {1})'.format(label, os.path.splitext(os.path.basename(args.subtract))[0])
 
@@ -177,24 +178,22 @@ def command_plot(args):
 
     pyplot.suptitle('{0}, {1}'.format(label, ' '.join(info)))
 
-
     if args.savepdf or args.savefile:
         if args.savefile:
             pyplot.savefig(args.savefile)
-            #print 'saved at {0}'.format(args.savefile)
         else:
             filename = '{0}_plot.pdf'.format(os.path.splitext(args.infile[0])[0])
             filename = binoculars.util.find_unused_filename(filename)
             pyplot.savefig(filename)
-            #print 'saved at {0}'.format(filename)
     else:
         pyplot.show()
 
 
-### FIT
+# FIT
 def command_fit(args):
     import matplotlib.pyplot as pyplot
-    import binoculars.fit, binoculars.plot
+    import binoculars.fit
+    import binoculars.plot
 
     parser = argparse.ArgumentParser(prog='binoculars fit')
     parser.add_argument('infile')
@@ -234,8 +233,8 @@ def command_fit(args):
         info = []
         key = [slice(None) for i in axes]
         key[axindex] = slice(start, stop)
-        newspace =  binoculars.space.Space.fromfile(args.infile, key)
-        left, right = newspace.axes[axindex].min,newspace.axes[axindex].max
+        newspace = binoculars.space.Space.fromfile(args.infile, key)
+        left, right = newspace.axes[axindex].min, newspace.axes[axindex].max
         if newspace.dimension == axes.dimension:
             newspace = newspace.project(axindex)
 
@@ -263,20 +262,20 @@ def command_fit(args):
                 if newspace.dimension == 1:
                     pyplot.figure(figsize=(12, 9))
                     pyplot.subplot(111)
-                    binoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
+                    binoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit=fit)
                 elif newspace.dimension == 2:
                     pyplot.figure(figsize=(12, 9))
                     pyplot.subplot(121)
-                    binoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = None)
+                    binoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit=None)
                     pyplot.subplot(122)
-                    binoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit = fit)
+                    binoculars.plot.plot(newspace, pyplot.gcf(), pyplot.gca(), label=basename, log=not args.nolog, clipping=float(args.clip), fit=fit)
 
                 info.append('sliced in {0} from {1} to {2}'.format(axlabel, left, right))
                 pyplot.suptitle('{0}'.format(' '.join(info)))
-                
+
                 pyplot.savefig(filename.next())
                 pyplot.close()
-  
+
     parameters = numpy.vstack(n for n in parameters).T
     variance = numpy.vstack(n for n in variance).T
 
@@ -288,11 +287,11 @@ def command_fit(args):
         if paramnames[i] in ['I']:
             pyplot.semilogy()
         pyplot.xlabel(paramnames[i])
-        
-    pyplot.suptitle('fit summary of {0}'.format(args.infile))     
+
+    pyplot.suptitle('fit summary of {0}'.format(args.infile))
     if args.savepdf or args.savefile:
         if args.savefile:
-            root, ext = os.path.split(args.savefile) 
+            root, ext = os.path.split(args.savefile)
             pyplot.savefig('{0}_summary{1}'.format(root, ext))
             print 'saved at {0}_summary{1}'.format(root, ext)
             filename = '{0}_summary{1}'.format(root, '.txt')
@@ -300,7 +299,6 @@ def command_fit(args):
             pyplot.savefig('{0}_summary.pdf'.format(os.path.splitext(args.infile)[0]))
             print 'saved at {0}_summary.pdf'.format(os.path.splitext(args.infile)[0])
             filename = '{0}_summary.txt'.format(os.path.splitext(args.infile)[0])
-          
 
         file = open(filename, 'w')
         file.write('L\t')
@@ -308,21 +306,20 @@ def command_fit(args):
         file.write('\n')
         for n in range(parameters.shape[1]):
             file.write('{0}\t'.format(fitlabel[n]))
-            file.write('\t'.join(numpy.array(parameters[:, n], dtype = numpy.str)))
+            file.write('\t'.join(numpy.array(parameters[:, n], dtype=numpy.str)))
             file.write('\n')
         file.close()
 
 
-### PROCESS
+# PROCESS
 def command_process(args):
     import binoculars.main
 
     binoculars.util.register_python_executable(__file__)
-    binoculars.main.Main.from_args(args)# start of main thread
+    binoculars.main.Main.from_args(args)  # start of main thread
 
 
-
-### SUBCOMMAND ARGUMENT HANDLING
+# SUBCOMMAND ARGUMENT HANDLING
 def usage(msg=''):
     print """usage: binoculars COMMAND ...
 {1}
@@ -343,7 +340,7 @@ if __name__ == '__main__':
     binoculars.space.silence_numpy_errors()
 
     subcommands = {'info': command_info, 'convert': command_convert, 'plot': command_plot, 'fit': command_fit, 'process': command_process}
-    
+
     if len(sys.argv) < 2:
         usage()
     subcommand = sys.argv[1]

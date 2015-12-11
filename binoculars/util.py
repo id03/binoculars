@@ -24,6 +24,7 @@ import re
 
 ### ARGUMENT HANDLING
 
+
 class OrderedOperation(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         oops = getattr(namespace, 'ordered_operations', [])
@@ -106,19 +107,19 @@ def handle_ordered_operations(space, args, auto3to2=False):
                     pass
                 else:
                     info.append('projected on {0}'.format(space.axes[projectaxis].label))
-                    space = space.project(projectaxis) 
+                    space = space.project(projectaxis)
 
         elif command == 'project':
             projectaxis = space.axes.index(opts)
             info.append('projected on {0}'.format(space.axes[projectaxis].label))
-            space = space.project(projectaxis)    
+            space = space.project(projectaxis)
 
         elif command == 'transform':
             labels, resolutions, exprs = zip(*parse_transform_args(opts))
             transformation = transformation_from_expressions(space, exprs)
             info.append('transformed to {0}'.format(', '.join('{0} = {1}'.format(label, expr) for (label, expr) in zip(labels, exprs))))
             space = space.transform_coordinates(resolutions, labels, transformation)
-    
+
         elif command == 'rebin':
             if ',' in opts:
                 factors = tuple(int(i) for i in opts.split(','))
@@ -129,7 +130,7 @@ def handle_ordered_operations(space, args, auto3to2=False):
         else:
             raise ValueError("unsported Ordered Operation '{0}'".format(command))
 
-    if auto3to2 and space.dimension == 3: # automatic projection on smallest axis
+    if auto3to2 and space.dimension == 3:  # automatic projection on smallest axis
         projectaxis = numpy.argmin(space.photons.shape)
         info.append('projected on {0}'.format(space.axes[projectaxis].label))
         space = space.project(projectaxis)
@@ -140,6 +141,8 @@ def handle_ordered_operations(space, args, auto3to2=False):
 ### STATUS LINES
 
 _status_line_length = 0
+
+
 def status(line, eol=False):
     """Prints a status line to sys.stdout, overwriting the previous one.
     Set eol to True to append a newline to the end of the line"""
@@ -154,9 +157,11 @@ def status(line, eol=False):
 
     sys.stdout.flush()
 
+
 def statusnl(line):
     """Shortcut for status(..., eol=True)"""
     return status(line, eol=True)
+
 
 def statuseol():
     """Starts a new status line, keeping the previous one intact"""
@@ -164,6 +169,7 @@ def statuseol():
     _status_line_length = 0
     sys.stdout.write('\n')
     sys.stdout.flush()
+
 
 def statuscl():
     """Clears the status line, shortcut for status('')"""
@@ -180,13 +186,16 @@ def get_backends():
             names.append(os.path.splitext(os.path.basename(module))[0])
     return names
 
+
 def get_projections(module):
     import backend
     return get_base(module, backend.ProjectionBase)
 
+
 def get_inputs(module):
     import backend
     return get_base(module, backend.InputBase)
+
 
 def get_dispatchers():
     import dispatcher
@@ -203,6 +212,7 @@ def get_dispatchers():
 
     return options
 
+
 def get_base(modname, base):
     from inspect import isclass
 
@@ -215,7 +225,7 @@ def get_base(modname, base):
 
     backend = getattr(backends, modname)
     items = dir(backend)
-    
+
     options = []
     for item in items:
         obj = getattr(backend, item)
@@ -225,22 +235,28 @@ def get_base(modname, base):
     return options
 
 ### Dispatcher, projection and input configuration options finder
+
+
 def get_dispatcher_configkeys(classname):
     import dispatcher
     cls = getattr(dispatcher, classname)
     return get_configkeys(cls)
-    
+
+
 def get_projection_configkeys(modname, classname):
     return get_backend_configkeys(modname, classname)
 
+
 def get_input_configkeys(modname, classname):
     return get_backend_configkeys(modname, classname)
+
 
 def get_backend_configkeys(modname, classname):
     backends = __import__('backends.{0}'.format(modname), globals(), locals(), [], 1)
     backend = getattr(backends, modname)
     cls = getattr(backend, classname)
     return get_configkeys(cls)
+
 
 def get_configkeys(cls):
     from inspect import getsource
@@ -255,6 +271,7 @@ def get_configkeys(cls):
         cls = cls.__base__
     return items
 
+
 def parse_configcode(line):
     try:
         comment = '#'.join(line.split('#')[1:])
@@ -262,7 +279,7 @@ def parse_configcode(line):
         index = line.index('config.pop')
         item = line[index:].split('\'')[1]
         if item == 'action':
-            return #action is reserved for internal use!
+            return  # action is reserved for internal use!
         return item, comment
     except ValueError:
         pass
@@ -279,6 +296,7 @@ def parse_range(r):
     else:
         return []
 
+
 def parse_multi_range(s):
     if not s:
         return s
@@ -288,6 +306,7 @@ def parse_multi_range(s):
         out.extend(parse_range(r))
     return out
 
+
 def parse_tuple(s, length=None, type=str):
     if not s:
         return s
@@ -296,6 +315,7 @@ def parse_tuple(s, length=None, type=str):
         raise ValueError('invalid tuple length: expected {0} got {1}'.format(length, len(t)))
     return t
 
+
 def parse_bool(s):
     l = s.lower()
     if l in ('1', 'true', 'yes', 'on'):
@@ -303,6 +323,7 @@ def parse_bool(s):
     elif l in ('0', 'false', 'no', 'off'):
         return False
     raise ValueError("invalid input for boolean: '{0}'".format(s))
+
 
 def parse_pairs(s):
     if not s:
@@ -326,11 +347,13 @@ def parse_pairs(s):
         limits.append(parsed)
     return limits
 
+
 def limit_to_filelabel(s):
-    return tuple('[{0}]'.format(lim.replace('-', 'm').replace(':', '-').replace(' ','')) for lim in re.findall('\[(.*?)\]', s))
+    return tuple('[{0}]'.format(lim.replace('-', 'm').replace(':', '-').replace(' ', '')) for lim in re.findall('\[(.*?)\]', s))
+
 
 class MetaBase(object):
-    def __init__(self, label = None, section = None):
+    def __init__(self, label=None, section=None):
         self.sections = []
         if label is not None and section is not None:
             self.sections.append(label)
@@ -338,8 +361,8 @@ class MetaBase(object):
         elif label is not None:
             self.sections.append(label)
             setattr(self, label, dict())
-                
-    def add_section(self, label, section = None):
+
+    def add_section(self, label, section=None):
         self.sections.append(label)
         if section is not None:
             setattr(self, label, section)
@@ -365,14 +388,14 @@ class MetaBase(object):
             section_dict = {}
             attr = getattr(self, section)
             for key in attr.keys():
-                if isinstance(attr[key], numpy.ndarray):# to be able to include numpy arrays in the serialisation
+                if isinstance(attr[key], numpy.ndarray):  # to be able to include numpy arrays in the serialisation
                     sio = StringIO.StringIO()
                     numpy.save(sio, attr[key])
                     sio.seek(0)
-                    section_dict[key] = binascii.b2a_hex(sio.read())#hex codation is needed to let json work with the string
+                    section_dict[key] = binascii.b2a_hex(sio.read())  # hex codation is needed to let json work with the string
                 else:
                     section_dict[key] = attr[key]
-            sections[section] = section_dict 
+            sections[section] = section_dict
         return json.dumps(sections)
 
     @classmethod
@@ -380,10 +403,10 @@ class MetaBase(object):
         obj = cls()
         data = json.loads(s)
         for section in data.keys():
-            section_dict =  data[section]
+            section_dict = data[section]
             for key in section_dict.keys():
-                if isinstance(section_dict[key], basestring):#find and replace all the numpy serialised objects
-                    if section_dict[key].startswith('934e554d505901004600'):#numpy marker
+                if isinstance(section_dict[key], basestring):  # find and replace all the numpy serialised objects
+                    if section_dict[key].startswith('934e554d505901004600'):  # numpy marker
                         sio = StringIO.StringIO()
                         sio.write(binascii.a2b_hex(section_dict[key]))
                         sio.seek(0)
@@ -392,8 +415,10 @@ class MetaBase(object):
             if section not in obj.sections:
                 obj.sections.append(section)
         return obj
-   
-# a collection of metadata objects 
+
+# a collection of metadata objects
+
+
 class MetaData(object):
     def __init__(self):
         self.metas = []
@@ -425,7 +450,7 @@ class MetaData(object):
             try:
                 metadata = fp['metadata']
             except KeyError as e:
-                metadata = [] # when metadata is not present, proceed without Error
+                metadata = []  # when metadata is not present, proceed without Error
             for label in metadata:
                 meta = MetaBase()
                 for section in metadata[label].keys():
@@ -445,7 +470,7 @@ class MetaData(object):
                     sectiongroup = metabase.create_group(section)
                     s = getattr(meta, section)
                     for key in s.keys():
-                        sectiongroup.create_dataset(key, data = s[key])
+                        sectiongroup.create_dataset(key, data=s[key])
 
     def __repr__(self):
         str = '{0.__class__.__name__}{{\n'.format(self)
@@ -466,8 +491,10 @@ class MetaData(object):
         return obj
 
 #Contains the unparsed config dicts
+
+
 class ConfigFile(MetaBase):
-    def __init__(self, origin='n/a', command = []):
+    def __init__(self, origin='n/a', command=[]):
         self.origin = origin
         self.command = command
         super(ConfigFile, self).__init__()
@@ -488,16 +515,16 @@ class ConfigFile(MetaBase):
                 if 'command' in config.attrs:
                     configobj.command = json.loads(config.attrs['command'])
                 for section in config:
-                    if isinstance(config[section],  h5py._hl.group.Group):#new
+                    if isinstance(config[section],  h5py._hl.group.Group):  # new
                         setattr(configobj, section, dict((key, config[section][key].value) for key in config[section]))
-                    else:#old
+                    else:  # old
                         setattr(configobj, section, dict(config[section]))
             except KeyError as e:
-                pass # when config is not present, proceed without Error
+                pass  # when config is not present, proceed without Error
         return configobj
 
     @classmethod
-    def fromtxtfile(cls, filename, command = [],  overrides=[]):
+    def fromtxtfile(cls, filename, command=[],  overrides=[]):
         if not os.path.exists(filename):
             raise IOError('Error importing configuration file. filename {0} does not exist'.format(filename))
 
@@ -507,7 +534,7 @@ class ConfigFile(MetaBase):
         for section, option, value in overrides:
             config.set(section, option, value)
 
-        configobj = cls(filename, command = command)
+        configobj = cls(filename, command=command)
         for section in configobj.sections:
             setattr(configobj, section, dict((k, v.split('#')[0].strip()) for (k, v) in config.items(section)))
         return configobj
@@ -521,7 +548,7 @@ class ConfigFile(MetaBase):
                 sectiongroup = conf.create_group(section)
                 s = getattr(self, section)
                 for key in s.keys():
-                    sectiongroup.create_dataset(key, data = s[key])
+                    sectiongroup.create_dataset(key, data=s[key])
 
     def totxtfile(self, filename):
         with open(filename, 'w') as fp:
@@ -539,6 +566,8 @@ class ConfigFile(MetaBase):
         return str
 
 #contains one parsed dict, for distribution to dispatcher, input or projection class
+
+
 class ConfigSection(object):
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
@@ -547,6 +576,8 @@ class ConfigSection(object):
         return copy.deepcopy(self)
 
 #contains the parsed configsections
+
+
 class ConfigSectionGroup(object):
     def __init__(self, origin='n/a'):
         self.origin = origin
@@ -555,8 +586,9 @@ class ConfigSectionGroup(object):
             setattr(self, section, ConfigSection())
         self.configfile = ConfigFile()
 
+
 class ConfigurableObject(object):
-    def __init__(self, config):           
+    def __init__(self, config):
         if isinstance(config, ConfigSection):
             self.config = config
         elif not isinstance(config, dict):
@@ -589,10 +621,12 @@ def best_effort_atomic_rename(src, dest):
         os.remove(dest)
     os.rename(src, dest)
 
+
 def filename_enumerator(filename, start=0):
-    base,ext = os.path.splitext(filename)
-    for count in itertools.count(start):    
-        yield '{0}_{2}{1}'.format(base,ext,count)
+    base, ext = os.path.splitext(filename)
+    for count in itertools.count(start):
+        yield '{0}_{2}{1}'.format(base, ext, count)
+
 
 def find_unused_filename(filename):
     if not os.path.exists(filename):
@@ -601,14 +635,17 @@ def find_unused_filename(filename):
         if not os.path.exists(f):
             return f
 
+
 def label_enumerator(label, start=0):
-    for count in itertools.count(start):    
-        yield '{0}_{1}'.format(label,count)
+    for count in itertools.count(start):
+        yield '{0}_{1}'.format(label, count)
+
 
 def find_unused_label(label, labellist):
     for l in label_enumerator(label):
         if not l in labellist:
             return l
+
 
 def yield_when_exists(filelist, timeout=None):
     """Wait for files in 'filelist' to appear, for a maximum of 'timeout' seconds,
@@ -628,6 +665,7 @@ def yield_when_exists(filelist, timeout=None):
         if timeout is not None and time.time() - start > timeout:
             break
 
+
 def wait_for_files(filelist, timeout=None):
     """Wait until the files in 'filelist' have appeared, for a maximum of 'timeout' seconds.
     Returns True on success, False on timeout."""
@@ -636,8 +674,10 @@ def wait_for_files(filelist, timeout=None):
         pass
     return not filelist
 
+
 def wait_for_file(file, timeout=None):
     return wait_for_files([file], timeout=timeout)
+
 
 def space_to_edf(space, filename):
     from PyMca import EdfFile
@@ -648,6 +688,7 @@ def space_to_edf(space, filename):
     edf = EdfFile.EdfFile(filename)
     edf.WriteImage(header, space.get_masked().filled(0), DataType="Float")
 
+
 def space_to_txt(space, filename):
     data = [coord.flatten() for coord in space.get_grid()]
     data.append(space.get_masked().filled(0).flatten())
@@ -657,6 +698,7 @@ def space_to_txt(space, filename):
         fp.write('\t'.join(ax.label for ax in space.axes))
         fp.write('\tintensity\n')
         numpy.savetxt(fp, data, fmt='%.6g', delimiter='\t')
+
 
 @contextlib.contextmanager
 def open_h5py(fn, mode):
@@ -675,8 +717,10 @@ def open_h5py(fn, mode):
 
 ### VARIOUS
 
+
 def uniqid():
     return '{0:08x}'.format(random.randint(0, 2**32-1))
+
 
 def grouper(iterable, n):
     while True:
@@ -686,12 +730,16 @@ def grouper(iterable, n):
         yield chunk
 
 _python_executable = None
+
+
 def register_python_executable(scriptname):
     global _python_executable
     _python_executable = sys.executable, scriptname
 
+
 def get_python_executable():
     return _python_executable
+
 
 def chunk_slicer(count, chunksize):
     """yields slice() objects that split an array of length 'count' into equal sized chunks of at most 'chunksize'"""
@@ -699,6 +747,7 @@ def chunk_slicer(count, chunksize):
     realchunksize = int(numpy.ceil(float(count) / chunkcount))
     for i in range(chunkcount):
         yield slice(i*realchunksize, min(count, (i+1)*realchunksize))
+
 
 def cluster_jobs(jobs, target_weight):
     jobs = sorted(jobs, key=lambda job: job.weight)
@@ -708,13 +757,14 @@ def cluster_jobs(jobs, target_weight):
         yield [jobs.pop()]
 
     while jobs:
-        cluster = [jobs.pop()] # take the biggest remaining job
+        cluster = [jobs.pop()]  # take the biggest remaining job
         size = cluster[0].weight
-        for i in range(len(jobs)-1, -1, -1): # and exhaustively search for all jobs that can accompany it (biggest first)
+        for i in range(len(jobs)-1, -1, -1):  # and exhaustively search for all jobs that can accompany it (biggest first)
             if size + jobs[i].weight <= target_weight:
                 size += jobs[i].weight
                 cluster.append(jobs.pop(i))
         yield cluster
+
 
 def cluster_jobs2(jobs, target_weight):
     """Taking the first n jobs that together add up to target_weight.
@@ -722,12 +772,13 @@ def cluster_jobs2(jobs, target_weight):
     """
     jobslist = []
     for job in jobs:
-       jobslist.append(job)
-       if sum(j.weight for j in jobslist) >= target_weight:
-           yield jobslist[:]
-           jobslist = []
-    if len(jobslist) > 0:#yield the remainder of the jobs
+        jobslist.append(job)
+        if sum(j.weight for j in jobslist) >= target_weight:
+            yield jobslist[:]
+            jobslist = []
+    if len(jobslist) > 0:  # yield the remainder of the jobs
         yield jobslist[:]
+
 
 def loop_delayer(delay):
     """Delay a loop such that it runs at most once every 'delay' seconds. Usage example:
@@ -745,6 +796,7 @@ def loop_delayer(delay):
             polltime = time.time()
             yield
     return generator()
+
 
 def transformation_from_expressions(space, exprs):
     def transformation(*coords):
@@ -790,6 +842,7 @@ else:
         unpickler = _Unpickler(fileobj)
         return unpickler.load()
 
+
 @contextlib.contextmanager
 def atomic_write(filename):
     """Atomically write data into 'filename' using a temporary file and os.rename()
@@ -816,6 +869,7 @@ def atomic_write(filename):
             if os.path.exists(tmpfile):
                 os.remove(tmpfile)
 
+
 def zpi_save(obj, filename):
     with atomic_write(filename) as tmpfile:
         fp = gzip.open(tmpfile, 'wb')
@@ -823,6 +877,7 @@ def zpi_save(obj, filename):
             pickle.dump(obj, fp, pickle.HIGHEST_PROTOCOL)
         finally:
             fp.close()
+
 
 def zpi_load(filename):
     if hasattr(filename, 'read'):
@@ -838,14 +893,14 @@ def zpi_load(filename):
 def serialize(space, command):
     # first 48 bytes contain length of the message, whereby the first 8 give the length of the command, the second 8 the length of the configfile etc..
     message = StringIO.StringIO()
-    message.write(struct.pack('QQQQQQ',0,0,0,0,0,0))
+    message.write(struct.pack('QQQQQQ', 0, 0, 0, 0, 0, 0))
 
     message.write(command)
     commandlength = message.len - 48
 
     message.write(space.config.serialize())
     configlength = message.len - commandlength - 48
-  
+
     message.write(space.metadata.serialize())
     metalength = message.len - configlength - commandlength - 48
 
@@ -864,15 +919,17 @@ def serialize(space, command):
 
     return message
 
-def packet_slicer(length, size = 1024):#limit the communication to 1024 bytes
+
+def packet_slicer(length, size=1024):  # limit the communication to 1024 bytes
     while length > size:
         length -= size
         yield size
     yield length
 
+
 def socket_send(ip, port, mssg):
     try:
-        mssglengths = struct.unpack('QQQQQQ',mssg.read(48))#the lengths of all the components   
+        mssglengths = struct.unpack('QQQQQQ', mssg.read(48))  # the lengths of all the components
         mssg.seek(0)
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -883,21 +940,20 @@ def socket_send(ip, port, mssg):
             for packet in packet_slicer(l):
                 sock.send(mssg.read(packet))
         sock.close()
-    except socket.error:# in case of failure to send. The data will be saved anyway so any loss of communication unfortunate but not critical
+    except socket.error:  # in case of failure to send. The data will be saved anyway so any loss of communication unfortunate but not critical
         pass
 
 
-def socket_recieve(RequestHandler):#pass one the handler to deal with incoming data
+def socket_recieve(RequestHandler):  # pass one the handler to deal with incoming data
     def get_msg(length):
         msg = StringIO.StringIO()
         for packet in packet_slicer(length):
-            p = RequestHandler.request.recv(packet, socket.MSG_WAITALL) #wait for full mssg
+            p = RequestHandler.request.recv(packet, socket.MSG_WAITALL)  # wait for full mssg
             msg.write(p)
         if msg.len != length:
             raise  errors.CommunicationError('recieved message is too short. expected length {0}, recieved length {1}'.format(length, msg.len))
         msg.seek(0)
         return msg
 
-    command, config, metadata, axes, photons, contributions = tuple(get_msg(msglength) for msglength in struct.unpack('QQQQQQ',RequestHandler.request.recv(48, socket.MSG_WAITALL)))
+    command, config, metadata, axes, photons, contributions = tuple(get_msg(msglength) for msglength in struct.unpack('QQQQQQ', RequestHandler.request.recv(48, socket.MSG_WAITALL)))
     return command.read(), config.read(), metadata.read(), numpy.load(axes), numpy.load(photons), numpy.load(contributions)
-

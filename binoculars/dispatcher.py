@@ -10,7 +10,7 @@ from . import util, errors, space
 class Destination(object):
     type = filename = overwrite = value = config = limits = None
     opts = {}
-    
+
     def set_final_filename(self, filename, overwrite):
         self.type = 'final'
         self.filename = filename
@@ -55,7 +55,7 @@ class Destination(object):
         if not self.limits == None:
             base, ext = os.path.splitext(self.filename)
             for limlabel in util.limit_to_filelabel(self.limits):
-                fn =  (base + '_' + limlabel + ext).format(**self.opts)
+                fn = (base + '_' + limlabel + ext).format(**self.opts)
                 if not self.overwrite:
                     fn = util.find_unused_filename(fn)
                 fns.append(fn)
@@ -66,6 +66,7 @@ class Destination(object):
             fns.append(fn)
         return fns
 
+
 class DispatcherBase(util.ConfigurableObject):
     def __init__(self, config, main):
         self.main = main
@@ -74,16 +75,16 @@ class DispatcherBase(util.ConfigurableObject):
     def parse_config(self, config):
         super(DispatcherBase, self).parse_config(config)
         self.config.destination = Destination()
-        destination = config.pop('destination', 'output.hdf5')# optional 'output.hdf5' by default
-        overwrite = util.parse_bool(config.pop('overwrite', 'false'))#by default: numbered files in the form output_###.hdf5:
-        self.config.destination.set_final_filename(destination, overwrite)# explicitly parsing the options first helps with the debugging
-        self.config.host = config.pop('host', None)# ip adress of the running gui awaiting the spaces 
-        self.config.port = config.pop('port', None)# port of the running gui awaiting the spaces
-        self.config.send_to_gui = util.parse_bool(config.pop('send_to_gui', 'false'))#previewing the data, if true, also specify host and port
+        destination = config.pop('destination', 'output.hdf5')  # optional 'output.hdf5' by default
+        overwrite = util.parse_bool(config.pop('overwrite', 'false'))  #by default: numbered files in the form output_  # .hdf5:
+        self.config.destination.set_final_filename(destination, overwrite)  # explicitly parsing the options first helps with the debugging
+        self.config.host = config.pop('host', None)  # ip adress of the running gui awaiting the spaces
+        self.config.port = config.pop('port', None)  # port of the running gui awaiting the spaces
+        self.config.send_to_gui = util.parse_bool(config.pop('send_to_gui', 'false'))  # previewing the data, if true, also specify host and port
 
-    def send(self, verses):#provides the possiblity to send the results to the gui over the network
-        if self.config.send_to_gui or (self.config.host is not None and self.config.host is not None):#only continue of ip is specified and send_to_server is flagged
-             for M in verses:
+    def send(self, verses):  # provides the possiblity to send the results to the gui over the network
+        if self.config.send_to_gui or (self.config.host is not None and self.config.host is not None):  # only continue of ip is specified and send_to_server is flagged
+            for M in verses:
                 if self.config.destination.limits is None:
                     sp = M.spaces[0]
                     if isinstance(sp, space.Space):
@@ -94,9 +95,9 @@ class DispatcherBase(util.ConfigurableObject):
                             util.socket_send(self.config.host, int(self.config.port), util.serialize(sp, '{0}_{1}'.format(','.join(self.main.config.command), label)))
                 yield M
         else:
-             for M in verses:
+            for M in verses:
                 yield M
-         
+
     def has_specific_task(self):
         return False
 
@@ -145,12 +146,12 @@ class Local(ReentrantBase):
 
     def parse_config(self, config):
         super(Local, self).parse_config(config)
-        self.config.ncores = int(config.pop('ncores', 0))# optionally, specify number of cores (autodetect by default)
+        self.config.ncores = int(config.pop('ncores', 0))  # optionally, specify number of cores (autodetect by default)
         if self.config.ncores <= 0:
             self.config.ncores = multiprocessing.cpu_count()
 
     def process_jobs(self, jobs):
-        if self.config.ncores == 1: # note: SingleCore will be marginally faster
+        if self.config.ncores == 1:  # note: SingleCore will be marginally faster
             imap = itertools.imap
         else:
             pool = multiprocessing.Pool(self.config.ncores)
@@ -179,15 +180,17 @@ class Local(ReentrantBase):
         return config, ()
 
 # Dispatch many worker processes on an Oar cluster.
+
+
 class Oar(ReentrantBase):
     ### OFFICIAL API
     actions = 'user', 'process'
 
     def parse_config(self, config):
         super(Oar, self).parse_config(config)
-        self.config.tmpdir = config.pop('tmpdir', os.getcwd())#Optional, current directory by default
-        self.config.oarsub_options = config.pop('oarsub_options', 'walltime=0:15')# optionally, tweak oarsub parameters
-        self.config.executable = config.pop('executable', ' '.join(util.get_python_executable()))# optionally, override default location of python and/or BINoculars installation
+        self.config.tmpdir = config.pop('tmpdir', os.getcwd())  # Optional, current directory by default
+        self.config.oarsub_options = config.pop('oarsub_options', 'walltime=0:15')  # optionally, tweak oarsub parameters
+        self.config.executable = config.pop('executable', ' '.join(util.get_python_executable()))  # optionally, override default location of python and/or BINoculars installation
 
     def process_jobs(self, jobs):
         self.configfiles = []
@@ -278,7 +281,7 @@ class Oar(ReentrantBase):
             util.status('{0}: getting status of {1} jobs...'.format(time.ctime(), len(jobs)))
         else:
             return
-     
+
         delay = util.loop_delayer(30)
         while len(jobs) > remaining:
             next(delay)
@@ -295,11 +298,11 @@ class Oar(ReentrantBase):
                     W += 1
                 elif state == 'Unknown':
                     U += 1
-                else: # assume state == 'Finishing' or 'Terminated' but don't wait on something unknown
+                else:  # assume state == 'Finishing' or 'Terminated' but don't wait on something unknown
                     del jobs[i]
-                    i -= 1 # otherwise it skips a job
+                    i -= 1  # otherwise it skips a job
                 i += 1
-            util.status('{0}: {1} jobs to go. {2} waiting, {3} running, {4} unknown.'.format(time.ctime(),len(jobs),W,R,U))
+            util.status('{0}: {1} jobs to go. {2} waiting, {3} running, {4} unknown.'.format(time.ctime(), len(jobs), W, R, U))
         util.statuseol()
 
     def oar_cleanup(self, jobs):
@@ -310,7 +313,7 @@ class Oar(ReentrantBase):
             except Exception as e:
                 print "unable to remove {0}: {1}".format(f, e)
 
-        errorfn = []        
+        errorfn = []
 
         for jobid in jobs:
             errorfilename = 'OAR.{0}.stderr'.format(jobid)
@@ -321,9 +324,6 @@ class Oar(ReentrantBase):
                 if len(errormsg) > 0:
                     errorfn.append(errorfilename)
                     print 'Critical error: OAR Job {0} failed with the following error: \n{1}'.format(jobid, errormsg)
-                    
 
         if len(errorfn) > 0:
             print 'Warning! {0} job(s) failed. See above for the details or the error log files: {1}'.format(len(errorfn), ', '.join(errorfn))
-                        
-

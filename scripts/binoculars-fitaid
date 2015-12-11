@@ -5,13 +5,15 @@ import sys
 import numpy
 import os.path
 import itertools
-import matplotlib.figure, matplotlib.image
+import matplotlib.figure
+import matplotlib.image
 
 from PyQt4 import QtGui, QtCore, Qt
 from scipy.interpolate import griddata
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationToolbar2QTAgg
 from matplotlib.pyplot import Rectangle
 from scipy.spatial import qhull
+
 
 def set_src():
     import sys
@@ -39,23 +41,23 @@ class Window(QtGui.QMainWindow):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
 
-        newproject = QtGui.QAction("New project", self)  
+        newproject = QtGui.QAction("New project", self)
         newproject.triggered.connect(self.newproject)
 
-        loadproject = QtGui.QAction("Open project", self)  
+        loadproject = QtGui.QAction("Open project", self)
         loadproject.triggered.connect(self.loadproject)
 
-        addspace = QtGui.QAction("Import space", self)  
+        addspace = QtGui.QAction("Import space", self)
         addspace.triggered.connect(self.add_to_project)
 
-        menu_bar = QtGui.QMenuBar() 
-        file = menu_bar.addMenu("&File") 
+        menu_bar = QtGui.QMenuBar()
+        file = menu_bar.addMenu("&File")
         file.addAction(newproject)
         file.addAction(loadproject)
         file.addAction(addspace)
 
         self.setMenuBar(menu_bar)
-        self.statusbar	= QtGui.QStatusBar()
+        self.statusbar = QtGui.QStatusBar()
 
         self.tab_widget = QtGui.QTabWidget(self)
         self.tab_widget.setTabsClosable(True)
@@ -83,7 +85,7 @@ class Window(QtGui.QMainWindow):
         except Exception as e:
             QtGui.QMessageBox.critical(self, 'New project', 'Unable to save project to {}: {}'.format(fname, e))
 
-    def loadproject(self, filename = None):
+    def loadproject(self, filename=None):
         if not filename:
             dialog = QtGui.QFileDialog(self, "Load project");
             dialog.setFilter('binoculars fit file (*.fit)');
@@ -105,11 +107,11 @@ class Window(QtGui.QMainWindow):
             self.tab_widget.addTab(widget, 'fname')
             self.tab_widget.setCurrentWidget(widget)
 
-    def add_to_project(self, filename = None):
+    def add_to_project(self, filename=None):
         if self.tab_widget.count() == 0:
             QtGui.QMessageBox.warning(self, 'Warning', 'First select a file to store data')
             self.newproject()
-            
+
         if not filename:
             dialog = QtGui.QFileDialog(self, "Import spaces");
             dialog.setFilter('binoculars space file (*.hdf5)');
@@ -129,16 +131,16 @@ class Window(QtGui.QMainWindow):
         else:
             widget = self.tab_widget.currentWidget()
             widget.addspace(filename)
-     
+
 
 class TopWidget(QtGui.QWidget):
-    def __init__(self, filename , parent=None):
+    def __init__(self, filename, parent=None):
         super(TopWidget, self).__init__(parent)
 
-        hbox = QtGui.QHBoxLayout() 
-        vbox = QtGui.QVBoxLayout() 
-        minihbox =  QtGui.QHBoxLayout() 
-        minihbox2 =  QtGui.QHBoxLayout() 
+        hbox = QtGui.QHBoxLayout()
+        vbox = QtGui.QVBoxLayout()
+        minihbox = QtGui.QHBoxLayout()
+        minihbox2 = QtGui.QHBoxLayout()
 
         self.database = FitData(filename)
         self.table = TableWidget(self.database)
@@ -157,13 +159,13 @@ class TopWidget(QtGui.QWidget):
         self.tab_widget.addTab(self.plotwidget, 'plot')
 
         self.emptywidget = QtGui.QWidget()
-        self.emptywidget.setLayout(vbox) 
+        self.emptywidget.setLayout(vbox)
 
         vbox.addWidget(self.table)
         vbox.addWidget(self.nav)
 
         self.functions = list()
-        self.function_box = QtGui.QComboBox()        
+        self.function_box = QtGui.QComboBox()
         for function in dir(binoculars.fit):
             cls = getattr(binoculars.fit, function)
             if isinstance(cls, type) and issubclass(cls, binoculars.fit.PeakFitBase):
@@ -174,7 +176,7 @@ class TopWidget(QtGui.QWidget):
         vbox.addWidget(self.function_box)
         vbox.addLayout(minihbox)
         vbox.addLayout(minihbox2)
-        
+
         self.all_button = QtGui.QPushButton('fit all')
         self.rod_button = QtGui.QPushButton('fit rod')
         self.slice_button = QtGui.QPushButton('fit slice')
@@ -205,14 +207,14 @@ class TopWidget(QtGui.QWidget):
         splitter.addWidget(self.tab_widget)
         self.tab_widget.currentChanged.connect(self.tab_change)
 
-        hbox.addWidget(splitter) 
-        self.setLayout(hbox) 
+        hbox.addWidget(splitter)
+        self.setLayout(hbox)
 
     def tab_change(self, index):
         if index == 2:
             self.refresh_plot()
 
-    def addspace(self,filename = None):
+    def addspace(self, filename=None):
         if filename == None:
             filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.hdf5'))
         self.table.addspace(filename)
@@ -258,7 +260,6 @@ class TopWidget(QtGui.QWidget):
         self.fit_loc(self.fitwidget.database)
         self.fitwidget.plot()
 
-
     def fit_all(self):
         def function(index, space):
             self.fitwidget.fit(index, space, self.fitclass)
@@ -270,7 +271,6 @@ class TopWidget(QtGui.QWidget):
 
         self.fitwidget.plot()
 
-
     def int_slice(self):
         index = self.nav.index()
         space = self.fitwidget.database.space_from_index(index)
@@ -278,15 +278,15 @@ class TopWidget(QtGui.QWidget):
         self.integratewidget.plot(index)
 
     def int_rod(self):
-        self.progressbox(self.integratewidget.database.rodkey,self.integratewidget.integrate, enumerate(self.integratewidget.database), self.integratewidget.database.rodlength())
+        self.progressbox(self.integratewidget.database.rodkey, self.integratewidget.integrate, enumerate(self.integratewidget.database), self.integratewidget.database.rodlength())
         self.integratewidget.plot()
 
     def int_all(self):
         for rodkey, axis, resolution in self.table.checked():
             self.integratewidget.database = RodData(self.database.filename, rodkey, axis, resolution)
-            self.progressbox(self.integratewidget.database.rodkey,self.integratewidget.integrate, enumerate(self.integratewidget.database), self.integratewidget.database.rodlength())
+            self.progressbox(self.integratewidget.database.rodkey, self.integratewidget.integrate, enumerate(self.integratewidget.database), self.integratewidget.database.rodlength())
         self.integratewidget.plot()
-  
+
     def fit_loc(self, database):
         deg = 2
         for param in database.all_attrkeys():
@@ -303,15 +303,16 @@ class TopWidget(QtGui.QWidget):
                 w[w < 0] = 0
                 w[w < numpy.median(w)] = 0
                 if len(x) > 0:
-                    c = numpy.polynomial.polynomial.polyfit(cx, y, deg, w = w)
+                    c = numpy.polynomial.polynomial.polyfit(cx, y, deg, w=w)
                     newy = numpy.polynomial.polynomial.polyval(x, c)
                     for index, newval in enumerate(newy):
-                        database.save_sliceattr(index, 'guessloc{0}'.format(param.lstrip('loc')) , newval)
+                        database.save_sliceattr(index, 'guessloc{0}'.format(param.lstrip('loc')), newval)
 
-    def progressbox(self, rodkey , function, iterator, length):
+    def progressbox(self, rodkey, function, iterator, length):
         pd = QtGui.QProgressDialog('Processing {0}'.format(rodkey), 'Cancel', 0, length)
         pd.setWindowModality(QtCore.Qt.WindowModal)
         pd.show()
+
         def progress(index, item):
             pd.setValue(index)
             if pd.wasCanceled():
@@ -321,6 +322,7 @@ class TopWidget(QtGui.QWidget):
         for index, item in enumerate(iterator):
             progress(index, item)
         pd.close()
+
 
 class TableWidget(QtGui.QWidget):
     trigger = QtCore.pyqtSignal()
@@ -335,11 +337,11 @@ class TableWidget(QtGui.QWidget):
         self.activeindex = 0
 
         self.table = QtGui.QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(['','rod', 'axis', 'res', 'remove'])
-        
+        self.table.setHorizontalHeaderLabels(['', 'rod', 'axis', 'res', 'remove'])
+
         self.table.cellClicked.connect(self.setlength)
 
-        for index, width in enumerate([25,150,40,50,70]):
+        for index, width in enumerate([25, 150, 40, 50, 70]):
             self.table.setColumnWidth(index, width)
 
         for filename, rodkey in zip(database.filelist, database.rods()):
@@ -348,7 +350,7 @@ class TableWidget(QtGui.QWidget):
         hbox.addWidget(self.table)
         self.setLayout(hbox)
 
-    def addspace(self, filename, rodkey = None):
+    def addspace(self, filename, rodkey=None):
         def remove_callback(rodkey):
             return lambda: self.remove(rodkey)
 
@@ -358,7 +360,7 @@ class TableWidget(QtGui.QWidget):
         if rodkey == None:
             rodkey = short_filename(filename)
             if rodkey in self.database.rods():
-                newkey =  find_unused_rodkey(rodkey, self.database.rods())
+                newkey = find_unused_rodkey(rodkey, self.database.rods())
                 self.database.copy(rodkey, newkey)
                 rodkey = newkey
 
@@ -367,13 +369,12 @@ class TableWidget(QtGui.QWidget):
         index = self.table.rowCount()
         self.table.insertRow(index)
 
-
-        axes = binoculars.space.Axes.fromfile(filename) 
+        axes = binoculars.space.Axes.fromfile(filename)
 
         checkboxwidget = QtGui.QCheckBox()
         checkboxwidget.rodkey = rodkey
         checkboxwidget.setChecked(0)
-        self.table.setCellWidget(index,0, checkboxwidget)
+        self.table.setCellWidget(index, 0, checkboxwidget)
         checkboxwidget.clicked.connect(self.check_changed)
 
         item = QtGui.QTableWidgetItem(rodkey)
@@ -386,22 +387,22 @@ class TableWidget(QtGui.QWidget):
         if not old_axis == None:
             self.table.cellWidget(index, 2).setCurrentIndex(axes.index(old_axis))
         elif index > 0:
-            self.table.cellWidget(0, 2).setCurrentIndex(self.table.cellWidget(0,2).currentIndex())
+            self.table.cellWidget(0, 2).setCurrentIndex(self.table.cellWidget(0, 2).currentIndex())
 
         resolution = QtGui.QLineEdit()
         if not old_resolution == None:
             resolution.setText(str(old_resolution))
         elif index > 0:
-            resolution.setText(self.table.cellWidget(0,3).text())
+            resolution.setText(self.table.cellWidget(0, 3).text())
         else:
             resolution.setText(str(axes[axes.index(str(axis.currentText()))].res))
-        
+
         resolution.editingFinished.connect(activechange_callback(index))
         self.table.setCellWidget(index, 3, resolution)
-        
+
         buttonwidget = QtGui.QPushButton('remove')
         buttonwidget.clicked.connect(remove_callback(rodkey))
-        self.table.setCellWidget(index,4, buttonwidget)
+        self.table.setCellWidget(index, 4, buttonwidget)
 
     def remove(self, rodkey):
         table_rodkeys = list(self.table.cellWidget(index, 0).rodkey for index in range(self.table.rowCount()))
@@ -411,7 +412,7 @@ class TableWidget(QtGui.QWidget):
         self.database.delete_rod(rodkey)
         print 'removed: {0}'.format(rodkey)
 
-    def setlength(self, y, x = 1):
+    def setlength(self, y, x=1):
         if x == 1:
             self.activeindex = y
             rodkey, axis, resolution = self.currentkey()
@@ -421,8 +422,8 @@ class TableWidget(QtGui.QWidget):
 
     def currentkey(self):
         rodkey = self.table.cellWidget(self.activeindex, 0).rodkey
-        axis = str(self.table.cellWidget(self.activeindex,2).currentText())
-        resolution = float(self.table.cellWidget(self.activeindex,3).text())
+        axis = str(self.table.cellWidget(self.activeindex, 2).currentText())
+        resolution = float(self.table.cellWidget(self.activeindex, 3).text())
         return rodkey, axis, resolution
 
     def checked(self):
@@ -431,68 +432,70 @@ class TableWidget(QtGui.QWidget):
             checkbox = self.table.cellWidget(index, 0)
             if checkbox.checkState():
                 rodkey = self.table.cellWidget(index, 0).rodkey
-                axis = str(self.table.cellWidget(index,2).currentText())
-                resolution = float(self.table.cellWidget(index,3).text())
+                axis = str(self.table.cellWidget(index, 2).currentText())
+                resolution = float(self.table.cellWidget(index, 3).text())
                 selection.append((rodkey, axis, resolution))
         return selection
+
 
 class FitData(object):
     def __init__(self, filename):
         self.filename = filename
         self.axdict = dict()
-        
-        with h5py.File(self.filename,'a') as db:
+
+        with h5py.File(self.filename, 'a') as db:
             for rodkey in self.rods():
-                spacename = db[rodkey].attrs['filename']   
+                spacename = db[rodkey].attrs['filename']
                 if not os.path.exists(spacename):
-                    warningbox = QtGui.QMessageBox(2, 'Warning', 'Cannot find space {0} at file {1}; locate proper space'.format(rodkey, spacename), buttons = QtGui.QMessageBox.Open)
+                    warningbox = QtGui.QMessageBox(2, 'Warning', 'Cannot find space {0} at file {1}; locate proper space'.format(rodkey, spacename), buttons=QtGui.QMessageBox.Open)
                     warningbox.exec_()
-                    spacename = str(QtGui.QFileDialog.getOpenFileName(caption = 'Open space {0}'.format(rodkey), directory = '.', filter = '*.hdf5'))
+                    spacename = str(QtGui.QFileDialog.getOpenFileName(caption='Open space {0}'.format(rodkey), directory='.', filter='*.hdf5'))
                     if not spacename:
                         raise IOError('Select proper input')
                     db[rodkey].attrs['filename'] = spacename
-                self.axdict[rodkey] = binoculars.space.Axes.fromfile(spacename)    
+                self.axdict[rodkey] = binoculars.space.Axes.fromfile(spacename)
 
     def create_rod(self, rodkey, spacename):
-        with h5py.File(self.filename,'a') as db:
+        with h5py.File(self.filename, 'a') as db:
             if rodkey not in db.keys():
                 db.create_group(rodkey)
-                db[rodkey].attrs['filename'] =  spacename
+                db[rodkey].attrs['filename'] = spacename
                 self.axdict[rodkey] = binoculars.space.Axes.fromfile(spacename)
 
     def delete_rod(self, rodkey):
-        with h5py.File(self.filename,'a') as db:
+        with h5py.File(self.filename, 'a') as db:
             del db[rodkey]
 
     def rods(self):
-        with h5py.File(self.filename,'a') as db:
+        with h5py.File(self.filename, 'a') as db:
             rods = db.keys()
         return rods
 
     def copy(self, oldkey, newkey):
-        with h5py.File(self.filename,'a') as db:
+        with h5py.File(self.filename, 'a') as db:
             if oldkey in db.keys():
-                db.copy(db[oldkey], db, name = newkey) 
-          
+                db.copy(db[oldkey], db, name=newkey)
+
     @property
     def filelist(self):
         filelist = []
-        with h5py.File(self.filename,'a') as db:
+        with h5py.File(self.filename, 'a') as db:
             for key in db.iterkeys():
                 filelist.append(db[key].attrs['filename'])
         return filelist
 
     def save(self, rodkey, key, value):
-        with h5py.File(self.filename,'a') as db:
-             db[rodkey].attrs[str(key)] = value
+        with h5py.File(self.filename, 'a') as db:
+            db[rodkey].attrs[str(key)] = value
 
     def load(self, rodkey, key):
-        with h5py.File(self.filename,'a') as db:
+        with h5py.File(self.filename, 'a') as db:
             if rodkey in db:
                 if key in db[rodkey].attrs:
-                    return db[rodkey].attrs[str(key)]                         
+                    return db[rodkey].attrs[str(key)]
             else:
                 return None
+
 
 class RodData(FitData):
     def __init__(self, filename, rodkey, axis, resolution):
@@ -502,7 +505,7 @@ class RodData(FitData):
         self.axis = axis
         self.resolution = resolution
 
-        with h5py.File(self.filename,'a') as db:
+        with h5py.File(self.filename, 'a') as db:
             if rodkey in db:
                 if self.slicekey not in db[rodkey]:
                     db[rodkey].create_group(self.slicekey)
@@ -528,10 +531,10 @@ class RodData(FitData):
 
         bins = binoculars.space.get_bins(ax, self.resolution)
         return bins, ax, axindex
-       
+
     def rodlength(self):
         bins, ax, axindex = self.get_bins()
-        return numpy.alen(bins) - 1 
+        return numpy.alen(bins) - 1
 
     def get_index_value(self, index):
         return binoculars.space.get_axis_values(self.axdict[self.rodkey], self.axis, self.resolution)[index]
@@ -543,14 +546,14 @@ class RodData(FitData):
         k = [slice(None) for i in axes]
         k[axindex] = slice(start, stop)
         return k
-            
+
     def space_from_index(self, index):
-        with h5py.File(self.filename,'a') as db:
-             filename = db[self.rodkey].attrs['filename']
+        with h5py.File(self.filename, 'a') as db:
+            filename = db[self.rodkey].attrs['filename']
         return binoculars.space.Space.fromfile(filename, self.get_key(index)).project(self.axis)
 
-    def save_data(self, index, key, data):         
-        with h5py.File(self.filename,'a') as db:
+    def save_data(self, index, key, data):
+        with h5py.File(self.filename, 'a') as db:
             id = '{0}_{1}_data'.format(int(index), key)
             mid = '{0}_{1}_mask'.format(int(index), key)
             try:
@@ -562,64 +565,63 @@ class RodData(FitData):
                 db[self.rodkey][self.slicekey].create_dataset(id, data.shape, dtype=data.dtype, compression='gzip').write_direct(data)
                 db[self.rodkey][self.slicekey].create_dataset(mid, data.shape, dtype=data.mask.dtype, compression='gzip').write_direct(data.mask)
 
-    def load_data(self, index, key):   
-        with h5py.File(self.filename,'a') as db:
+    def load_data(self, index, key):
+        with h5py.File(self.filename, 'a') as db:
             id = '{0}_{1}_data'.format(int(index), key)
             mid = '{0}_{1}_mask'.format(int(index), key)
             try:
-                return numpy.ma.array(db[self.rodkey][self.slicekey][id][...], mask = db[self.rodkey][self.slicekey][mid][...])
+                return numpy.ma.array(db[self.rodkey][self.slicekey][id][...], mask=db[self.rodkey][self.slicekey][mid][...])
             except KeyError:
                 return None
 
     def save_sliceattr(self, index, key, value):
         mkey = 'mask{0}'.format(key)
-        with h5py.File(self.filename,'a') as db:
+        with h5py.File(self.filename, 'a') as db:
             try:
-                group = db[self.rodkey][self.slicekey]['attrs']## else it breaks with the old fitaid
-            except KeyError: 
+                group = db[self.rodkey][self.slicekey]['attrs']  # # else it breaks with the old fitaid
+            except KeyError:
                 db[rodkey][slicekey].create_group('attrs')
                 group = db[self.rodkey][self.slicekey]['attrs']
             if not key in group:
                 group.create_dataset(key, (self.rodlength(),))
-                group.create_dataset(mkey, (self.rodlength(),), dtype = numpy.bool).write_direct(numpy.ones(self.rodlength(), dtype = numpy.bool))
+                group.create_dataset(mkey, (self.rodlength(),), dtype=numpy.bool).write_direct(numpy.ones(self.rodlength(), dtype=numpy.bool))
             group[key][index] = value
             group[mkey][index] = 0
 
-
     def load_sliceattr(self, index, key):
         mkey = 'mask{0}'.format(key)
-        with h5py.File(self.filename,'a') as db:
+        with h5py.File(self.filename, 'a') as db:
             try:
                 group = db[self.rodkey][self.slicekey]['attrs']
-            except KeyError: 
+            except KeyError:
                 db[self.rodkey][self.slicekey].create_group('attrs')
                 group = db[self.rodkey][self.slicekey]['attrs']
             if key in group.keys():
-                return numpy.ma.array(group[key][index], mask = group[mkey][index])  
-            else:               
+                return numpy.ma.array(group[key][index], mask=group[mkey][index])
+            else:
                 return None
 
     def all_attrkeys(self):
-        with h5py.File(self.filename,'a') as db:
+        with h5py.File(self.filename, 'a') as db:
             group = db[self.rodkey][self.slicekey]['attrs']
-            return group.keys() 
+            return group.keys()
 
     def all_from_key(self, key):
         mkey = 'mask{0}'.format(key)
         axes = self.axdict[self.rodkey]
-        with h5py.File(self.filename,'a') as db:
+        with h5py.File(self.filename, 'a') as db:
             group = db[self.rodkey][self.slicekey]['attrs']
             if key in group.keys():
-                return binoculars.space.get_axis_values(axes, self.axis, self.resolution), numpy.ma.array(group[key], mask = numpy.array(group[mkey]))
-                 
+                return binoculars.space.get_axis_values(axes, self.axis, self.resolution), numpy.ma.array(group[key], mask=numpy.array(group[mkey]))
+
     def load_loc(self, index):
-        loc = list()   
-        with h5py.File(self.filename,'a') as db:
-             count = itertools.count()
-             key = 'guessloc{0}'.format(count.next())
-             while self.load_sliceattr(index, key) != None:
-                 loc.append(self.load_sliceattr(index, key))
-                 key = 'guessloc{0}'.format(count.next())
+        loc = list()
+        with h5py.File(self.filename, 'a') as db:
+                count = itertools.count()
+                key = 'guessloc{0}'.format(count.next())
+                while self.load_sliceattr(index, key) != None:
+                    loc.append(self.load_sliceattr(index, key))
+                    key = 'guessloc{0}'.format(count.next())
              if len(loc) > 0:
                  return loc
              else:
@@ -1250,12 +1252,3 @@ if __name__ == "__main__":
 
     
     sys.exit(app.exec_())
-
-
-
-
-
-
-
-  
-

@@ -59,6 +59,7 @@ class ProcessTCPHandler(SocketServer.BaseRequestHandler):
             finally:
                 self.request.sendall(response)
 
+
 def parse_job(job):
     try:
         overrides = []
@@ -72,6 +73,7 @@ def parse_job(job):
         message = 'Error parsing the configuration options. {0}'.format(job)
         return False, message
 
+
 def process(run_event, ip, port, q):
     while run_event.is_set():
         if q.empty():
@@ -81,10 +83,10 @@ def process(run_event, ip, port, q):
             # assume everything in the list is an override except for command and configfilename
             command = str(job['command'])
             configfilename = job['configfilename']
-            overrides = parse_job(job)[1]# [1] are the succesfully parsed jobs
+            overrides = parse_job(job)[1]  # [1] are the succesfully parsed jobs
             print 'Start processing: {0}'.format(command)
             try:
-                configobj = binoculars.util.ConfigFile.fromtxtfile(configfilename, overrides = overrides)
+                configobj = binoculars.util.ConfigFile.fromtxtfile(configfilename, overrides=overrides)
                 if binoculars.util.parse_bool(configobj.dispatcher['send_to_gui']):
                     configobj.dispatcher['host'] = ip
                     configobj.dispatcher['port'] = port
@@ -94,7 +96,7 @@ def process(run_event, ip, port, q):
                 errorfilename = 'error_{0}.txt'.format(command)
                 print 'An error occured for scan {0}. For more information see {1}'.format(command, errorfilename)
                 with open(errorfilename, 'w') as fp:
-                    traceback.print_exc(file = fp)
+                    traceback.print_exc(file=fp)
             finally:
                 print 'Number of jobs left in queue: {0}'.format(q.qsize())
 
@@ -104,7 +106,7 @@ if __name__ == '__main__':
         port = sys.argv[2]
     else:
         ip = None
-        port = None 
+        port = None
 
     q = Queue.Queue()
 
@@ -115,7 +117,7 @@ if __name__ == '__main__':
     run_event = threading.Event()
     run_event.set()
 
-    process_thread = threading.Thread(target=process, args = (run_event, ip, port, q))
+    process_thread = threading.Thread(target=process, args=(run_event, ip, port, q))
     process_thread.start()
 
     server = SocketServer.TCPServer((HOST, PORT), ProcessTCPHandler)
@@ -128,4 +130,3 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         run_event.clear()
         process_thread.join()
-

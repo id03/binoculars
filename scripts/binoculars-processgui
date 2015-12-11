@@ -28,6 +28,8 @@ except ImportError:
     import binoculars.util
 
 #--------------------------------------------CREATE MAIN WINDOW----------------------------------------
+
+
 class Window(QtGui.QMainWindow):
 
     def __init__(self):
@@ -68,9 +70,9 @@ class Window(QtGui.QMainWindow):
 
         #we configue the main windows
         palette = QtGui.QPalette()
-        palette.setColor(QtGui.QPalette.Background,QtCore.Qt.gray)
+        palette.setColor(QtGui.QPalette.Background, QtCore.Qt.gray)
         self.setPalette(palette)
-        self.setGeometry(50, 100,700,700)
+        self.setGeometry(50, 100, 700, 700)
         self.setWindowTitle('Binoculars processgui')
         self.show()
 
@@ -81,11 +83,11 @@ class Window(QtGui.QMainWindow):
         self.ListCommand.setColumnWidth(0, 80)
         self.ListCommand.setColumnWidth(1, 80)
         self.ListCommand.setRowCount(0)
-        self.buttonDelete = QtGui.QPushButton('Delete',self)
+        self.buttonDelete = QtGui.QPushButton('Delete', self)
         self.connect(self.buttonDelete, QtCore.SIGNAL("clicked()"), self.removeConf)
-        self.process = QtGui.QPushButton('run',self)
+        self.process = QtGui.QPushButton('run', self)
         self.process.setStyleSheet("background-color: darkred")
-        self.connect(self.process, QtCore.SIGNAL("clicked()"),self.run)
+        self.connect(self.process, QtCore.SIGNAL("clicked()"), self.run)
 
         self.wid = QtGui.QWidget()
         self.CommandLayout = QtGui.QVBoxLayout()
@@ -95,54 +97,55 @@ class Window(QtGui.QMainWindow):
         self.wid.setLayout(self.CommandLayout)
 
         self.Dock = QtGui.QDockWidget()
-        self.Dock.setAllowedAreas( QtCore.Qt.LeftDockWidgetArea)
+        self.Dock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea)
         self.Dock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
         self.Dock.setWidget(self.wid)
         self.Dock.setMaximumWidth(200)
         self.Dock.setMinimumWidth(200)
-        self.addDockWidget(QtCore.Qt.DockWidgetArea(1),self.Dock)
-    
+        self.addDockWidget(QtCore.Qt.DockWidgetArea(1), self.Dock)
+
     def removeConf(self):
-        self.ListCommand.removeRow(self.ListCommand.currentRow()) 
-        
-    def Add_To_Liste(self,(command, cfg)):
+        self.ListCommand.removeRow(self.ListCommand.currentRow())
+
+    def Add_To_Liste(self, (command, cfg)):
         row = self.ListCommand.rowCount()
         index = self.tab_widget.currentIndex()
         filename = self.tab_widget.tabText(index)
         self.ListCommand.insertRow(self.ListCommand.rowCount())
-        dic = {filename:cfg}
+        dic = {filename: cfg}
         self.item1 = QtGui.QTableWidgetItem(str(command))
         self.item1.command = command
         self.item2 = QtGui.QTableWidgetItem(str(filename))
         self.item2.cfg = dic[filename]
         self.ListCommand.setItem(row, 0, self.item1)
         self.ListCommand.setItem(row, 1, self.item2)
-        
-    #We run the script and create a hdf5 file            
+
+    #We run the script and create a hdf5 file
     def run(self):
         maximum = self.ListCommand.rowCount()
         pd = QtGui.QProgressDialog('running', 'Cancel', 0, maximum, self)
         pd.setWindowModality(QtCore.Qt.WindowModal)
         pd.show()
+
         def progress(cfg, command):
-            if pd.wasCanceled(): 
+            if pd.wasCanceled():
                 raise KeyboardInterrupt
             QtGui.QApplication.processEvents()
             return binoculars.main.Main.from_object(cfg, command)
         try:
             for index in range(self.ListCommand.rowCount()):
                 pd.setValue(index)
-                cfg = self.ListCommand.item(index,1).cfg
-                command = self.ListCommand.item(index,0).command
+                cfg = self.ListCommand.item(index, 1).cfg
+                command = self.ListCommand.item(index, 0).command
                 print cfg
                 progress(cfg, command)
             self.ListCommand.clear()
             self.ListCommand.setRowCount(0)
-        except BaseException, e: 
+        except BaseException, e:
                 #cfg = self.ListCommand.item(index,1).cfg
                 #print cfg
-                QtGui.QMessageBox.about(self,"Error","There was an error processing one of the scans: {0}".format(e))
-                
+                QtGui.QMessageBox.about(self, "Error", "There was an error processing one of the scans: {0}".format(e))
+
         finally:
                 pd.close()
 
@@ -151,31 +154,33 @@ class Window(QtGui.QMainWindow):
         filename = QtGui.QFileDialog.getOpenFileName(self, 'Open File', '')
         confwidget = Conf_Tab(self)
         confwidget.read_data(str(filename))
-        newIndex =  self.tab_widget.addTab(confwidget, os.path.basename(str(filename)))
-        QtCore.QObject.connect(confwidget, QtCore.SIGNAL("command"),self.Add_To_Liste)
+        newIndex = self.tab_widget.addTab(confwidget, os.path.basename(str(filename)))
+        QtCore.QObject.connect(confwidget, QtCore.SIGNAL("command"), self.Add_To_Liste)
         self.tab_widget.setCurrentIndex(newIndex)
 
     #we call the save function
     def Save(self):
         filename = QtGui.QFileDialog().getSaveFileName(self, 'Save', '', '*.txt')
-        widget = self.tab_widget.currentWidget() 
-        widget.save(filename) 
+        widget = self.tab_widget.currentWidget()
+        widget.save(filename)
 
-    #we call the new tab conf   
+    #we call the new tab conf
     def New_Config(self):
-        widget = Conf_Tab(self) 
-        self.tab_widget.addTab(widget,'New configfile') 
-        QtCore.QObject.connect(widget, QtCore.SIGNAL("command"),self.Add_To_Liste)
+        widget = Conf_Tab(self)
+        self.tab_widget.addTab(widget, 'New configfile')
+        QtCore.QObject.connect(widget, QtCore.SIGNAL("command"), self.Add_To_Liste)
 
 #----------------------------------------------------------------------------------------------------
 #-----------------------------------------CREATE TABLE-----------------------------------------------
+
+
 class Table(QtGui.QWidget):
-    def __init__(self, label,  parent = None):
+    def __init__(self, label,  parent=None):
         super(Table, self).__init__()
-        
+
         # create a QTableWidget
         self.table = QtGui.QTableWidget(1, 2, self)
-        self.table.setHorizontalHeaderLabels(['Parameter', 'Value','Comment'])
+        self.table.setHorizontalHeaderLabels(['Parameter', 'Value', 'Comment'])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.verticalHeader().setVisible(False)
         self.table.setTextElideMode(QtCore.Qt.ElideLeft)
@@ -183,12 +188,12 @@ class Table(QtGui.QWidget):
         self.combobox = QtGui.QComboBox()
         #add items
         self.cell = QtGui.QTableWidgetItem(QtCore.QString("type"))
-        self.table.setItem(0, 0,self.cell)
+        self.table.setItem(0, 0, self.cell)
         self.table.setCellWidget(0, 1, self.combobox)
-        #we create pushbuttons and we call the method when we clic on 
+        #we create pushbuttons and we call the method when we clic on
         self.btn_add_row = QtGui.QPushButton('+', self)
         self.connect(self.btn_add_row, QtCore.SIGNAL('clicked()'), self.add_row)
-        self.buttonRemove = QtGui.QPushButton('-',self)
+        self.buttonRemove = QtGui.QPushButton('-', self)
         self.connect(self.buttonRemove, QtCore.SIGNAL("clicked()"), self.remove)
         #the dispositon of the table and the butttons
 
@@ -205,32 +210,32 @@ class Table(QtGui.QWidget):
 
     def add_row(self):
         self.table.insertRow(self.table.rowCount())
-    
+
     def remove(self):
-        self.table.removeRow(self.table.currentRow()) 
+        self.table.removeRow(self.table.currentRow())
 
     def get_keys(self):
-        return list(str(self.table.item(index,0).text()) for index in range(self.table.rowCount())) 
+        return list(str(self.table.item(index, 0).text()) for index in range(self.table.rowCount()))
 
     #Here we take all values from tables
     def getParam(self):
         for index in range(self.table.rowCount()):
-            if not self.table.item == None:                
-                key = str(self.table.item(index,0).text())
-                comment = str(self.table.item(index,0).toolTip())
+            if not self.table.item == None:
+                key = str(self.table.item(index, 0).text())
+                comment = str(self.table.item(index, 0).toolTip())
                 if index == 0:
                     yield key, str(self.table.cellWidget(index, 1).currentText()), comment
-                elif self.table.item(index,1):
-                    if len(str(self.table.item(index,1).text())) != 0 and self.table.item(index,0).textColor() == QtGui.QColor('black'):
+                elif self.table.item(index, 1):
+                    if len(str(self.table.item(index, 1).text())) != 0 and self.table.item(index, 0).textColor() == QtGui.QColor('black'):
                         yield key, str(self.table.item(index, 1).text()), comment
 
-    #Here we put all values in tables   
+    #Here we put all values in tables
     def addData(self, cfg):
         for item in cfg:
             if item == 'type':
-                box = self.table.cellWidget(0,1)
-                value = cfg[item].split(':') 
-                if len(value) > 1 :
+                box = self.table.cellWidget(0, 1)
+                value = cfg[item].split(':')
+                if len(value) > 1:
                     box.setCurrentIndex(box.findText(value[1], QtCore.Qt.MatchFixedString))
                 else:
                         box.setCurrentIndex(box.findText(cfg[item], QtCore.Qt.MatchFixedString))
@@ -240,15 +245,14 @@ class Table(QtGui.QWidget):
                 for col in range(self.table.columnCount()):
                     if col == 0:
                         newitem = QtGui.QTableWidgetItem(item)
-                        self.table.setItem(row -1, col, newitem)   
+                        self.table.setItem(row - 1, col, newitem)
                     if col == 1:
                         newitem2 = QtGui.QTableWidgetItem(cfg[item])
-                        self.table.setItem(row -1, col, newitem2)
+                        self.table.setItem(row - 1, col, newitem2)
             else:
                 index = self.get_keys().index(item)
-                self.table.item(index, 1).setText(cfg[item])   
+                self.table.item(index, 1).setText(cfg[item])
 
-                      
     def addDataConf(self, options):
         keys = self.get_keys()
         newconfigs = dict((option[0], '') for option in options if option[0] not in keys)
@@ -268,13 +272,15 @@ class Table(QtGui.QWidget):
     def add_to_combo(self, items):
         self.combobox.clear()
         self.combobox.addItems(items)
-    
+
 #----------------------------------------------------------------------------------------------------
 #-----------------------------------------CREATE CONFIG----------------------------------------------
-class Conf_Tab(QtGui.QWidget):
-    def __init__(self, parent = None):
 
-        super(Conf_Tab,self).__init__()
+
+class Conf_Tab(QtGui.QWidget):
+    def __init__(self, parent=None):
+
+        super(Conf_Tab, self).__init__()
         #we create 3 tables
         self.Dis = Table(QtGui.QLabel('<strong>Dispatcher :</strong>'))
         self.Inp = Table(QtGui.QLabel('<strong>Input :</strong>'))
@@ -289,14 +295,14 @@ class Conf_Tab(QtGui.QWidget):
         self.scan.setToolTip('scan selection example: 820 824')
 
         vbox = QtGui.QVBoxLayout()
-        hbox = QtGui.QHBoxLayout() 
+        hbox = QtGui.QHBoxLayout()
         splitter = QtGui.QSplitter(QtCore.Qt.Horizontal)
         splitter.addWidget(self.Dis)
         splitter.addWidget(self.Inp)
         splitter.addWidget(self.Pro)
-        hbox.addWidget(splitter) 
+        hbox.addWidget(splitter)
 
-        commandbox = QtGui.QHBoxLayout() 
+        commandbox = QtGui.QHBoxLayout()
         commandbox.addWidget(self.add)
         commandbox.addWidget(self.scan)
 
@@ -312,25 +318,25 @@ class Conf_Tab(QtGui.QWidget):
         #Layout.addWidget(self.select,0,0)
         #Layout.addWidget(self.Dis,2,1)
         #Layout.addWidget(self.Inp,2,0)
-        #Layout.addWidget(self.Pro,2,2) 
+        #Layout.addWidget(self.Pro,2,2)
         #Layout.addWidget(self.add,3,0)
         #Layout.addWidget(self.scan,3,1)
         self.setLayout(vbox)
-        
-        #Here we call all methods for selected an ellement on differents combobox 
+
+        #Here we call all methods for selected an ellement on differents combobox
         self.Dis.add_to_combo(QtCore.QStringList(binoculars.util.get_dispatchers()))
         self.select.activated['QString'].connect(self.DataCombo)
         self.Inp.combobox.activated.connect(self.DataTableInp)
         self.Pro.combobox.activated.connect(self.DataTableInpPro)
-        self.Dis.combobox.activated.connect(self.DataTableInpDis) 
+        self.Dis.combobox.activated.connect(self.DataTableInpDis)
 
-    def DataCombo(self,text):
+    def DataCombo(self, text):
         self.Inp.add_to_combo(QtCore.QStringList(binoculars.util.get_inputs(str(text))))
         self.Pro.add_to_combo(QtCore.QStringList(binoculars.util.get_projections(str(text))))
         self.DataTableInp()
         self.DataTableInpPro()
         self.DataTableInpDis()
-      
+
     def DataTableInp(self):
         backend = str(self.select.currentText())
         inp = binoculars.util.get_input_configkeys(backend, str(self.Inp.combobox.currentText()))
@@ -347,7 +353,7 @@ class Conf_Tab(QtGui.QWidget):
         self.Dis.addDataConf(disp)
 
     #The save method we take all ellements on tables and we put them in this format {0} = {1} #{2}
-    def save(self, filename): 
+    def save(self, filename):
         with open(filename, 'w') as fp:
             fp.write('[dispatcher]\n')
             # cycles over the iterator object
@@ -356,12 +362,12 @@ class Conf_Tab(QtGui.QWidget):
             fp.write('[input]\n')
             for key, value, comment in self.Inp.getParam():
                 if key == 'type':
-                    value = '{0}:{1}'.format(self.select.currentText(),value)
+                    value = '{0}:{1}'.format(self.select.currentText(), value)
                 fp.write('{0} = {1} #{2}\n'.format(key, value, comment))
             fp.write('[projection]\n')
             for key, value, comment in self.Pro.getParam():
                 if key == 'type':
-                    value = '{0}:{1}'.format(self.select.currentText(),value)
+                    value = '{0}:{1}'.format(self.select.currentText(), value)
                 fp.write('{0} = {1} #{2}\n'.format(key, value, comment))
 
     #This method take the name of objects and values for run the script
@@ -375,12 +381,12 @@ class Conf_Tab(QtGui.QWidget):
 
         for key, value, comment in self.Inp.getParam():
             if key == 'type':
-                value = '{0}:{1}'.format(str(self.select.currentText()).strip(),value)
-            inInp[key] = value  
+                value = '{0}:{1}'.format(str(self.select.currentText()).strip(), value)
+            inInp[key] = value
 
         for key, value, comment in self.Pro.getParam():
             if key == 'type':
-                value = '{0}:{1}'.format(str(self.select.currentText()).strip(),value)
+                value = '{0}:{1}'.format(str(self.select.currentText()).strip(), value)
             inPro[key] = value
 
         cfg = binoculars.util.ConfigFile('processgui {0}'.format(time.strftime('%d %b %Y %H:%M:%S', time.localtime())))
@@ -391,7 +397,7 @@ class Conf_Tab(QtGui.QWidget):
 
     #This method take elements on a text file or the binocular script and put them on tables
     def read_data(self, filename):
-        cfg = binoculars.util.ConfigFile.fromtxtfile(str(filename))    
+        cfg = binoculars.util.ConfigFile.fromtxtfile(str(filename))
         input_type = cfg.input['type']
         backend, value = input_type.strip(' ').split(':')
         self.select.setCurrentIndex(self.select.findText(backend, QtCore.Qt.MatchFixedString))
@@ -404,9 +410,9 @@ class Conf_Tab(QtGui.QWidget):
     def AddCommand(self):
         scan = [str(self.scan.text())]
         cfg = self.get_configobj()
-        commandconfig = (scan , cfg)
+        commandconfig = (scan, cfg)
         self.emit(QtCore.SIGNAL('command'), commandconfig)
-        
+
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
 
@@ -414,4 +420,3 @@ if __name__ == '__main__':
     main.show()
 
     sys.exit(app.exec_())
-

@@ -24,7 +24,7 @@ class Axis(object):
 
     Important attributes:
     min     lower bound
-    max     upper bound 
+    max     upper bound
     res     step size / resolution
     label   human-readable identifier
 
@@ -51,7 +51,7 @@ class Axis(object):
     @property
     def min(self):
         return self.imin * self.res
-    
+
     def __len__(self):
         return self.imax - self.imin + 1
 
@@ -112,7 +112,7 @@ class Axis(object):
                 return intvalue - self.imin
             raise ValueError('cannot get indices, values from [{0}, {1}], axes range [{2}, {3}]'.format(value.min(), value.max(), self.min, self.max))
 
-    def __or__(self, other): # union operation
+    def __or__(self, other):  # union operation
         if not isinstance(other, Axis):
             return NotImplemented
         if not self.is_compatible(other):
@@ -143,37 +143,36 @@ class Axis(object):
 
     def rebin(self, factor):
         # for integers the following relations hold: a // b == floor(a / b), -(-a // b) == ceil(a / b)
-        new = self.__class__(self.imin // factor, -(-self.imax  // factor), factor*self.res, self.label)
+        new = self.__class__(self.imin // factor, -(-self.imax // factor), factor*self.res, self.label)
         return self.imin % factor, -self.imax % factor, new
 
     def __repr__(self):
         return '{0.__class__.__name__} {0.label} (min={0.min}, max={0.max}, res={0.res}, count={1})'.format(self, len(self))
 
-
-    def restrict(self, value):#Useful for plotting
-       if isinstance(value, numbers.Number):
-           if value < self.min:
-               return self.min
-           elif value > self.max:
-               return self.max
-           else:
-               return value
-       elif isinstance(value, slice):
-           if value.step is not None:
-                   raise IndexError('stride not supported')
-           if value.start is None:
-               start = None
-           else:
-               start = self.restrict(value.start)
-           if value.stop is None:
-               stop = None
-           if value.stop == self.max:
-               stop = None
-           else:
-               stop = self.restrict(value.stop)
-           if start is not None and stop is not None and start > stop:
-               start, stop = stop, start
-           return slice(start, stop)
+    def restrict(self, value):  # Useful for plotting
+        if isinstance(value, numbers.Number):
+            if value < self.min:
+                return self.min
+            elif value > self.max:
+                return self.max
+            else:
+                return value
+        elif isinstance(value, slice):
+            if value.step is not None:
+                    raise IndexError('stride not supported')
+            if value.start is None:
+                start = None
+            else:
+                start = self.restrict(value.start)
+            if value.stop is None:
+                stop = None
+            if value.stop == self.max:
+                stop = None
+            else:
+                stop = self.restrict(value.stop)
+            if start is not None and stop is not None and start > stop:
+                start, stop = stop, start
+            return slice(start, stop)
 
 
 class Axes(object):
@@ -207,10 +206,10 @@ class Axes(object):
                 if 'axes' in fp and 'axes_labels' in fp:
                     # oldest style, float min/max
                     return cls(tuple(Axis(min, max, res, lbl) for ((min, max, res), lbl) in zip(fp['axes'], fp['axes_labels'])))
-                elif 'axes' in fp:#new
+                elif 'axes' in fp:  # new
                     try:
                         axes = tuple(Axis(int(imin), int(imax), res, lbl) for ((index, fmin, fmax, res, imin, imax), lbl) in zip(fp['axes'].values(), fp['axes'].keys()))
-                        return cls(tuple(axes[int(values[0])] for values in fp['axes'].values()))#reorder the axes to the way in which they were saved
+                        return cls(tuple(axes[int(values[0])] for values in fp['axes'].values()))  # reorder the axes to the way in which they were saved
                     except ValueError:
                         return cls(tuple(Axis(int(imin), int(imax), res, lbl) for ((imin, imax, res), lbl) in zip(fp['axes'].values(), fp['axes'].keys())))
                 else:
@@ -223,7 +222,7 @@ class Axes(object):
         with util.open_h5py(filename, 'w') as fp:
             axes = fp.create_group('axes')
             for index, ax in enumerate(self.axes):
-                axes.create_dataset(ax.label, data = [index, ax.min, ax.max, ax.res, ax.imin, ax.imax])
+                axes.create_dataset(ax.label, data=[index, ax.min, ax.max, ax.res, ax.imin, ax.imax])
 
     def toarray(self):
         return numpy.vstack(numpy.hstack([str(ax.imin), str(ax.imax), str(ax.res), ax.label]) for ax in self.axes)
@@ -291,10 +290,10 @@ class Axes(object):
 class EmptySpace(object):
     """Convenience object for sum() and friends. Treated as zero for addition.
     Does not share a base class with Space for simplicity."""
-    def __init__(self,config=None, metadata=None):
+    def __init__(self, config=None, metadata=None):
         self.config = config
         self.metadata = metadata
-        
+
     def __add__(self, other):
         if not isinstance(other, Space) and not isinstance(other, EmptySpace):
             return NotImplemented
@@ -314,15 +313,14 @@ class EmptySpace(object):
         """Store EmptySpace in HDF5 file."""
         with util.atomic_write(filename) as tmpname:
             with util.open_h5py(tmpname, 'w') as fp:
-                fp.attrs['type'] = 'Empty'           
+                fp.attrs['type'] = 'Empty'
 
     def __repr__(self):
         return '{0.__class__.__name__}'.format(self)
-  
 
 
 class Space(object):
-    """Main data-storing object in BINoculars. 
+    """Main data-storing object in BINoculars.
     Data is represented on an n-dimensional rectangular grid. Per grid point,
     the number of photons (~ intensity) and the number of original data points
     (pixels) contribution is stored.
@@ -341,10 +339,10 @@ class Space(object):
 
         self.config = config
         self.metadata = metadata
-        
+
         self.photons = numpy.zeros([len(ax) for ax in self.axes], order='C')
         self.contributions = numpy.zeros(self.photons.shape, order='C')
-       
+
     @property
     def dimension(self):
         return self.axes.dimension
@@ -400,7 +398,7 @@ class Space(object):
 
     def __repr__(self):
         return '{0.__class__.__name__} ({0.dimension} dimensions, {0.npoints} points, {1}) {{\n    {2}\n}}'.format(self, util.format_bytes(self.memory_size), '\n    '.join(repr(ax) for ax in self.axes))
-    
+
     def __getitem__(self, key):
         """Slicing only! space[-0.2:0.2, 0.9:1.1] does exactly what the syntax implies.
         Ellipsis operator '...' is not supported."""
@@ -414,7 +412,7 @@ class Space(object):
         newspace.contributions = self.contributions[newkey].copy()
         return newspace
 
-    def get_key(self, key):#needed in the fitaid for visualising the interpolated data
+    def get_key(self, key):  # needed in the fitaid for visualising the interpolated data
         """Convert the n-dimensional interval described by key (as used by e.g. __getitem__()) from data coordinates to indices."""
         if isinstance(key, numbers.Number) or isinstance(key, slice):
             if not len(self.axes) == 1:
@@ -428,7 +426,7 @@ class Space(object):
     def project(self, axis, *more_axes):
         """Reduce dimensionality of Space by projecting onto 'axis'.
         All data (photons, contributions) is summed along this axis.
-        
+
         axis         the label of the axis or the index
         *more_axis   also project on these axes"""
 
@@ -458,7 +456,7 @@ class Space(object):
         return numpy.ma.array(data=self.get(), mask=(self.contributions == 0))
 
     def get_variance(self):
-        return numpy.ma.array(data=1 / self.contributions, mask = (self.contributions == 0))
+        return numpy.ma.array(data=1 / self.contributions, mask=(self.contributions == 0))
 
     def get_grid(self):
         """Returns the data coordinates of each grid point, as n-tuple of n-dimensinonal arrays.
@@ -480,7 +478,7 @@ class Space(object):
         if isinstance(other, numbers.Number):
             new = self.copy()
             new.photons += other * self.contributions
-            return new 
+            return new
         if not isinstance(other, Space):
             return NotImplemented
         if not len(self.axes) == len(other.axes) or not all(a.is_compatible(b) for (a, b) in zip(self.axes, other.axes)):
@@ -518,8 +516,8 @@ class Space(object):
     def __mul__(self, other):
         if isinstance(other, numbers.Number):
             new = self.__class__(self.axes, self.config, self.metadata)
-            #we would like to keep 1/contributions as the variance
-            #var(aX) = a**2var(X)
+            # we would like to keep 1/contributions as the variance
+            # var(aX) = a**2var(X)
             new.photons = self.photons / other
             new.contributions = self.contributions / other**2
             return new
@@ -538,14 +536,14 @@ class Space(object):
 
     def rebin(self, resolutions):
         """Change bin size.
-    
+
         resolution    n-tuple of floats, new resolution of each axis"""
         if not len(resolutions) == len(self.axes):
             raise ValueError('cannot rebin space with different dimensionality')
         if resolutions == tuple(ax.res for ax in self.axes):
             return self
 
-        # gather data and transform        
+        # gather data and transform
         coords = self.get_grid()
         intensity = self.get()
         weights = self.contributions
@@ -557,13 +555,13 @@ class Space(object):
             raise ValueError('dimension mismatch')
         newindices = list(self.axes.index(label) for label in labels)
         new = self.__class__(tuple(self.axes[index] for index in newindices), self.config, self.metadata)
-        new.photons = numpy.transpose(self.photons, axes = newindices)
-        new.contributions = numpy.transpose(self.contributions, axes = newindices)
+        new.photons = numpy.transpose(self.photons, axes=newindices)
+        new.contributions = numpy.transpose(self.contributions, axes=newindices)
         return new
-        
+
     def transform_coordinates(self, resolutions, labels, transformation):
         # gather data and transform
-        
+
         coords = self.get_grid()
         transcoords = transformation(*coords)
         intensity = self.get()
@@ -584,13 +582,13 @@ class Space(object):
         if len(coordinates) != len(self.axes):
             raise ValueError('dimension mismatch between coordinates and axes')
 
-        intensity = numpy.nan_to_num(intensity).flatten()#invalids should be handeled by setting weight to 0, this ensures the weights can do that         
+        intensity = numpy.nan_to_num(intensity).flatten()  # invalids should be handeled by setting weight to 0, this ensures the weights can do that
         weights = weights.flatten()
 
         indices = numpy.array(tuple(ax.get_index(coord) for (ax, coord) in zip(self.axes, coordinates)))
         for i in range(0, len(self.axes)):
             for j in range(i+1, len(self.axes)):
-                indices[i,:] *= len(self.axes[j])
+                indices[i, :] *= len(self.axes[j])
         indices = indices.sum(axis=0).astype(int).flatten()
 
         photons = numpy.bincount(indices, weights=intensity * weights)
@@ -600,8 +598,8 @@ class Space(object):
         self.contributions.ravel()[:contributions.size] += contributions
 
     @classmethod
-    def from_image(cls, resolutions, labels, coordinates, intensity, weights, limits = None):
-        """Create Space from image data. 
+    def from_image(cls, resolutions, labels, coordinates, intensity, weights, limits=None):
+        """Create Space from image data.
 
         resolutions   n-tuple of axis resolutions
         labels          n-tuple of axis labels
@@ -611,14 +609,14 @@ class Space(object):
         if limits is not None:
             invalid = numpy.zeros(intensity.shape).astype(numpy.bool)
             for coord, sl in zip(coordinates, limits):
-                if sl.start == None and sl.stop != None:
+                if sl.start is None and sl.stop ia not None:
                     invalid += coord > sl.stop
-                elif sl.start != None and sl.stop == None:
+                elif sl.start is not None and sl.stop is None:
                     invalid += coord < sl.start
-                elif sl.start != None and sl.stop != None:
+                elif sl.start is not None and sl.stop os not None:
                     invalid += numpy.bitwise_or(coord < sl.start, coord > sl.stop)
 
-            if numpy.all(invalid == True):
+            if numpy.all(invalid is True):
                 return EmptySpace()
             coordinates = tuple(coord[~invalid] for coord in coordinates)
             intensity = intensity[~invalid]
@@ -651,7 +649,7 @@ class Space(object):
                 if 'type' in fp.attrs.keys():
                     if fp.attrs['type'] == 'Empty':
                         return EmptySpace()
-                
+
                 axes = Axes.fromfile(fp)
                 config = util.ConfigFile.fromfile(fp)
                 metadata = util.MetaData.fromfile(fp)
@@ -673,9 +671,10 @@ class Space(object):
             raise errors.HDF5FileError("unable to open '{0}' as HDF5 file (original error: {1!r})".format(file, e))
         return space
 
+
 class Multiverse(object):
     """A collection of spaces with basic support for addition.
-       Only to be used when processing data. This makes it possible to 
+       Only to be used when processing data. This makes it possible to
        process multiple limit sets in a combination of scans"""
 
     def __init__(self, spaces):
@@ -690,7 +689,7 @@ class Multiverse(object):
             return NotImplemented
         if not self.dimension == other.dimension:
             raise ValueError('cannot add multiverses with different dimensionality')
-        return self.__class__(tuple(s + o for s,o in zip(self.spaces, other.spaces)))
+        return self.__class__(tuple(s + o for s, o in zip(self.spaces, other.spaces)))
 
     def __iadd__(self, other):
         if not isinstance(other, Multiverse):
@@ -727,9 +726,10 @@ class Multiverse(object):
     def __repr__(self):
         return '{0.__class__.__name__}\n{1}'.format(self, self.spaces)
 
+
 class EmptyVerse(object):
     """Convenience object for sum() and friends. Treated as zero for addition."""
-        
+
     def __add__(self, other):
         if not isinstance(other, Multiverse):
             return NotImplemented
@@ -744,7 +744,8 @@ class EmptyVerse(object):
         if not isinstance(other, Multiverse):
             return NotImplemented
         return other
- 
+
+
 def union_axes(axes):
     axes = tuple(axes)
     if len(axes) == 1:
@@ -758,6 +759,7 @@ def union_axes(axes):
     first = axes[0]
     return first.__class__(mi, ma, first.res, first.label)
 
+
 def union_unequal_axes(axes):
     axes = tuple(axes)
     if len(axes) == 1:
@@ -768,9 +770,10 @@ def union_unequal_axes(axes):
         raise ValueError('cannot unite axes with different label')
     mi = min(ax.min for ax in axes)
     ma = max(ax.max for ax in axes)
-    res = min(ax.res for ax in axes) #making it easier to use the sliderwidget otherwise this hase no meaning
+    res = min(ax.res for ax in axes)  # making it easier to use the sliderwidget otherwise this hase no meaning
     first = axes[0]
     return first.__class__(mi, ma, res, first.label)
+
 
 def sum(spaces):
     """Calculate sum of iterable of Space instances."""
@@ -789,11 +792,14 @@ def sum(spaces):
         newspace += space
     return newspace
 
+
 def verse_sum(verses):
     i = iter(M.spaces for M in verses)
     return Multiverse(sum(spaces) for spaces in itertools.izip(*i))
 
 # hybrid sum() / __iadd__()
+
+
 def chunked_sum(verses, chunksize=10):
     """Calculate sum of iterable of Multiverse instances. Creates intermediate sums to avoid growing a large space at every summation.
 
@@ -804,7 +810,8 @@ def chunked_sum(verses, chunksize=10):
         result += verse_sum(M for M in chunk)
     return result
 
-def iterate_over_axis(space, axis, resolution = None):
+
+def iterate_over_axis(space, axis, resolution=None):
     ax = space.axes[space.axes.index(axis)]
     if resolution:
         bins = get_bins(ax, resolution)
@@ -812,9 +819,10 @@ def iterate_over_axis(space, axis, resolution = None):
             yield space.slice(axis, slice(start, stop))
     else:
         for value in ax:
-           yield space.slice(axis, value)
-        
-def get_axis_values(axes, axis, resolution = None):
+            yield space.slice(axis, value)
+
+
+def get_axis_values(axes, axis, resolution=None):
     ax = axes[axes.index(axis)]
     if resolution:
         bins = get_bins(ax, resolution)
@@ -822,7 +830,8 @@ def get_axis_values(axes, axis, resolution = None):
     else:
         return numpy.array(list(ax))
 
-def iterate_over_axis_keys(axes, axis, resolution = None):
+
+def iterate_over_axis_keys(axes, axis, resolution=None):
     axindex = axes.index(axis)
     ax = axes[axindex]
     k = [slice(None) for i in axes]
@@ -836,12 +845,14 @@ def iterate_over_axis_keys(axes, axis, resolution = None):
             k[axindex] = value
             yield k
 
+
 def get_bins(ax, resolution):
     if float(resolution) < ax.res:
         raise ValueError('interval {0} to low, minimum interval is {1}'.format(resolution, ax.res))
 
     mi, ma = ax.min, ax.max
     return numpy.linspace(mi, ma, numpy.ceil(1 / numpy.float(resolution) * (ma - mi)))
+
 
 def dstack(spaces, dindices, dlabel, dresolution):
     def transform(space, dindex):
@@ -855,12 +866,14 @@ def dstack(spaces, dindices, dlabel, dresolution):
         return space.transform_coordinates(resolutions, labels, transformation)
     return sum(transform(space, dindex) for space, dindex in itertools.izip(spaces, dindices))
 
+
 def axis_offset(space, label, offset):
     exprs = list(ax.label for ax in space.axes)
     index = space.axes.index(label)
     exprs[index] += '+ {0}'.format(offset)
     transformation = util.transformation_from_expressions(space, exprs)
     return space.transform_coordinates((ax.res for ax in space.axes), (ax.label for ax in space.axes), transformation)
+
 
 def bkgsubtract(space, bkg):
     if space.dimension == bkg.dimension:
@@ -876,15 +889,13 @@ def bkgsubtract(space, bkg):
         bkg.contributions = contributions
         return bkgsubtract(space, bkg)
 
+
 def make_compatible(spaces):
-    if not numpy.alen(numpy.unique(len(space.axes) for space in spaces)) == 1:    
+    if not numpy.alen(numpy.unique(len(space.axes) for space in spaces)) == 1:
         raise ValueError('cannot make spaces with different dimensionality compatible')
     ax0 = tuple(ax.label for ax in spaces[0].axes)
-    resmax = tuple(numpy.vstack(tuple(ax.res for ax in space.reorder(ax0).axes) for space in spaces).max(axis = 0))
-    resmin = tuple(numpy.vstack(tuple(ax.res for ax in space.reorder(ax0).axes) for space in spaces).min(axis = 0))
+    resmax = tuple(numpy.vstack(tuple(ax.res for ax in space.reorder(ax0).axes) for space in spaces).max(axis=0))
+    resmin = tuple(numpy.vstack(tuple(ax.res for ax in space.reorder(ax0).axes) for space in spaces).min(axis=0))
     if not resmax == resmin:
         print 'Warning: Not all spaces have the same resolution. Resolution will be changed to: {0}'.format(resmax)
     return tuple(space.reorder(ax0).rebin2(resmax) for space in spaces)
-
-
-

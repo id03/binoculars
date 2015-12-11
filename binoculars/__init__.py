@@ -1,12 +1,15 @@
-import os,sys
+import os
+import sys
 
 # for scripted useage
-def run(args):    
+
+
+def run(args):
     '''Parameters
         args: string
             String as if typed in terminal. The string must consist
             of the location of the configuration file and the command
-            for specifying the jobs that need to be processed. 
+            for specifying the jobs that need to be processed.
             All additonal configuration file overides can be included
 
         Returns
@@ -25,14 +28,15 @@ def run(args):
     import binoculars.main
     binoculars.util.register_python_executable(__file__)
     main = binoculars.main.Main.from_args(args.split(' '))
-    
+
     if isinstance(main.result, binoculars.space.Multiverse):
         return main.result.spaces
     if type(main.result) == bool:
         filenames = main.dispatcher.config.destination.final_filenames()
         return tuple(binoculars.space.Space.fromfile(fn) for fn in filenames)
 
-def load(filename, key = None):
+
+def load(filename, key=None):
     ''' Parameters
         filename: string
             Only hdf5 files are acceptable
@@ -52,13 +56,14 @@ def load(filename, key = None):
     '''
     import binoculars.space
     if os.path.exists(filename):
-        return binoculars.space.Space.fromfile(filename, key = key)
+        return binoculars.space.Space.fromfile(filename, key=key)
     else:
         raise IOError("File '{0}' does not exist".format(filename))
 
+
 def save(filename, space):
     '''
-        Save a space to file        
+        Save a space to file
 
         Parameters
         filename: string
@@ -76,22 +81,24 @@ def save(filename, space):
         >>> binoculars.save('test.hdf5', space)
     '''
 
-    import binoculars.space, binoculars.util
+    import binoculars.space
+    import binoculars.util
     if isinstance(space, binoculars.space.Space):
         ext = os.path.splitext(filename)[-1]
         if ext == '.txt':
             binoculars.util.space_to_txt(space, filename)
         elif ext == '.edf':
             binoculars.util.space_to_edf(space, filename)
-        else:        
+        else:
             space.tofile(filename)
     else:
         raise TypeError("'{0!r}' is not a binoculars space".format(space))
 
+
 def plotspace(space, log=True, clipping=0.0, fit=None, norm=None, colorbar=True, labels=True, **plotopts):
-    '''         
+    '''
         plots a space with the correct axes. The space can be either one or two dimensinal.
-        
+
         Parameters
         space: binoculars space
             the space containing the data that needs to be plotted
@@ -121,27 +128,29 @@ def plotspace(space, log=True, clipping=0.0, fit=None, norm=None, colorbar=True,
     '''
 
     import matplotlib.pyplot as pyplot
-    import binoculars.plot, binoculars.space
+    import binoculars.plot
+    import binoculars.space
 
     if isinstance(space, binoculars.space.Space):
         if space.dimension == 3:
             from mpl_toolkits.mplot3d import Axes3D
             ax = pyplot.gcf().gca(projection='3d')
-            return binoculars.plot.plot(space, pyplot.gcf(), ax, log=log, clipping=clipping, fit=None, norm=norm, colorbar=colorbar, labels=labels, **plotopts)        
+            return binoculars.plot.plot(space, pyplot.gcf(), ax, log=log, clipping=clipping, fit=None, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
         if fit is not None and space.dimension == 2:
             ax = pyplot.gcf().add_subplot(121)
-            binoculars.plot.plot(space, pyplot.gcf(), ax, log=log, clipping=clipping, fit=None, norm=norm, colorbar=colorbar, labels=labels, **plotopts)        
+            binoculars.plot.plot(space, pyplot.gcf(), ax, log=log, clipping=clipping, fit=None, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
             ax = pyplot.gcf().add_subplot(122)
-            return binoculars.plot.plot(space, pyplot.gcf(), ax, log=log, clipping=clipping, fit=fit, norm=norm, colorbar=colorbar, labels=labels, **plotopts)        
+            return binoculars.plot.plot(space, pyplot.gcf(), ax, log=log, clipping=clipping, fit=fit, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
         else:
             return binoculars.plot.plot(space, pyplot.gcf(), pyplot.gca(), log=log, clipping=clipping, fit=fit, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
     else:
         raise TypeError("'{0!r}' is not a binoculars space".format(space))
 
+
 def transform(space, labels, resolutions, exprs):
-    ''' 
+    '''
         transformation of the coordinates.
-        
+
         Parameters
         space: binoculars space
         labels: list
@@ -169,7 +178,8 @@ def transform(space, labels, resolutions, exprs):
             Axis twotheta (min=0.066, max=0.519, res=0.003, count=152)
         }
     '''
-    import binoculars.util, binoculars.space
+    import binoculars.util
+    import binoculars.space
     if isinstance(space, binoculars.space.Space):
         transformation = binoculars.util.transformation_from_expressions(space, exprs)
         newspace = space.transform_coordinates(resolutions, labels, transformation)
@@ -177,10 +187,11 @@ def transform(space, labels, resolutions, exprs):
         raise TypeError("'{0!r}' is not a binoculars space".format(space))
     return newspace
 
-def fitspace(space, function, guess = None):
-    ''' 
+
+def fitspace(space, function, guess=None):
+    '''
         fit the space data.
-        
+
         Parameters
         space: binoculars space
         function: list
@@ -191,7 +202,7 @@ def fitspace(space, function, guess = None):
 
         Returns
         A binoculars fit object.
-       
+
         Examples:
         >>> fit = binoculars.fitspace(space, 'lorentzian')
         >>> print fit.summary
@@ -216,7 +227,7 @@ def fitspace(space, function, guess = None):
 
 def info(filename):
     '''
-        Explore the file without loading the file, or after loading the file      
+        Explore the file without loading the file, or after loading the file
 
         Parameters
         filename: filename or space

@@ -12,11 +12,13 @@ import Queue
 import socket
 import SocketServer
 import threading
-import matplotlib.figure, matplotlib.image
+import matplotlib.figure
+import matplotlib.image
 
 from mpl_toolkits.mplot3d import Axes3D
 from PyQt4 import QtGui, QtCore, Qt
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationToolbar2QTAgg
+
 
 def set_src():
     import sys
@@ -38,26 +40,28 @@ except ImportError:
     import binoculars.util
 
 #RangeSlider is taken from https://www.mail-archive.com/pyqt@riverbankcomputing.com/msg22889.html
+
+
 class RangeSlider(QtGui.QSlider):
     """ A slider for ranges.
-    
+
         This class provides a dual-slider for ranges, where there is a defined
         maximum and minimum, as is a normal slider, but instead of having a
         single slider value, there are 2 slider values.
-        
-        This class emits the same signals as the QSlider base class, with the 
+
+        This class emits the same signals as the QSlider base class, with the
         exception of valueChanged
     """
     def __init__(self, *args):
         super(RangeSlider, self).__init__(*args)
-        
+
         self._low = self.minimum()
         self._high = self.maximum()
-        
+
         self.pressed_control = QtGui.QStyle.SC_None
         self.hover_control = QtGui.QStyle.SC_None
         self.click_offset = 0
-        
+
         # 0 for the low, 1 for the high, -1 for both
         self.active_slider = 0
 
@@ -74,14 +78,13 @@ class RangeSlider(QtGui.QSlider):
     def setHigh(self, high):
         self._high = high
         self.update()
-        
-        
+
     def paintEvent(self, event):
         # based on http://qt.gitorious.org/qt/qt/blobs/master/src/gui/widgets/qslider.cpp
 
         painter = QtGui.QPainter(self)
-        style = QtGui.QApplication.style() 
-        
+        style = QtGui.QApplication.style()
+
         for i, value in enumerate([self._low, self._high]):
             opt = QtGui.QStyleOptionSlider()
             self.initStyleOption(opt)
@@ -89,7 +92,7 @@ class RangeSlider(QtGui.QSlider):
             # Only draw the groove for the first slider so it doesn't get drawn
             # on top of the existing ones every time
             if i == 0:
-                opt.subControls = QtGui.QStyle.SC_SliderHandle#QtGui.QStyle.SC_SliderGroove | QtGui.QStyle.SC_SliderHandle
+                opt.subControls = QtGui.QStyle.SC_SliderHandle  # QtGui.QStyle.SC_SliderGroove | QtGui.QStyle.SC_SliderHandle
             else:
                 opt.subControls = QtGui.QStyle.SC_SliderHandle
 
@@ -103,35 +106,34 @@ class RangeSlider(QtGui.QSlider):
                 opt.activeSubControls = self.hover_control
 
             opt.sliderPosition = value
-            opt.sliderValue = value                                  
+            opt.sliderValue = value
             style.drawComplexControl(QtGui.QStyle.CC_Slider, opt, painter, self)
-            
-        
+
     def mousePressEvent(self, event):
         event.accept()
-        
+
         style = QtGui.QApplication.style()
         button = event.button()
-        
-        # In a normal slider control, when the user clicks on a point in the 
+
+        # In a normal slider control, when the user clicks on a point in the
         # slider's total range, but not on the slider part of the control the
         # control would jump the slider value to where the user clicked.
         # For this control, clicks which are not direct hits will slide both
         # slider parts
-                
+
         if button:
             opt = QtGui.QStyleOptionSlider()
             self.initStyleOption(opt)
 
             self.active_slider = -1
-            
+
             for i, value in enumerate([self._low, self._high]):
-                opt.sliderPosition = value                
+                opt.sliderPosition = value
                 hit = style.hitTestComplexControl(style.CC_Slider, opt, event.pos(), self)
                 if hit == style.SC_SliderHandle:
                     self.active_slider = i
                     self.pressed_control = hit
-                    
+
                     self.triggerAction(self.SliderMove)
                     self.setRepeatAction(self.SliderNoAction)
                     self.setSliderDown(True)
@@ -145,21 +147,19 @@ class RangeSlider(QtGui.QSlider):
         else:
             event.ignore()
 
-
     def mouseReleaseEvent(self, event):
         self.emit(QtCore.SIGNAL('sliderReleased()'))
 
-                                
     def mouseMoveEvent(self, event):
         if self.pressed_control != QtGui.QStyle.SC_SliderHandle:
             event.ignore()
             return
-        
+
         event.accept()
         new_pos = self.__pixelPosToRangeValue(self.__pick(event.pos()))
         opt = QtGui.QStyleOptionSlider()
         self.initStyleOption(opt)
-        
+
         if self.active_slider < 0:
             offset = new_pos - self.click_offset
             self._high += offset
@@ -171,7 +171,7 @@ class RangeSlider(QtGui.QSlider):
             if self._high > self.maximum():
                 diff = self.maximum() - self._high
                 self._low += diff
-                self._high += diff            
+                self._high += diff
         elif self.active_slider == 0:
             if new_pos >= self._high:
                 new_pos = self._high - 1
@@ -186,22 +186,21 @@ class RangeSlider(QtGui.QSlider):
         self.update()
 
         self.emit(QtCore.SIGNAL('sliderMoved(int)'), new_pos)
-            
+
     def __pick(self, pt):
         if self.orientation() == QtCore.Qt.Horizontal:
             return pt.x()
         else:
             return pt.y()
-           
-           
+
     def __pixelPosToRangeValue(self, pos):
         opt = QtGui.QStyleOptionSlider()
         self.initStyleOption(opt)
         style = QtGui.QApplication.style()
-        
+
         gr = style.subControlRect(style.CC_Slider, opt, style.SC_SliderGroove, self)
         sr = style.subControlRect(style.CC_Slider, opt, style.SC_SliderHandle, self)
-        
+
         if self.orientation() == QtCore.Qt.Horizontal:
             slider_length = sr.width()
             slider_min = gr.x()
@@ -210,60 +209,59 @@ class RangeSlider(QtGui.QSlider):
             slider_length = sr.height()
             slider_min = gr.y()
             slider_max = gr.bottom() - slider_length + 1
-            
+
         return style.sliderValueFromPosition(self.minimum(), self.maximum(),
                                              pos-slider_min, slider_max-slider_min,
                                              opt.upsideDown)
-
 
 
 class Window(QtGui.QMainWindow):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
 
-        newproject = QtGui.QAction("New project", self)  
+        newproject = QtGui.QAction("New project", self)
         newproject.triggered.connect(self.newproject)
 
-        loadproject = QtGui.QAction("Open project", self)  
+        loadproject = QtGui.QAction("Open project", self)
         loadproject.triggered.connect(self.loadproject)
 
-        saveproject = QtGui.QAction("Save project", self)  
+        saveproject = QtGui.QAction("Save project", self)
         saveproject.triggered.connect(self.saveproject)
 
-        addspace = QtGui.QAction("Import space", self)  
+        addspace = QtGui.QAction("Import space", self)
         addspace.triggered.connect(self.add_to_project)
 
-        savespace = QtGui.QAction("Export space", self)  
+        savespace = QtGui.QAction("Export space", self)
         savespace.triggered.connect(self.exportspace)
 
-        menu_bar = QtGui.QMenuBar() 
-        file = menu_bar.addMenu("&File") 
-        file.addAction(newproject) 
-        file.addAction(loadproject) 
+        menu_bar = QtGui.QMenuBar()
+        file = menu_bar.addMenu("&File")
+        file.addAction(newproject)
+        file.addAction(loadproject)
         file.addAction(saveproject)
         file.addAction(addspace)
-        file.addAction(savespace) 
+        file.addAction(savespace)
 
-        merge = QtGui.QAction("Merge", self)  
+        merge = QtGui.QAction("Merge", self)
         merge.triggered.connect(self.merge)
 
-        subtract = QtGui.QAction("Subtract", self)  
+        subtract = QtGui.QAction("Subtract", self)
         subtract.triggered.connect(self.subtract)
- 
-        edit = menu_bar.addMenu("&Edit") 
-        edit.addAction(merge) 
-        edit.addAction(subtract) 
 
-        start_server = QtGui.QAction("Start server queue", self)  
-        start_server.triggered.connect(lambda: self.open_server(startq = True))
+        edit = menu_bar.addMenu("&Edit")
+        edit.addAction(merge)
+        edit.addAction(subtract)
 
-        stop_server = QtGui.QAction("Stop server queue", self)  
+        start_server = QtGui.QAction("Start server queue", self)
+        start_server.triggered.connect(lambda: self.open_server(startq=True))
+
+        stop_server = QtGui.QAction("Stop server queue", self)
         stop_server.triggered.connect(self.kill_server)
 
-        recieve = QtGui.QAction("Open for spaces", self)  
-        recieve.triggered.connect(lambda: self.open_server(startq = False))
+        recieve = QtGui.QAction("Open for spaces", self)
+        recieve.triggered.connect(lambda: self.open_server(startq=False))
 
-        serve = menu_bar.addMenu("&Serve") 
+        serve = menu_bar.addMenu("&Serve")
         serve.addAction(start_server)
         serve.addAction(stop_server)
         serve.addAction(recieve)
@@ -289,8 +287,8 @@ class Window(QtGui.QMainWindow):
         widget = ProjectWidget([], parent=self)
         self.tab_widget.addTab(widget, 'New Project')
         self.tab_widget.setCurrentWidget(widget)
-            
-    def loadproject(self, filename = None):
+
+    def loadproject(self, filename=None):
         if not filename:
             dialog = QtGui.QFileDialog(self, "Load project");
             dialog.setFilter('binoculars project file (*.proj)');
@@ -303,13 +301,13 @@ class Window(QtGui.QMainWindow):
                 return
             for name in fname:
                 try:
-                    widget = ProjectWidget.fromfile(str(name), parent = self)
+                    widget = ProjectWidget.fromfile(str(name), parent=self)
                     self.tab_widget.addTab(widget, short_filename(str(name)))
                     self.tab_widget.setCurrentWidget(widget)
                 except Exception as e:
                     QtGui.QMessageBox.critical(self, 'Load project', 'Unable to load project from {}: {}'.format(fname, e))
         else:
-            widget = ProjectWidget.fromfile(filename, parent = self)
+            widget = ProjectWidget.fromfile(filename, parent=self)
             self.tab_widget.addTab(widget, short_filename(filename))
 
     def saveproject(self):
@@ -405,7 +403,7 @@ class Window(QtGui.QMainWindow):
             except Exception as e:
                 QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(fname, e))
 
-    def open_server(self, startq = True):
+    def open_server(self, startq=True):
         if len(self.threads) != 0:
             print 'Server already running'
         else:
@@ -419,7 +417,7 @@ class Window(QtGui.QMainWindow):
 
             if startq:
                 cmd = ['python', os.path.join(os.path.dirname(__file__), 'binoculars-server.py'), str(self.ip), str(self.port)]
-                self.pro = subprocess.Popen(cmd, stdin=None, stdout=None, stderr=None, preexec_fn=os.setsid) 
+                self.pro = subprocess.Popen(cmd, stdin=None, stdout=None, stderr=None, preexec_fn=os.setsid)
 
             server_thread = threading.Thread(target=server.serve_forever)
             server_thread.daemon = True
@@ -443,7 +441,7 @@ class Window(QtGui.QMainWindow):
             self.pro = None
 
     def kill_subprocess(self):
-        if not self.pro == None: 
+        if not self.pro == None:
             os.killpg(self.pro.pid, signal.SIGTERM)
 
     def update(self):
@@ -466,13 +464,15 @@ class Window(QtGui.QMainWindow):
             if serverwidget.auto_update.isChecked():
                 serverwidget.limitwidget.refresh()
 
+
 class UpdateThread(QtCore.QThread):
     fq = Queue.Queue()
     data_found = QtCore.pyqtSignal(object)
+
     def run(self):
         delay = binoculars.util.loop_delayer(1)
         jobs = []
-        labels = []        
+        labels = []
         while 1:
             if not self.q.empty():
                 command, space = self.q.get()
@@ -487,8 +487,10 @@ class UpdateThread(QtCore.QThread):
             else:
                 next(delay)
 
+
 class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
     pass
+
 
 class SpaceTCPHandler(SocketServer.BaseRequestHandler):
     def handle(self):
@@ -501,6 +503,7 @@ class SpaceTCPHandler(SocketServer.BaseRequestHandler):
         space.photons = photons
         space.contributions = contributions
         self.server.q.put((command, space))
+
 
 class HiddenToolbar(NavigationToolbar2QTAgg):
     def __init__(self, show_coords, update_sliders, canvas):
@@ -526,15 +529,14 @@ class HiddenToolbar(NavigationToolbar2QTAgg):
             self.update_sliders(self.inaxes)
 
 
-
 class ProjectWidget(QtGui.QWidget):
-    def __init__(self, filelist, key = None, projection = None, parent = None):
+    def __init__(self, filelist, key=None, projection=None, parent=None):
         super(ProjectWidget, self).__init__(parent)
         self.parent = parent
 
         self.figure = matplotlib.figure.Figure()
         self.canvas = FigureCanvasQTAgg(self.figure)
-        self.toolbar = HiddenToolbar(self.show_coords,self.update_sliders, self.canvas)
+        self.toolbar = HiddenToolbar(self.show_coords, self.update_sliders, self.canvas)
 
         self.lin = QtGui.QRadioButton('lin', self)
         self.lin.setChecked(False)
@@ -596,22 +598,22 @@ class ProjectWidget(QtGui.QWidget):
         QtCore.QObject.connect(self.limitwidget, QtCore.SIGNAL("keydict"), self.update_key)
         QtCore.QObject.connect(self.limitwidget, QtCore.SIGNAL("rangechange"), self.update_figure_range)
         QtCore.QObject.connect(self.table, QtCore.SIGNAL('plotaxesChanged'), self.plotaxes_changed)
-                    
+
         self.initUI()
 
         self.table.select()
 
     def initUI(self):
         self.control_widget = QtGui.QWidget(self)
-        hbox = QtGui.QHBoxLayout() 
+        hbox = QtGui.QHBoxLayout()
         left = QtGui.QVBoxLayout()
 
-        pushbox = QtGui.QHBoxLayout() 
+        pushbox = QtGui.QHBoxLayout()
         pushbox.addWidget(self.button_save)
         pushbox.addWidget(self.button_refresh)
         left.addLayout(pushbox)
 
-        radiobox =  QtGui.QHBoxLayout() 
+        radiobox = QtGui.QHBoxLayout()
         self.group = QtGui.QButtonGroup(self)
         for label in ['stack', 'grid']:
             rb = QtGui.QRadioButton(label, self.control_widget)
@@ -623,7 +625,7 @@ class ProjectWidget(QtGui.QWidget):
         radiobox.addWidget(self.log)
         radiobox.addWidget(self.loglog)
 
-        datarangebox = QtGui.QHBoxLayout() 
+        datarangebox = QtGui.QHBoxLayout()
         datarangebox.addWidget(self.samerange)
         datarangebox.addWidget(self.legend)
         datarangebox.addWidget(self.threed)
@@ -643,9 +645,8 @@ class ProjectWidget(QtGui.QWidget):
         splitter.addWidget(self.control_widget)
         splitter.addWidget(self.canvas)
 
-        hbox.addWidget(splitter) 
+        hbox.addWidget(splitter)
         self.setLayout(hbox)
-
 
     def show_coords(self, event):
         plotaxes = event.inaxes
@@ -653,21 +654,20 @@ class ProjectWidget(QtGui.QWidget):
             if plotaxes.space.dimension == 2:
                 labels = numpy.array([plotaxes.get_xlabel(), plotaxes.get_ylabel()])
                 order = [plotaxes.space.axes.index(label) for label in labels]
-                labels = labels[order]                
+                labels = labels[order]
                 coords = numpy.array([event.xdata, event.ydata])[order]
                 try:
                     rounded_coords = [ax[ax.get_index(coord)] for ax, coord in zip(plotaxes.space.axes, coords)]
                     intensity = '{0:.2e}'.format(plotaxes.space[list(coords)])
-                    self.parent.statusbar.showMessage('{0} = {1}, {2} = {3}, Intensity = {4}'.format(labels[0], rounded_coords[0] ,labels[1], rounded_coords[1], intensity))
+                    self.parent.statusbar.showMessage('{0} = {1}, {2} = {3}, Intensity = {4}'.format(labels[0], rounded_coords[0], labels[1], rounded_coords[1], intensity))
                 except ValueError:
                     self.parent.statusbar.showMessage('out of range')
-                                
             elif plotaxes.space.dimension == 1:
                 xaxis = plotaxes.space.axes[plotaxes.space.axes.index(plotaxes.get_xlabel())]
                 if event.xdata in xaxis:
-                     xcoord =  xaxis[xaxis.get_index(event.xdata)]
-                     intensity = '{0:.2e}'.format(event.ydata)
-                     self.parent.statusbar.showMessage('{0} = {1}, Intensity = {2}'.format(xaxis.label, xcoord, intensity))
+                    xcoord = xaxis[xaxis.get_index(event.xdata)]
+                    intensity = '{0:.2e}'.format(event.ydata)
+                    self.parent.statusbar.showMessage('{0} = {1}, Intensity = {2}'.format(xaxis.label, xcoord, intensity))
 
     def update_sliders(self, plotaxes):
         if not plotaxes == None:
@@ -675,7 +675,7 @@ class ProjectWidget(QtGui.QWidget):
             if hasattr(plotaxes, 'space'):
                 if space.dimension == 2:
                     labels = numpy.array([plotaxes.get_xlabel(), plotaxes.get_ylabel()])
-                    limits = list(lim for lim in [plotaxes.get_xlim(), plotaxes.get_ylim()])          
+                    limits = list(lim for lim in [plotaxes.get_xlim(), plotaxes.get_ylim()])
                 elif space.dimension == 1:
                     labels = [plotaxes.get_xlabel()]
                     limits = [plotaxes.get_xlim()]
@@ -683,7 +683,7 @@ class ProjectWidget(QtGui.QWidget):
             for key, value in zip(labels, limits):
                 keydict[key] = value
             self.limitwidget.update_from_zoom(keydict)
-             
+
     def selectionerror(self, message):
         self.limitwidget.setDisabled(True)
         self.errormessage(message)
@@ -755,12 +755,12 @@ class ProjectWidget(QtGui.QWidget):
         plotoption = None
         if self.group.checkedButton():
             plotoption = self.group.checkedButton().text()
-        
+
         spaces = []
 
         for i, filename in enumerate(self.table.selection):
             axes = self.table.getax(filename)
-            rkey =  axes.restricted_key(self.key)
+            rkey = axes.restricted_key(self.key)
             if rkey == None:
                 space = self.table.getspace(filename)
             else:
@@ -791,7 +791,7 @@ class ProjectWidget(QtGui.QWidget):
         else:
             self.toolbar.threed = True
 
-        for i,space in enumerate(spaces):
+        for i, space in enumerate(spaces):
             filename = self.table.selection[i]
             basename = os.path.splitext(os.path.basename(filename))[0]
             if plotcount > 1:
@@ -804,7 +804,7 @@ class ProjectWidget(QtGui.QWidget):
                     sys.stderr.write('error: cannot display 4 or higher dimensional data, use --project or --slice to decrease dimensionality\n')
                     sys.exit(1)
             else:
-                 self.ax = self.figure.add_subplot(111)
+                self.ax = self.figure.add_subplot(111)
 
             if plotoption == 'grid':
                 if dimension == 1 or dimension == 2:
@@ -817,13 +817,13 @@ class ProjectWidget(QtGui.QWidget):
                 space = space.reorder(list(ax.label for ax in space.axes)[::-1])
 
             self.ax.space = space
-            im = binoculars.plot.plot(space, self.figure, self.ax, log = log, loglog = loglog, label = basename, norm = norm[i])         
+            im = binoculars.plot.plot(space, self.figure, self.ax, log=log, loglog=loglog, label=basename, norm=norm[i])
 
             self.figure_images.append(im)
-        
+
         if dimension == 1 and self.legend.checkState():
             self.ax.legend()
-        
+
         self.update_figure_range(self.key_to_str(self.key))
         self.canvas.draw()
 
@@ -835,7 +835,7 @@ class ProjectWidget(QtGui.QWidget):
             map(self.table.remove, self.table.selection)
             self.table.addspace(filename, True)
         except Exception as e:
-            QtGui.QMessageBox.critical(self, 'Merge', 'Unable to merge the meshes. {}'.format(e))                
+            QtGui.QMessageBox.critical(self, 'Merge', 'Unable to merge the meshes. {}'.format(e))
 
     def subtractspace(self, filename):
         try:
@@ -848,7 +848,7 @@ class ProjectWidget(QtGui.QWidget):
                 self.table.remove(selected_filename)
                 self.table.addspace(newfilename, True)
         except Exception as e:
-            QtGui.QMessageBox.critical(self, 'Subtract', 'Unable to subtract the meshes. {}'.format(e))       
+            QtGui.QMessageBox.critical(self, 'Subtract', 'Unable to subtract the meshes. {}'.format(e))
 
     def errormessage(self, message):
         self.figure.clear()
@@ -869,9 +869,9 @@ class ProjectWidget(QtGui.QWidget):
                 ax.set_ylim(key[yindex][0], key[yindex][1])
         self.canvas.draw()
 
-    def update_colorbar(self,value):
+    def update_colorbar(self, value):
         normlist = self.get_normlist()
-        for im,norm in zip(self.figure_images, normlist):
+        for im, norm in zip(self.figure_images, normlist):
             im.set_norm(norm)
         self.canvas.draw()
 
@@ -883,7 +883,7 @@ class ProjectWidget(QtGui.QWidget):
     def str_to_key(s):
         return tuple(slice(float(key[0]), float(key[1])) for key in s)
 
-    def tofile(self, filename = None):
+    def tofile(self, filename=None):
         dict = {}
         dict['filelist'] = self.table.filelist
         dict['key'] = self.key_to_str(self.key)
@@ -896,9 +896,9 @@ class ProjectWidget(QtGui.QWidget):
             json.dump(dict, fp)
 
     @classmethod
-    def fromfile(cls, filename = None, parent = None):
+    def fromfile(cls, filename=None, parent=None):
         if filename == None:
-            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.proj'))        
+            filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.proj'))
         try:
             with open(filename, 'r') as fp:
                 dict = json.load(fp)
@@ -908,18 +908,18 @@ class ProjectWidget(QtGui.QWidget):
         newlist = []
         for fn in dict['filelist']:
             if not os.path.exists(fn):
-                warningbox = QtGui.QMessageBox(2, 'Warning', 'Cannot find space at path {0}; locate proper space'.format(fn), buttons = QtGui.QMessageBox.Open)
+                warningbox = QtGui.QMessageBox(2, 'Warning', 'Cannot find space at path {0}; locate proper space'.format(fn), buttons=QtGui.QMessageBox.Open)
                 warningbox.exec_()
-                newname = str(QtGui.QFileDialog.getOpenFileName(caption = 'Open space {0}'.format(fn), directory = '.', filter = '*.hdf5'))
+                newname = str(QtGui.QFileDialog.getOpenFileName(caption='Open space {0}'.format(fn), directory='.', filter='*.hdf5'))
                 newlist.append(newname)
             else:
-                newlist.append(fn)    
+                newlist.append(fn)
 
-        widget = cls(newlist, cls.str_to_key(dict['key']), dict['projection'], parent = parent)
+        widget = cls(newlist, cls.str_to_key(dict['key']), dict['projection'], parent=parent)
 
         return widget
-    
-    def addspace(self,filename = None, add = False):
+
+    def addspace(self, filename=None, add=False):
         if filename == None:
             filename = str(QtGui.QFileDialog.getOpenFileName(self, 'Open Project', '.', '*.hdf5'))
         self.table.add_space(filename, add)
@@ -938,14 +938,14 @@ class ProjectWidget(QtGui.QWidget):
         try:
             self.figure.savefig(str(fname))
         except Exception as e:
-            QtGui.QMessageBox.critical(self, 'Save image', 'Unable to save image to {}: {}'.format(fname, e))                
+            QtGui.QMessageBox.critical(self, 'Save image', 'Unable to save image to {}: {}'.format(fname, e))
 
     def space_to_file(self, fname):
         ext = os.path.splitext(fname)[-1]
 
         for i, filename in enumerate(self.table.selection):
             axes = self.table.getax(filename)
-            space = self.table.getspace(filename, key = axes.restricted_key(self.key))
+            space = self.table.getspace(filename, key=axes.restricted_key(self.key))
             projection = [ax for ax in self.projection if ax in space.axes]
             if projection:
                 space = space.project(*projection)
@@ -964,12 +964,14 @@ class ProjectWidget(QtGui.QWidget):
             elif ext == '.hdf5':
                 space.tofile(outfile)
                 self.parent.statusbar.showMessage('saved at {0}'.format(outfile))
-                    
+
             else:
                 self.parent.statusbar.showMessage('unknown extension {0}, unable to save!\n'.format(ext))
 
+
 def short_filename(filename):
     return filename.split('/')[-1].split('.')[0]
+
 
 class SpaceContainer(QtGui.QTableWidgetItem):
     def __init__(self, label, space=None):
@@ -977,11 +979,11 @@ class SpaceContainer(QtGui.QTableWidgetItem):
         self.label = label
         self.space = space
 
-    def get_space(self, key = None):
+    def get_space(self, key=None):
         if self.space == None:
-            return binoculars.space.Space.fromfile(self.label, key = key)
+            return binoculars.space.Space.fromfile(self.label, key=key)
         else:
-           if key == None:
+            if key == None:
                 key = Ellipsis
            return self.space[key]
 
@@ -1185,7 +1187,7 @@ class LimitWidget(QtGui.QWidget):
         self.update_lines()
         self.send_signal()
 
-    def update_lines(self, value = 0 ):
+    def update_lines(self, value=0):
         for index, slider in enumerate(self.sliders):
             self.leftindicator[index].setText(str(self.axes[index][slider.low()]))
             self.rightindicator[index].setText(str(self.axes[index][slider.high()]))
@@ -1218,7 +1220,7 @@ class LimitWidget(QtGui.QWidget):
             left.setText(str(ax[slider.low()]))
 
     def update_sliders_right(self):
-        for ax, left, right , slider in zip(self.axes, self.leftindicator, self.rightindicator, self.sliders):
+        for ax, left, right, slider in zip(self.axes, self.leftindicator, self.rightindicator, self.sliders):
             leftvalue = ax.get_index(float(str(left.text())))
             try:
                 rightvalue = ax.get_index(float(str(right.text())))
@@ -1238,9 +1240,9 @@ class LimitWidget(QtGui.QWidget):
 
     def init_checkbox(self):
         while numpy.alen(self.state) - self.state.sum() > 2:
-             index = numpy.where(self.state == False)[-1]
-             self.state[-1] = True     
-        for box, state in zip(self.checkbox,self.state):
+            index = numpy.where(self.state == False)[-1]
+            self.state[-1] = True
+        for box, state in zip(self.checkbox, self.state):
             box.setChecked(state)
 
     def axes_update(self, axes):
@@ -1266,7 +1268,7 @@ class LimitWidget(QtGui.QWidget):
             self.update_sliders_right()
 
             self.send_signal()
-            
+
     def update_from_zoom(self, keydict):
         for key in keydict:
             index = self.axes.index(key)
@@ -1275,6 +1277,7 @@ class LimitWidget(QtGui.QWidget):
         self.update_sliders_left()
         self.update_sliders_right()
         self.send_signal()
+
 
 def is_empty(key):
     for k in key:
@@ -1294,9 +1297,3 @@ if __name__ == '__main__':
     main.show()
 
     sys.exit(app.exec_())
-
-
-
-
-
-

@@ -4,12 +4,14 @@ import argparse
 
 from . import space, backend, util, errors
 
+
 def parse_args(args):
     parser = argparse.ArgumentParser(prog='binoculars process')
     parser.add_argument('-c', metavar='SECTION:OPTION=VALUE', action='append', type=parse_commandline_config_option, default=[], help='additional configuration option in the form section:option=value')
     parser.add_argument('configfile', help='configuration file')
     parser.add_argument('command', nargs='*', default=[])
     return parser.parse_args(args)
+
 
 def parse_commandline_config_option(s):
     try:
@@ -20,9 +22,10 @@ def parse_commandline_config_option(s):
     return section, option, value
 
 
-def multiprocessing_main((config, command)): # note the double parenthesis for map() convenience
+def multiprocessing_main((config, command)):  # note the double parenthesis for map() convenience
     Main.from_object(config, command)
     return config.dispatcher.destination.retrieve()
+
 
 class Main(object):
     def __init__(self, config, command):
@@ -47,7 +50,7 @@ class Main(object):
         if command:
             self.dispatcher.config.destination.set_config(spaceconf)
         self.run(command)
- 
+
     @classmethod
     def from_args(cls, args):
         args = parse_args(args)
@@ -57,19 +60,19 @@ class Main(object):
                 raise errors.FileError("configuration file '{0}' does not exist".format(args.configfile))
         configobj = False
         with open(args.configfile, 'rb') as fp:
-            if fp.read(2) == '\x1f\x8b': # gzip marker
+            if fp.read(2) == '\x1f\x8b':  # gzip marker
                 fp.seek(0)
                 configobj = util.zpi_load(fp)
         if not configobj:
             # reopen args.configfile as text
-            configobj = util.ConfigFile.fromtxtfile(args.configfile, command = args.command , overrides=args.c)
+            configobj = util.ConfigFile.fromtxtfile(args.configfile, command=args.command, overrides=args.c)
         return cls(configobj, args.command)
 
     @classmethod
     def from_object(cls, config, command):
         config.command = command
         return cls(config, command)
-        
+
     def run(self, command):
         if self.dispatcher.has_specific_task():
             self.dispatcher.run_specific_task(command)
@@ -88,12 +91,12 @@ class Main(object):
         def generator():
             res = self.projection.config.resolution
             labels = self.projection.get_axis_labels()
-            for intensity, weights, params in self.input.process_job(job):             
+            for intensity, weights, params in self.input.process_job(job):
                 coords = self.projection.project(*params)
                 if self.projection.config.limits == None:
-                    yield space.Multiverse((space.Space.from_image(res, labels, coords, intensity, weights = weights), ))
+                    yield space.Multiverse((space.Space.from_image(res, labels, coords, intensity, weights=weights), ))
                 else:
-                    yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights = weights, limits = limits) for limits in self.projection.config.limits)
+                    yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights=weights, limits=limits) for limits in self.projection.config.limits)
         jobverse = space.chunked_sum(generator(), chunksize=25)
         for sp in jobverse.spaces:
             if isinstance(sp, space.Space):
@@ -111,7 +114,8 @@ class Main(object):
     def get_reentrant(self):
         return multiprocessing_main
 
-class Split(Main): #completely ignores the dispatcher, just yields a space per image
+
+class Split(Main):  # completely ignores the dispatcher, just yields a space per image
     def __init__(self, config, command):
         self.command = command
         if isinstance(config, util.ConfigSectionGroup):
@@ -128,17 +132,14 @@ class Split(Main): #completely ignores the dispatcher, just yields a space per i
     def process_job(self, job):
         res = self.projection.config.resolution
         labels = self.projection.get_axis_labels()
-        for intensity, weights, params in self.input.process_job(job):                   
+        for intensity, weights, params in self.input.process_job(job):
             coords = self.projection.project(*params)
             if self.projection.config.limits == None:
-                yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights = weights))
+                yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights=weights))
             else:
-                yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights = weights, limits = limits) for limits in self.projection.config.limits)
+                yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights=weights, limits=limits) for limits in self.projection.config.limits)
 
     def run(self):
         for job in self.input.generate_jobs(self.command):
             for verse in self.process_job(job):
                 yield verse
-
-
-
