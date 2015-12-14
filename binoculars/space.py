@@ -626,7 +626,7 @@ class Space(object):
                 elif sl.start is not None and sl.stop is not None:
                     invalid += numpy.bitwise_or(coord < sl.start, coord > sl.stop)
 
-            if numpy.all(invalid is True):
+            if numpy.all(invalid == True):
                 return EmptySpace()
             coordinates = tuple(coord[~invalid] for coord in coordinates)
             intensity = intensity[~invalid]
