@@ -107,7 +107,8 @@ class Window(QtGui.QMainWindow):
     def removeConf(self):
         self.ListCommand.removeRow(self.ListCommand.currentRow())
 
-    def Add_To_Liste(self, (command, cfg)):
+    def Add_To_Liste(self, xxx_todo_changeme):
+        (command, cfg) = xxx_todo_changeme
         row = self.ListCommand.rowCount()
         index = self.tab_widget.currentIndex()
         filename = self.tab_widget.tabText(index)
@@ -137,11 +138,11 @@ class Window(QtGui.QMainWindow):
                 pd.setValue(index)
                 cfg = self.ListCommand.item(index, 1).cfg
                 command = self.ListCommand.item(index, 0).command
-                print cfg
+                print(cfg)
                 progress(cfg, command)
             self.ListCommand.clear()
             self.ListCommand.setRowCount(0)
-        except BaseException, e:
+        except BaseException as e:
                 #cfg = self.ListCommand.item(index,1).cfg
                 #print cfg
                 QtGui.QMessageBox.about(self, "Error", "There was an error processing one of the scans: {0}".format(e))

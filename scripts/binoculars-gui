@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from __future__ import unicode_literals
 
 import sys
 import os
@@ -8,9 +9,7 @@ import json
 import itertools
 import signal
 import subprocess
-import Queue
 import socket
-import SocketServer
 import threading
 import matplotlib.figure
 import matplotlib.image
@@ -19,6 +18,14 @@ from mpl_toolkits.mplot3d import Axes3D
 from PyQt4 import QtGui, QtCore, Qt
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg, NavigationToolbar2QTAgg
 
+#python3 support
+PY3 = sys.version_info > (3,)
+if PY3:
+    import socketserver
+    import queue
+else:
+    import SocketServer as socketserver
+    import Queue as queue
 
 def set_src():
     import sys
@@ -268,7 +275,7 @@ class Window(QtGui.QMainWindow):
 
         self.tab_widget = QtGui.QTabWidget(self)
         self.tab_widget.setTabsClosable(True)
-        QtCore.QObject.connect(self.tab_widget, QtCore.SIGNAL("tabCloseRequested(int)"), self.tab_widget.removeTab)
+        self.tab_widget.tabCloseRequested.connect(self.tab_widget.removeTab)
 
         self.statusbar = QtGui.QStatusBar()
 
@@ -342,15 +349,13 @@ class Window(QtGui.QMainWindow):
         fname = dialog.selectedFiles()
         if not fname:
             return
-        for index, name in enumerate(fname):
+        for name in fname:
             try:
                 widget = self.tab_widget.currentWidget()
-                if index == fname.count() - 1:
-                    widget.addspace(str(name), True)
-                else:
-                    widget.addspace(str(name), False)
+                widget.addspace(str(name), True)
             except Exception as e:
-                QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(str(name), e))
+                raise
+                #QtGui.QMessageBox.critical(self, 'Import spaces', 'Unable to import space {}: {}'.format(str(name), e))
 
     def exportspace(self):
         widget = self.tab_widget.currentWidget()
@@ -405,11 +410,11 @@ class Window(QtGui.QMainWindow):
 
     def open_server(self, startq=True):
         if len(self.threads) != 0:
-            print 'Server already running'
+            print('Server already running')
         else:
             HOST, PORT = socket.gethostbyname(socket.gethostname()), 0
 
-            self.q = Queue.Queue()
+            self.q = queue.Queue()
             server = ThreadedTCPServer((HOST, PORT), SpaceTCPHandler)
             server.q = self.q
 
@@ -430,11 +435,11 @@ class Window(QtGui.QMainWindow):
             updater.start()
 
             if not startq:
-                print 'GUI server started running at ip {0} and port {1}.'.format(self.ip, self.port)
+                print(('GUI server started running at ip {0} and port {1}.'.format(self.ip, self.port)))
 
     def kill_server(self):
         if len(self.threads) == 0:
-            print 'No server running.'
+            print('No server running.')
         else:
             self.threads = []
             self.kill_subprocess()
@@ -466,7 +471,7 @@ class Window(QtGui.QMainWindow):
 
 
 class UpdateThread(QtCore.QThread):
-    fq = Queue.Queue()
+    fq = queue.Queue()
     data_found = QtCore.pyqtSignal(object)
 
     def run(self):
@@ -488,11 +493,11 @@ class UpdateThread(QtCore.QThread):
                 next(delay)
 
 
-class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     pass
 
 
-class SpaceTCPHandler(SocketServer.BaseRequestHandler):
+class SpaceTCPHandler(socketserver.BaseRequestHandler):
     def handle(self):
         command, config, metadata, axes, photons, contributions = binoculars.util.socket_recieve(self)
         space = binoculars.space.Space(binoculars.space.Axes.fromarray(axes))
@@ -540,15 +545,15 @@ class ProjectWidget(QtGui.QWidget):
 
         self.lin = QtGui.QRadioButton('lin', self)
         self.lin.setChecked(False)
-        QtCore.QObject.connect(self.lin, QtCore.SIGNAL("toggled(bool)"), self.plot)
+        self.lin.toggled.connect(self.plot)
 
         self.log = QtGui.QRadioButton('log', self)
         self.log.setChecked(True)
-        QtCore.QObject.connect(self.log, QtCore.SIGNAL("toggled(bool)"), self.plot)
+        self.log.toggled.connect(self.plot)
 
         self.loglog = QtGui.QRadioButton('loglog', self)
         self.loglog.setChecked(False)
-        QtCore.QObject.connect(self.loglog, QtCore.SIGNAL("toggled(bool)"), self.plot)
+        self.loglog.toggled.connect(self.plot)
 
         self.loggroup = QtGui.QButtonGroup(self)
         self.loggroup.addButton(self.lin)
@@ -557,19 +562,19 @@ class ProjectWidget(QtGui.QWidget):
 
         self.swap_axes = QtGui.QCheckBox('ax', self)
         self.swap_axes.setChecked(False)
-        QtCore.QObject.connect(self.swap_axes, QtCore.SIGNAL("stateChanged(int)"), self.plot)
+        self.swap_axes.stateChanged.connect(self.plot)
 
         self.samerange = QtGui.QCheckBox('same', self)
         self.samerange.setChecked(False)
-        QtCore.QObject.connect(self.samerange, QtCore.SIGNAL("stateChanged(int)"), self.update_colorbar)
+        self.samerange.stateChanged.connect(self.update_colorbar)
 
         self.legend = QtGui.QCheckBox('legend', self)
         self.legend.setChecked(True)
-        QtCore.QObject.connect(self.legend, QtCore.SIGNAL("stateChanged(int)"), self.plot)
+        self.legend.stateChanged.connect(self.plot)
 
         self.threed = QtGui.QCheckBox('3d', self)
         self.threed.setChecked(False)
-        QtCore.QObject.connect(self.threed, QtCore.SIGNAL("stateChanged(int)"), self.plot)
+        self.threed.stateChanged.connect(self.plot)
 
         self.auto_update = QtGui.QCheckBox('auto', self)
         self.auto_update.setChecked(True)
@@ -580,10 +585,11 @@ class ProjectWidget(QtGui.QWidget):
         self.datarange.setLow(0)
         self.datarange.setHigh(self.datarange.maximum())
         self.datarange.setTickPosition(QtGui.QSlider.TicksBelow)
-        QtCore.QObject.connect(self.datarange, QtCore.SIGNAL('sliderMoved(int)'), self.update_colorbar)
+        self.datarange.sliderMoved.connect(self.update_colorbar)
 
         self.table = TableWidget(filelist)
-        QtCore.QObject.connect(self.table, QtCore.SIGNAL('selectionError'), self.selectionerror)
+        self.table.selectionError.connect(self.selectionerror)
+        self.table.plotaxesChanged.connect(self.plotaxes_changed)
 
         self.key = key
         self.projection = projection
@@ -595,9 +601,8 @@ class ProjectWidget(QtGui.QWidget):
         self.button_refresh.clicked.connect(self.table.select)
 
         self.limitwidget = LimitWidget(self.table.plotaxes)
-        QtCore.QObject.connect(self.limitwidget, QtCore.SIGNAL("keydict"), self.update_key)
-        QtCore.QObject.connect(self.limitwidget, QtCore.SIGNAL("rangechange"), self.update_figure_range)
-        QtCore.QObject.connect(self.table, QtCore.SIGNAL('plotaxesChanged'), self.plotaxes_changed)
+        self.limitwidget.keydict.connect(self.update_key)
+        self.limitwidget.rangechange.connect(self.update_figure_range)
 
         self.initUI()
 
@@ -832,7 +837,7 @@ class ProjectWidget(QtGui.QWidget):
             spaces = tuple(self.table.getspace(selected_filename) for selected_filename in self.table.selection)
             newspace = binoculars.space.sum(binoculars.space.make_compatible(spaces))
             newspace.tofile(filename)
-            map(self.table.remove, self.table.selection)
+            list(map(self.table.remove, self.table.selection))
             self.table.addspace(filename, True)
         except Exception as e:
             QtGui.QMessageBox.critical(self, 'Merge', 'Unable to merge the meshes. {}'.format(e))
@@ -985,13 +990,13 @@ class SpaceContainer(QtGui.QTableWidgetItem):
         else:
             if key == None:
                 key = Ellipsis
-           return self.space[key]
+            return self.space[key]
 
     def get_ax(self):
         if self.space == None:
-           return binoculars.space.Axes.fromfile(self.label)
+            return binoculars.space.Axes.fromfile(self.label)
         else:
-           return self.space.axes
+            return self.space.axes
 
     def add_to_space(space):
         if self.space == None:
@@ -1001,6 +1006,9 @@ class SpaceContainer(QtGui.QTableWidgetItem):
             self.space += space
 
 class TableWidget(QtGui.QWidget):
+    selectionError = QtCore.pyqtSignal(str, name = 'Selection Error')
+    plotaxesChanged = QtCore.pyqtSignal(binoculars.space.Axes, name = 'plot axes changed')
+
     def __init__(self, filelist = [],parent=None):
         super(TableWidget, self).__init__(parent)
 
@@ -1049,14 +1057,14 @@ class TableWidget(QtGui.QWidget):
     def remove(self, filename):
         self.table.removeRow(self.filelist.index(filename))
         self.select()
-        print 'removed: {0}'.format(filename)
+        print(('removed: {0}'.format(filename)))
 
     def select(self):
         axes = self.plotaxes
         if len(axes) > 0:
-                self.emit(QtCore.SIGNAL('plotaxesChanged'), axes)
+            self.plotaxesChanged.emit(axes)
         else:
-            self.emit(QtCore.SIGNAL('selectionError'), 'no spaces selected or spaces with non identical labels selected')
+            self.selectionError.emit('no spaces selected or spaces with non identical labels selected')
 
     @property
     def selection(self):
@@ -1092,6 +1100,9 @@ class TableWidget(QtGui.QWidget):
         return iter(self.table.item(index, 1) for index in range(self.table.rowCount()))
 
 class LimitWidget(QtGui.QWidget):
+    keydict = QtCore.pyqtSignal(dict, name = "keydict")
+    rangechange = QtCore.pyqtSignal(list, name = "rangechange")
+
     def __init__(self, axes, parent=None):
         super(LimitWidget, self).__init__(parent)
         self.initUI(axes)
@@ -1163,9 +1174,9 @@ class LimitWidget(QtGui.QWidget):
         self.update_lines()
 
         for slider in self.sliders:
-            QtCore.QObject.connect(slider, QtCore.SIGNAL('sliderMoved(int)'), self.update_lines)
+            slider.sliderMoved.connect(self.update_lines)
         for slider in self.sliders:
-            QtCore.QObject.connect(slider, QtCore.SIGNAL('sliderReleased()'), self.send_signal)
+            slider.sliderReleased.connect(self.send_signal)
 
         for line in self.leftindicator:
             line.editingFinished.connect(self.update_sliders_left)
@@ -1192,7 +1203,7 @@ class LimitWidget(QtGui.QWidget):
             self.leftindicator[index].setText(str(self.axes[index][slider.low()]))
             self.rightindicator[index].setText(str(self.axes[index][slider.high()]))
         key = list((float(str(left.text())), float(str(right.text()))) for left, right in zip(self.leftindicator, self.rightindicator))
-        self.emit(QtCore.SIGNAL('rangechange'), key)
+        self.rangechange.emit(key)
 
     def send_signal(self):
         signal = {}
@@ -1204,7 +1215,7 @@ class LimitWidget(QtGui.QWidget):
                 project.append(ax.label)
         signal['project'] = project
         signal['key'] = key
-        self.emit(QtCore.SIGNAL('keydict'), signal)
+        self.keydict.emit(signal)
             
     def update_sliders_left(self):
         for ax, left, right , slider in zip(self.axes, self.leftindicator, self.rightindicator, self.sliders):

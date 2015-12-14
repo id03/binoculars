@@ -1,9 +1,10 @@
+from __future__ import print_function, division
+
 import os
 import sys
 import gzip
 import itertools
 import random
-import cPickle as pickle
 import inspect
 import time
 import copy
@@ -11,19 +12,28 @@ import numpy
 import contextlib
 import argparse
 import h5py
-import ConfigParser
 import glob
-import errors
-import StringIO
+from . import errors
 import struct
 import json
 import socket
-import StringIO
 import binascii
 import re
 
 ### ARGUMENT HANDLING
 
+
+#python3 support
+PY3 = sys.version_info > (3,)
+if PY3:
+    import pickle
+    import io
+    import configparser
+else:
+    import StringIO as io 
+    import Queue as queue
+    import cPickle as pickle
+    import ConfigParser as configparser
 
 class OrderedOperation(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
@@ -115,7 +125,7 @@ def handle_ordered_operations(space, args, auto3to2=False):
             space = space.project(projectaxis)
 
         elif command == 'transform':
-            labels, resolutions, exprs = zip(*parse_transform_args(opts))
+            labels, resolutions, exprs = list(zip(*parse_transform_args(opts)))
             transformation = transformation_from_expressions(space, exprs)
             info.append('transformed to {0}'.format(', '.join('{0} = {1}'.format(label, expr) for (label, expr) in zip(labels, exprs))))
             space = space.transform_coordinates(resolutions, labels, transformation)
@@ -188,17 +198,17 @@ def get_backends():
 
 
 def get_projections(module):
-    import backend
+    from . import backend
     return get_base(module, backend.ProjectionBase)
 
 
 def get_inputs(module):
-    import backend
+    from . import backend
     return get_base(module, backend.InputBase)
 
 
 def get_dispatchers():
-    import dispatcher
+    from . import dispatcher
     from inspect import isclass
 
     items = dir(dispatcher)
@@ -238,7 +248,7 @@ def get_base(modname, base):
 
 
 def get_dispatcher_configkeys(classname):
-    import dispatcher
+    from . import dispatcher
     cls = getattr(dispatcher, classname)
     return get_configkeys(cls)
 
@@ -290,7 +300,7 @@ def parse_configcode(line):
 def parse_range(r):
     if '-' in r:
         a, b = r.split('-')
-        return range(int(a), int(b)+1)
+        return list(range(int(a), int(b)+1))
     elif r:
         return [int(r)]
     else:
@@ -387,9 +397,9 @@ class MetaBase(object):
         for section in self.sections:
             section_dict = {}
             attr = getattr(self, section)
-            for key in attr.keys():
+            for key in list(attr.keys()):
                 if isinstance(attr[key], numpy.ndarray):  # to be able to include numpy arrays in the serialisation
-                    sio = StringIO.StringIO()
+                    sio = io.StringIO()
                     numpy.save(sio, attr[key])
                     sio.seek(0)
                     section_dict[key] = binascii.b2a_hex(sio.read())  # hex codation is needed to let json work with the string
@@ -402,12 +412,12 @@ class MetaBase(object):
     def fromserial(cls, s):
         obj = cls()
         data = json.loads(s)
-        for section in data.keys():
+        for section in list(data.keys()):
             section_dict = data[section]
-            for key in section_dict.keys():
-                if isinstance(section_dict[key], basestring):  # find and replace all the numpy serialised objects
+            for key in list(section_dict.keys()):
+                if isinstance(section_dict[key], str):  # find and replace all the numpy serialised objects
                     if section_dict[key].startswith('934e554d505901004600'):  # numpy marker
-                        sio = StringIO.StringIO()
+                        sio = io.StringIO()
                         sio.write(binascii.a2b_hex(section_dict[key]))
                         sio.seek(0)
                         section_dict[key] = numpy.load(sio)
@@ -416,10 +426,10 @@ class MetaBase(object):
                 obj.sections.append(section)
         return obj
 
-# a collection of metadata objects
 
 
-class MetaData(object):
+
+class MetaData(object): # a collection of metadata objects
     def __init__(self):
         self.metas = []
 
@@ -441,7 +451,7 @@ class MetaData(object):
 
     @classmethod
     def fromfile(cls, filename):
-        if isinstance(filename, basestring):
+        if isinstance(filename, str):
             if not os.path.exists(filename):
                 raise IOError('Error importing configuration file. filename {0} does not exist'.format(filename))
 
@@ -453,7 +463,7 @@ class MetaData(object):
                 metadata = []  # when metadata is not present, proceed without Error
             for label in metadata:
                 meta = MetaBase()
-                for section in metadata[label].keys():
+                for section in list(metadata[label].keys()):
                     group = metadata[label][section]
                     setattr(meta, section, dict((key, group[key].value) for key in group))
                     meta.sections.append(section)
@@ -464,12 +474,12 @@ class MetaData(object):
         with open_h5py(filename, 'w') as fp:
             metadata = fp.create_group('metadata')
             for meta in self.metas:
-                label = find_unused_label('metasection', metadata.keys())
+                label = find_unused_label('metasection', list(metadata.keys()))
                 metabase = metadata.create_group(label)
                 for section in meta.sections:
                     sectiongroup = metabase.create_group(section)
                     s = getattr(meta, section)
-                    for key in s.keys():
+                    for key in list(s.keys()):
                         sectiongroup.create_dataset(key, data=s[key])
 
     def __repr__(self):
@@ -504,7 +514,7 @@ class ConfigFile(MetaBase):
 
     @classmethod
     def fromfile(cls, filename):
-        if isinstance(filename, basestring):
+        if isinstance(filename, str):
             if not os.path.exists(filename):
                 raise IOError('Error importing configuration file. filename {0} does not exist'.format(filename))
 
@@ -513,7 +523,7 @@ class ConfigFile(MetaBase):
             try:
                 config = fp['configuration']
                 if 'command' in config.attrs:
-                    configobj.command = json.loads(config.attrs['command'])
+                    configobj.command = json.loads(config.attrs['command'].decode('utf8'))
                 for section in config:
                     if isinstance(config[section],  h5py._hl.group.Group):  # new
                         setattr(configobj, section, dict((key, config[section][key].value) for key in config[section]))
@@ -528,7 +538,7 @@ class ConfigFile(MetaBase):
         if not os.path.exists(filename):
             raise IOError('Error importing configuration file. filename {0} does not exist'.format(filename))
 
-        config = ConfigParser.RawConfigParser()
+        config = configparser.RawConfigParser()
         config.read(filename)
 
         for section, option, value in overrides:
@@ -547,7 +557,7 @@ class ConfigFile(MetaBase):
             for section in self.sections:
                 sectiongroup = conf.create_group(section)
                 s = getattr(self, section)
-                for key in s.keys():
+                for key in list(s.keys()):
                     sectiongroup.create_dataset(key, data=s[key])
 
     def totxtfile(self, filename):
@@ -596,16 +606,16 @@ class ConfigurableObject(object):
         else:
             self.config = ConfigSection()
             try:
-                allkeys = config.keys()
+                allkeys = list(config.keys())
                 self.parse_config(config)
             except KeyError as exc:
                 raise errors.ConfigError("Configuration option {0} is missing from the configuration file. Please specify this option in the configuration file".format(exc))
             except Exception as exc:
-                missing = set(key for key in allkeys if key not in self.config.__dict__.keys()) - set(config.keys())
+                missing = set(key for key in allkeys if key not in list(self.config.__dict__.keys())) - set(config.keys())
                 exc.args = errors.addmessage(exc.args, ". Unable to parse configuration option '{0}'. The error can quite likely be solved by modifying the option in the configuration file.".format(','.join(missing)))
                 raise
             for k in config:
-                print 'warning: unrecognized configuration option {0} for {1}'.format(k, self.__class__.__name__)
+                print('warning: unrecognized configuration option {0} for {1}'.format(k, self.__class__.__name__))
             self.config.class_ = self.__class__
 
     def parse_config(self, config):
@@ -892,7 +902,7 @@ def zpi_load(filename):
 
 def serialize(space, command):
     # first 48 bytes contain length of the message, whereby the first 8 give the length of the command, the second 8 the length of the configfile etc..
-    message = StringIO.StringIO()
+    message = io.StringIO()
     message.write(struct.pack('QQQQQQ', 0, 0, 0, 0, 0, 0))
 
     message.write(command)
@@ -946,7 +956,7 @@ def socket_send(ip, port, mssg):
 
 def socket_recieve(RequestHandler):  # pass one the handler to deal with incoming data
     def get_msg(length):
-        msg = StringIO.StringIO()
+        msg = io.StringIO()
         for packet in packet_slicer(length):
             p = RequestHandler.request.recv(packet, socket.MSG_WAITALL)  # wait for full mssg
             msg.write(p)

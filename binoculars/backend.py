@@ -5,7 +5,7 @@ class ProjectionBase(util.ConfigurableObject):
     def parse_config(self, config):
         super(ProjectionBase, self).parse_config(config)
         res = config.pop('resolution')  # or just give 1 number for all dimensions
-        self.config.limits = util.parse_pairs(config.pop('limits', None))  # Optional, set the limits of the space object in projected coordinates. Syntax is same as numpy e.g. '0.3:-0.6, -1:5, :'
+        self.config.limits = util.parse_pairs(config.pop('limits', None))  # Optional, set the limits of the space object in projected coordinates. Syntax is same as numpy e.g. 'limits = [:0,-1:,:], [0:,:-1,:], [:0,:-1,:], [0:,-1:,:]'
         labels = self.get_axis_labels()
         if not self.config.limits is None:
             for lim in self.config.limits:

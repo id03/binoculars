@@ -1,3 +1,4 @@
+import sys
 import os
 import time
 import itertools
@@ -6,6 +7,8 @@ import multiprocessing
 
 from . import util, errors, space
 
+#python3 support
+PY3 = sys.version_info > (3,)
 
 class Destination(object):
     type = filename = overwrite = value = config = limits = None
@@ -151,14 +154,14 @@ class Local(ReentrantBase):
             self.config.ncores = multiprocessing.cpu_count()
 
     def process_jobs(self, jobs):
-        if self.config.ncores == 1:  # note: SingleCore will be marginally faster
-            imap = itertools.imap
+        if self.config.ncores == 1 and not PY3:  # note: SingleCore will be marginally faster
+            map = itertools.imap
         else:
             pool = multiprocessing.Pool(self.config.ncores)
-            imap = pool.imap_unordered
+            map = pool.imap_unordered
 
         configs = (self.prepare_config(job) for job in jobs)
-        for result in imap(self.main.get_reentrant(), configs):
+        for result in map(self.main.get_reentrant(), configs):
             yield result
 
     def sum(self, results):
@@ -311,7 +314,7 @@ class Oar(ReentrantBase):
             try:
                 os.remove(f)
             except Exception as e:
-                print "unable to remove {0}: {1}".format(f, e)
+                print("unable to remove {0}: {1}".format(f, e))
 
         errorfn = []
 
@@ -323,7 +326,7 @@ class Oar(ReentrantBase):
                     errormsg = fp.read()
                 if len(errormsg) > 0:
                     errorfn.append(errorfilename)
-                    print 'Critical error: OAR Job {0} failed with the following error: \n{1}'.format(jobid, errormsg)
+                    print('Critical error: OAR Job {0} failed with the following error: \n{1}'.format(jobid, errormsg))
 
         if len(errorfn) > 0:
-            print 'Warning! {0} job(s) failed. See above for the details or the error log files: {1}'.format(len(errorfn), ', '.join(errorfn))
+            print('Warning! {0} job(s) failed. See above for the details or the error log files: {1}'.format(len(errorfn), ', '.join(errorfn)))

@@ -1,9 +1,9 @@
+from __future__ import print_function, with_statement, division
+
 import os
 import sys
 
 # for scripted useage
-
-
 def run(args):
     '''Parameters
         args: string
@@ -205,7 +205,7 @@ def fitspace(space, function, guess=None):
 
         Examples:
         >>> fit = binoculars.fitspace(space, 'lorentzian')
-        >>> print fit.summary
+        >>> print(fit.summary)
             I: 1.081e-07 +/- inf
             loc: 0.3703 +/- inf
             gamma: 0.02383 +/- inf

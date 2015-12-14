@@ -1,10 +1,20 @@
-import itertools
+from __future__ import unicode_literals
+
 import numbers
 import numpy
 import h5py
+import sys
+from itertools import chain
 
 from . import util, errors
 
+#python3 support
+PY3 = sys.version_info > (3,)
+if PY3:
+    from functools import reduce
+    basestring = (str,bytes)
+else:
+    from itertools import izip as zip
 
 def silence_numpy_errors():
     """Silence numpy warnings about zero division. Normal usage of Space() will trigger these warnings."""
@@ -13,7 +23,7 @@ def silence_numpy_errors():
 
 def sum_onto(a, axis):
     """Numpy convenience. Project all dimensions of an array onto an axis, i.e. apply sum() to all axes except the one given."""
-    for i in reversed(range(len(a.shape))):
+    for i in reversed(list(range(len(a.shape)))):
         if axis != i:
             a = a.sum(axis=i)
     return a
@@ -56,7 +66,7 @@ class Axis(object):
         return self.imax - self.imin + 1
 
     def __iter__(self):
-        return iter(self[index] for index in xrange(len(self)))
+        return iter(self[index] for index in range(len(self)))
 
     def __getitem__(self, key):
         if isinstance(key, slice):
@@ -568,7 +578,7 @@ class Space(object):
         weights = self.contributions
 
         # get rid of invalid coords
-        valid = reduce(numpy.bitwise_and, intertools.chain((numpy.isfinite(t) for t in transcoords)), (weights > 0, ))
+        valid = reduce(numpy.bitwise_and, chain((numpy.isfinite(t) for t in transcoords)), (weights > 0, ))
         transcoords = tuple(t[valid] for t in transcoords)
 
         return self.from_image(resolutions, labels, transcoords, intensity[valid], weights[valid])
@@ -582,7 +592,7 @@ class Space(object):
         if len(coordinates) != len(self.axes):
             raise ValueError('dimension mismatch between coordinates and axes')
 
-        intensity = numpy.nan_to_num(intensity).flatten()  # invalids should be handeled by setting weight to 0, this ensures the weights can do that
+        intensity = numpy.nan_to_num(intensity).flatten()  # invalids can be handeled by setting weight to 0, this ensures the weights can do that
         weights = weights.flatten()
 
         indices = numpy.array(tuple(ax.get_index(coord) for (ax, coord) in zip(self.axes, coordinates)))
@@ -609,11 +619,11 @@ class Space(object):
         if limits is not None:
             invalid = numpy.zeros(intensity.shape).astype(numpy.bool)
             for coord, sl in zip(coordinates, limits):
-                if sl.start is None and sl.stop ia not None:
+                if sl.start is None and sl.stop is not None:
                     invalid += coord > sl.stop
                 elif sl.start is not None and sl.stop is None:
                     invalid += coord < sl.start
-                elif sl.start is not None and sl.stop os not None:
+                elif sl.start is not None and sl.stop is not None:
                     invalid += numpy.bitwise_or(coord < sl.start, coord > sl.stop)
 
             if numpy.all(invalid is True):
@@ -657,6 +667,9 @@ class Space(object):
                     if len(axes) != len(key):
                         raise ValueError("dimensionality of 'key' does not match dimensionality of Space in HDF5 file {0}".format(file))
                     key = tuple(ax.get_index(k) for k, ax in zip(key, axes))
+                    for index, sl in enumerate(key):
+                        if sl.start == sl.stop and sl.start is not None:
+                            raise KeyError('key results in empty space')
                     axes = tuple(ax[k] for k, ax in zip(key, axes) if isinstance(k, slice))
                 else:
                     key = Ellipsis
@@ -795,7 +808,7 @@ def sum(spaces):
 
 def verse_sum(verses):
     i = iter(M.spaces for M in verses)
-    return Multiverse(sum(spaces) for spaces in itertools.izip(*i))
+    return Multiverse(sum(spaces) for spaces in zip(*i))
 
 # hybrid sum() / __iadd__()
 
@@ -864,7 +877,7 @@ def dstack(spaces, dindices, dlabel, dresolution):
         exprs.append('ones_like({0}) * {1}'.format(labels[0], dindex))
         transformation = util.transformation_from_expressions(space, exprs)
         return space.transform_coordinates(resolutions, labels, transformation)
-    return sum(transform(space, dindex) for space, dindex in itertools.izip(spaces, dindices))
+    return sum(transform(space, dindex) for space, dindex in zip(spaces, dindices))
 
 
 def axis_offset(space, label, offset):
@@ -897,5 +910,5 @@ def make_compatible(spaces):
     resmax = tuple(numpy.vstack(tuple(ax.res for ax in space.reorder(ax0).axes) for space in spaces).max(axis=0))
     resmin = tuple(numpy.vstack(tuple(ax.res for ax in space.reorder(ax0).axes) for space in spaces).min(axis=0))
     if not resmax == resmin:
-        print 'Warning: Not all spaces have the same resolution. Resolution will be changed to: {0}'.format(resmax)
+        print('Warning: Not all spaces have the same resolution. Resolution will be changed to: {0}'.format(resmax))
     return tuple(space.reorder(ax0).rebin2(resmax) for space in spaces)

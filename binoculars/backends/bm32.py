@@ -1,9 +1,15 @@
 import sys
 import os
-import itertools
 import glob
 import numpy
 import time
+
+#python3 support
+PY3 = sys.version_info > (3,)
+if PY3:
+    pass
+else:
+    from itertools import izip as zip
 
 try:
     from PyMca import specfilewrapper, EdfFile, SixCircle, specfile
@@ -192,7 +198,7 @@ class BM32Input(backend.InputBase):
             pointparams = self.get_point_params(scan, job.firstpoint, job.lastpoint) # 2D array of diffractometer angles + mon + transm
             images = self.get_images(scan, job.firstpoint, job.lastpoint) # iterator!
         
-            for pp, image in itertools.izip(pointparams, images):
+            for pp, image in zip(pointparams, images):
                 yield self.process_image(scanparams, pp, image)
             util.statuseol()
         except Exception as exc:
@@ -277,7 +283,7 @@ class BM32Input(backend.InputBase):
                 uccdtagline = scan.header('M')[0].split()[-1]
                 UCCD = os.path.dirname(uccdtagline).split(os.sep)
             except:
-                print 'warning: UCCD tag not found, use imagefolder for proper file specification'
+                print('warning: UCCD tag not found, use imagefolder for proper file specification')
                 UCCD = []
             pattern = self._get_pattern(UCCD) 
             matches = self.find_edfs(pattern)
@@ -377,7 +383,7 @@ class EH1(BM32Input):
     def get_point_params(self, scan, first, last):
         sl = slice(first, last+1)
 
-        DEL, OME, ALF, BET, CHI, PHI, MON, TRANSM = range(8)
+        DEL, OME, ALF, BET, CHI, PHI, MON, TRANSM = list(range(8))
         params = numpy.zeros((last - first + 1, 8)) # gamma delta theta chi phi mu mon transm
         params[:, CHI] = 0    #scan.motorpos('CHI')
         params[:, PHI] = 0    #scan.motorpos('PHI')

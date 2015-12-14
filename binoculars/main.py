@@ -22,7 +22,8 @@ def parse_commandline_config_option(s):
     return section, option, value
 
 
-def multiprocessing_main((config, command)):  # note the double parenthesis for map() convenience
+def multiprocessing_main(xxx_todo_changeme):  # note the double parenthesis for map() convenience
+    (config, command) = xxx_todo_changeme
     Main.from_object(config, command)
     return config.dispatcher.destination.retrieve()
 

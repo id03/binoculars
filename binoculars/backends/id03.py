@@ -5,11 +5,17 @@ import glob
 import numpy
 import time
 
+#python3 support
+PY3 = sys.version_info > (3,)
+if PY3:
+    pass
+else:
+    from itertools import izip as zip
+
 try:
     from PyMca import specfilewrapper, EdfFile, SixCircle, specfile
 except ImportError:
     from PyMca5.PyMca import specfilewrapper, EdfFile, SixCircle, specfile
-
 
 from .. import backend, errors, util
 
@@ -290,7 +296,7 @@ class ID03Input(backend.InputBase):
                     yield backend.Job(scan=scanno, firstpoint=firstpoint+s.start, lastpoint=firstpoint+s.stop-1, weight=s.stop-s.start)
         else:  # scanlength is unknown
             step = int(self.config.target_weight / 1.4)
-            for start, stop in itertools.izip(itertools.count(0, step), itertools.count(step, step)):
+            for start, stop in zip(itertools.count(0, step), itertools.count(step, step)):
                 if self.wait_for_points(scanno, stop, timeout=self.config.timeout):
                     stop = self.get_scan(scanno).lines()
                     yield backend.Job(scan=scanno, firstpoint=start, lastpoint=stop-1, weight=stop-start)
@@ -307,7 +313,7 @@ class ID03Input(backend.InputBase):
             pointparams = self.get_point_params(scan, job.firstpoint, job.lastpoint)  # 2D array of diffractometer angles + mon + transm
             images = self.get_images(scan, job.firstpoint, job.lastpoint)  # iterator!
 
-            for pp, image in itertools.izip(pointparams, images):
+            for pp, image in zip(pointparams, images):
                 yield self.process_image(scanparams, pp, image)
             util.statuseol()
         except Exception as exc:
@@ -418,7 +424,7 @@ class ID03Input(backend.InputBase):
                 filename = os.path.basename(file).split('.')[0]
                 scan, point, image = filename.split('_')[-3:]
                 scan, point, image = int(scan), int(point), int(image)
-                if scan == scanno and point not in ret.keys():
+                if scan == scanno and point not in list(ret.keys()):
                     ret[point] = file
             except ValueError:
                 continue
@@ -480,7 +486,7 @@ class ID03Input(backend.InputBase):
                     uccdtagline = scanheaderC[0]
                     UCCD = os.path.split(uccdtagline.split()[-1])
                 except:
-                    print 'warning: UCCD tag not found, use imagefolder for proper file specification'
+                    print('warning: UCCD tag not found, use imagefolder for proper file specification')
                     UCCD = []
                 pattern = self._get_pattern(UCCD)
                 matches = self.find_edfs(pattern, zapscanno)
@@ -499,7 +505,7 @@ class ID03Input(backend.InputBase):
                     uccdtagline = scan.header('UCCD')[0]
                     UCCD = os.path.split(os.path.dirname(uccdtagline.split()[-1]))
                 except:
-                    print 'warning: UCCD tag not found, use imagefolder for proper file specification'
+                    print('warning: UCCD tag not found, use imagefolder for proper file specification')
                     UCCD = []
                 pattern = self._get_pattern(UCCD)
                 matches = self.find_edfs(pattern, scan.number())
@@ -595,7 +601,7 @@ class EH1(ID03Input):
     def get_point_params(self, scan, first, last):
         sl = slice(first, last+1)
 
-        GAM, DEL, TH, CHI, PHI, MU, MON, TRANSM, HRX, HRY = range(10)
+        GAM, DEL, TH, CHI, PHI, MU, MON, TRANSM, HRX, HRY = list(range(10))
         params = numpy.zeros((last - first + 1, 10))  # gamma delta theta chi phi mu mon transm
         params[:, CHI] = scan.motorpos('Chi')
         params[:, PHI] = scan.motorpos('Phi')
@@ -712,7 +718,7 @@ class EH2(ID03Input):
     def get_point_params(self, scan, first, last):
         sl = slice(first, last+1)
 
-        GAM, DEL, TH, CHI, PHI, MU, MON, TRANSM = range(8)
+        GAM, DEL, TH, CHI, PHI, MU, MON, TRANSM = list(range(8))
         params = numpy.zeros((last - first + 1, 8))  # gamma delta theta chi phi mu mon transm
         params[:, CHI] = scan.motorpos('Chi')
         params[:, PHI] = scan.motorpos('Phi')
@@ -808,7 +814,7 @@ class GisaxsDetector(ID03Input):
     def get_point_params(self, scan, first, last):
         sl = slice(first, last+1)
 
-        CCDY, CCDZ, TH, CHI, PHI, MU, MON, TRANSM = range(8)
+        CCDY, CCDZ, TH, CHI, PHI, MU, MON, TRANSM = list(range(8))
         params = numpy.zeros((last - first + 1, 8))  # gamma delta theta chi phi mu mon transm
         params[:, CHI] = scan.motorpos('Chi')
         params[:, PHI] = scan.motorpos('Phi')
@@ -834,7 +840,7 @@ class GisaxsDetector(ID03Input):
                 filename = os.path.basename(file).split('.')[0]
                 scan, point = filename.split('_')[-2:]
                 scan, point = int(scan), int(point)
-                if scan == scanno and point not in ret.keys():
+                if scan == scanno and point not in list(ret.keys()):
                     ret[point] = file
             except ValueError:
                 continue

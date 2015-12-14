@@ -13,12 +13,18 @@ author: Dominik Kriegner (dominik.kriegner@gmail.com)
 
 import sys
 import os
-import itertools
 import glob
 import numpy
 
 import xrayutilities as xu
 from PyMca import specfile
+
+#python3 support
+PY3 = sys.version_info > (3,)
+if PY3:
+    pass
+else:
+    import itertools import izip as zip
 
 try:
     from PyMca import specfilewrapper, EdfFile
@@ -87,7 +93,7 @@ class ID03Input(backend.InputBase):
         pointparams = self.get_point_params(scan, job.firstpoint, job.lastpoint) # 1D array of diffractometer angles + mon + transm
         images = self.get_images(scan, job.firstpoint, job.lastpoint) # iterator!
         
-        for pp, image in itertools.izip(pointparams, images):
+        for pp, image in zip(pointparams, images):
             yield self.process_image(scanparams, pp, image)
 
     def parse_config(self, config):
@@ -125,7 +131,7 @@ class ID03Input(backend.InputBase):
                 filename = os.path.basename(file).split('.')[0]
                 scan, point, image = filename.split('_')[-3:]
                 scan, point, image = int(scan), int(point), int(image)
-                if scan == scanno and point not in ret.keys():
+                if scan == scanno and point not in list(ret.keys()):
                     ret[point] = file
             except ValueError:
                 continue
@@ -149,7 +155,7 @@ class ID03Input(backend.InputBase):
             uccdtagline = scan.header('UCCD')[0]
             UCCD = os.path.split(os.path.dirname(uccdtagline.split()[-1]))
         except:
-            print 'warning: UCCD tag not found, use imagefolder for proper file specification'
+            print('warning: UCCD tag not found, use imagefolder for proper file specification')
             UCCD = []
         pattern = self._get_pattern(UCCD) 
         matches = self.find_edfs(pattern, scan.number())
@@ -211,13 +217,13 @@ class EH2(ID03Input):
         # distance sdd-600 corresponds to distance of the detector chip from
         # the gamR rotation axis (rest is handled by the translations ty and
         # gamT (along z))
-        print('{:>9} {:>10} {:>9} {:>9}'.format('Mu', 'Theta', 'Delta', 'Gamma'))
+        print(('{:>9} {:>10} {:>9} {:>9}'.format('Mu', 'Theta', 'Delta', 'Gamma')))
 
     def process_image(self, scanparams, pointparams, image):
         mu, theta, chi, phi, delta, gamma, mon, transm = pointparams
         wavelength, UB = scanparams
         data = image / mon / transm
-        print('{:9.4f} {:10.4f} {:9.4f} {:9.4f}'.format(mu, theta, delta, gamma))
+        print(('{:9.4f} {:10.4f} {:9.4f} {:9.4f}'.format(mu, theta, delta, gamma)))
 
         # recalculate detector translation (which should be saved!)
         gamT = self.ty * numpy.tan(numpy.radians(gamma))
@@ -233,7 +239,7 @@ class EH2(ID03Input):
     def get_point_params(self, scan, first, last):
         sl = slice(first, last+1)
 
-        MU, TH, CHI, PHI, DEL, GAM, MON, TRANSM = range(8)
+        MU, TH, CHI, PHI, DEL, GAM, MON, TRANSM = list(range(8))
         params = numpy.zeros((last - first + 1, 8)) 
         # Mu, Theta, Chi, Phi, Delta, Gamma, MON, transm
         params[:, CHI] = scan.motorpos('Chi')

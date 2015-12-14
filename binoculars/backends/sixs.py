@@ -41,6 +41,10 @@ from networkx import DiGraph, dijkstra_path
 
 from .. import backend, errors, util
 
+if PY3:
+    from functools import reduce
+else:
+    from itertools import izip as zip
 
 class realspace(backend.ProjectionBase):
     # scalars: mu, theta, [chi, phi, "omitted"] delta, gamR, gamT, ty, wavelength
@@ -269,7 +273,7 @@ def dataframes(hfile, data_path=None):
         }
 
         # now instantiate the pytables objects
-        for key, value in data_path.iteritems():
+        for key, value in data_path.items():
             child = scan_data._f_get_child(value)
             dataframe[key] = child
 
@@ -311,7 +315,7 @@ def rotation_axes(graph, nodes):
 
 
 def zip_with(f, *coll):
-    return itertools.starmap(f, itertools.izip(*coll))
+    return itertools.starmap(f, zip(*coll))
 
 
 def rotation_matrix(values, axes):

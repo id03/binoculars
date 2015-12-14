@@ -21,7 +21,6 @@ author: Dominik Kriegner (dominik.kriegner@gmail.com)
 
 import sys
 import os
-import itertools
 import glob
 import numpy
 import xrayutilities as xu
@@ -177,7 +176,7 @@ class EH2SCD(EDFInput):
                              pwidth2=self.config.pixelsize[0],
                              distance=1e-10,
                              roi=roi)
-        print('{:>20} {:>9} {:>10} {:>9} {:>9} {:>9}'.format(' ', 'Mu', 'Theta', 'CCD_Y', 'CCD_X', 'CCD_Z'))
+        print(('{:>20} {:>9} {:>10} {:>9} {:>9} {:>9}'.format(' ', 'Mu', 'Theta', 'CCD_Y', 'CCD_X', 'CCD_Z')))
 
     def process_image(self, image):
         # motor positions
@@ -205,7 +204,7 @@ class EH2SCD(EDFInput):
 
         # normalization
         data = image.data / mon / transm
-        print('{:>20} {:9.4f} {:10.4f} {:9.1f} {:9.1f} {:9.1f}'.format(os.path.split(image.filename)[-1] ,mu, th, cty, ctx, ctz))
+        print(('{:>20} {:9.4f} {:10.4f} {:9.1f} {:9.1f} {:9.1f}'.format(os.path.split(image.filename)[-1] ,mu, th, cty, ctx, ctz)))
 
         # masking
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)

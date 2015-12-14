@@ -11,14 +11,20 @@ interrupted.
 '''
 import socket
 import threading
-import SocketServer
 import time
 import sys
 import traceback
 import json
 import os
-import Queue
 
+#python3 support
+PY3 = sys.version_info > (3,)
+if PY3:
+    import socketserver
+    import queue
+else:
+    import SocketServer as socketserver
+    import Queue as queue
 
 def set_src():
     import sys
@@ -36,25 +42,25 @@ except ImportError:
     import binoculars.util
 
 
-class ProcessTCPHandler(SocketServer.BaseRequestHandler):
+class ProcessTCPHandler(socketserver.BaseRequestHandler):
     def handle(self):
         input = self.request.recv(1024)
         if input.startswith('test'):
-            print 'Recieved test request'
+            print('Recieved test request')
             self.request.sendall('Connection succesful')
         else:
             try:
                 job = json.loads(input)
                 parsed, result = parse_job(job)
                 if parsed:
-                    print 'Recieved command: {0}. Job is added to queue.\nNumber of jobs left in queue: {1}'.format(job['command'], self.server.q.qsize())
+                    print('Recieved command: {0}. Job is added to queue.\nNumber of jobs left in queue: {1}'.format(job['command'], self.server.q.qsize()))
                     response = 'Job added to queue'
                     self.server.q.put(job)
                 else:
                     response = result
             except:
-                print 'Could not parse the job: {0}'.format(input)
-                print traceback.format_exc()
+                print('Could not parse the job: {0}'.format(input))
+                print(traceback.format_exc())
                 response = 'Error: Job could not be added to queue'
             finally:
                 self.request.sendall(response)
@@ -63,7 +69,7 @@ class ProcessTCPHandler(SocketServer.BaseRequestHandler):
 def parse_job(job):
     try:
         overrides = []
-        for key in job.keys():
+        for key in list(job.keys()):
             if not key in ['command', 'configfilename']:
                 section_key, value = job[key].split('=')
                 section, key = section_key.split(':')
@@ -84,21 +90,21 @@ def process(run_event, ip, port, q):
             command = str(job['command'])
             configfilename = job['configfilename']
             overrides = parse_job(job)[1]  # [1] are the succesfully parsed jobs
-            print 'Start processing: {0}'.format(command)
+            print('Start processing: {0}'.format(command))
             try:
                 configobj = binoculars.util.ConfigFile.fromtxtfile(configfilename, overrides=overrides)
                 if binoculars.util.parse_bool(configobj.dispatcher['send_to_gui']):
                     configobj.dispatcher['host'] = ip
                     configobj.dispatcher['port'] = port
                 binoculars.main.Main.from_object(configobj, [command])
-                print 'Succesfully finished processing: {0}.'.format(command)
+                print('Succesfully finished processing: {0}.'.format(command))
             except Exception as exc:
                 errorfilename = 'error_{0}.txt'.format(command)
-                print 'An error occured for scan {0}. For more information see {1}'.format(command, errorfilename)
+                print('An error occured for scan {0}. For more information see {1}'.format(command, errorfilename))
                 with open(errorfilename, 'w') as fp:
                     traceback.print_exc(file=fp)
             finally:
-                print 'Number of jobs left in queue: {0}'.format(q.qsize())
+                print('Number of jobs left in queue: {0}'.format(q.qsize()))
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:
@@ -108,7 +114,7 @@ if __name__ == '__main__':
         ip = None
         port = None
 
-    q = Queue.Queue()
+    q = queue.Queue()
 
     binoculars.util.register_python_executable(os.path.join(os.path.dirname(__file__), 'binoculars.py'))
 
@@ -120,11 +126,11 @@ if __name__ == '__main__':
     process_thread = threading.Thread(target=process, args=(run_event, ip, port, q))
     process_thread.start()
 
-    server = SocketServer.TCPServer((HOST, PORT), ProcessTCPHandler)
+    server = socketserver.TCPServer((HOST, PORT), ProcessTCPHandler)
     server.q = q
     ip, port = server.server_address
 
-    print 'Process server started running at ip {0} and port {1}. Interrupt server with Ctrl-C'.format(ip, port)
+    print('Process server started running at ip {0} and port {1}. Interrupt server with Ctrl-C'.format(ip, port))
     try:
         server.serve_forever()
     except KeyboardInterrupt:

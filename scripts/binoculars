@@ -32,7 +32,7 @@ def command_info(args):
 
     if args.output:
         if len(args.infile) > 1:
-            print 'only one space file argument is support with extractconfig -> using the first'
+            print('only one space file argument is support with extractconfig -> using the first')
         config = binoculars.util.ConfigFile.fromfile(args.infile[0])
         config.totxtfile(args.output)
     else:
@@ -40,16 +40,16 @@ def command_info(args):
             try:
                 axes = binoculars.space.Axes.fromfile(f)
             except Exception as e:
-                print '{0}: unable to load Space: {1!r}'.format(f, e)
+                print(('{0}: unable to load Space: {1!r}'.format(f, e)))
             else:
-                print '{0} \n{1!r}'.format(f, axes)
+                print(('{0} \n{1!r}'.format(f, axes)))
             if args.config:
                 try:
                     config = binoculars.util.ConfigFile.fromfile(f)
                 except Exception as e:
-                    print '{0}: unable to load util.ConfigFile: {1!r}'.format(f, e)
+                    print(('{0}: unable to load util.ConfigFile: {1!r}'.format(f, e)))
                 else:
-                    print '{!r}'.format(config)
+                    print(('{!r}'.format(config)))
 
 
 # CONVERT
@@ -70,7 +70,7 @@ def command_convert(args):
 
     if args.infile.endswith('.zpi'):
         if not args.read_trusted_zpi:
-            print 'error: .zpi files are unsafe, use --read-trusted-zpi to open'
+            print('error: .zpi files are unsafe, use --read-trusted-zpi to open')
             sys.exit(1)
         space = binoculars.util.zpi_load(args.infile)
     else:
@@ -84,15 +84,15 @@ def command_convert(args):
 
     if ext == '.edf':
         binoculars.util.space_to_edf(space, args.outfile)
-        print 'saved at {0}'.format(args.outfile)
+        print('saved at {0}'.format(args.outfile))
 
     elif ext == '.txt':
         binoculars.util.space_to_txt(space, args.outfile)
-        print 'saved at {0}'.format(args.outfile)
+        print('saved at {0}'.format(args.outfile))
 
     elif ext == '.hdf5':
         space.tofile(args.outfile)
-        print 'saved at {0}'.format(args.outfile)
+        print('saved at {0}'.format(args.outfile))
 
     else:
         sys.stderr.write('unknown extension {0}, unable to save!\n'.format(ext))
@@ -136,7 +136,7 @@ def command_plot(args):
         fitdata = None
         if args.fit:
             fit = binoculars.fit.get_class_by_name(args.fit)(space, guess)
-            print fit
+            print(fit)
             if fit.success:
                 fitdata = fit.fitdata
 
@@ -241,7 +241,7 @@ def command_fit(args):
         fit = fitclass(newspace, guess)
 
         paramnames = fit.parameters
-        print fit
+        print(fit)
         if fit.success:
             fitlabel.append(numpy.mean([start, stop]))
             parameters.append(fit.result)
@@ -255,7 +255,7 @@ def command_fit(args):
             fit = None
             guess = None
 
-        print guess
+        print(guess)
 
         if args.savepdf or args.savefile:
             if len(newspace.get_masked().compressed()):
@@ -273,7 +273,7 @@ def command_fit(args):
                 info.append('sliced in {0} from {1} to {2}'.format(axlabel, left, right))
                 pyplot.suptitle('{0}'.format(' '.join(info)))
 
-                pyplot.savefig(filename.next())
+                pyplot.savefig(next(filename))
                 pyplot.close()
 
     parameters = numpy.vstack(n for n in parameters).T
@@ -293,11 +293,11 @@ def command_fit(args):
         if args.savefile:
             root, ext = os.path.split(args.savefile)
             pyplot.savefig('{0}_summary{1}'.format(root, ext))
-            print 'saved at {0}_summary{1}'.format(root, ext)
+            print('saved at {0}_summary{1}'.format(root, ext))
             filename = '{0}_summary{1}'.format(root, '.txt')
         else:
             pyplot.savefig('{0}_summary.pdf'.format(os.path.splitext(args.infile)[0]))
-            print 'saved at {0}_summary.pdf'.format(os.path.splitext(args.infile)[0])
+            print('saved at {0}_summary.pdf'.format(os.path.splitext(args.infile)[0]))
             filename = '{0}_summary.txt'.format(os.path.splitext(args.infile)[0])
 
         file = open(filename, 'w')
@@ -321,7 +321,7 @@ def command_process(args):
 
 # SUBCOMMAND ARGUMENT HANDLING
 def usage(msg=''):
-    print """usage: binoculars COMMAND ...
+    print("""usage: binoculars COMMAND ...
 {1}
 available commands:
 
@@ -332,7 +332,7 @@ available commands:
  process    data crunching / binning
 
 run binoculars COMMAND --help more info on that command
-""".format(sys.argv[0], msg)
+""".format(sys.argv[0], msg))
     sys.exit(1)
 
 

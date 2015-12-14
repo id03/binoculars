@@ -410,7 +410,7 @@ class TableWidget(QtGui.QWidget):
             if rodkey == label:
                 self.table.removeRow(index)
         self.database.delete_rod(rodkey)
-        print 'removed: {0}'.format(rodkey)
+        print('removed: {0}'.format(rodkey))
 
     def setlength(self, y, x=1):
         if x == 1:
@@ -457,7 +457,7 @@ class FitData(object):
 
     def create_rod(self, rodkey, spacename):
         with h5py.File(self.filename, 'a') as db:
-            if rodkey not in db.keys():
+            if rodkey not in list(db.keys()):
                 db.create_group(rodkey)
                 db[rodkey].attrs['filename'] = spacename
                 self.axdict[rodkey] = binoculars.space.Axes.fromfile(spacename)
@@ -468,19 +468,19 @@ class FitData(object):
 
     def rods(self):
         with h5py.File(self.filename, 'a') as db:
-            rods = db.keys()
+            rods = list(db.keys())
         return rods
 
     def copy(self, oldkey, newkey):
         with h5py.File(self.filename, 'a') as db:
-            if oldkey in db.keys():
+            if oldkey in list(db.keys()):
                 db.copy(db[oldkey], db, name=newkey)
 
     @property
     def filelist(self):
         filelist = []
         with h5py.File(self.filename, 'a') as db:
-            for key in db.iterkeys():
+            for key in db.keys():
                 filelist.append(db[key].attrs['filename'])
         return filelist
 
@@ -596,7 +596,7 @@ class RodData(FitData):
             except KeyError:
                 db[self.rodkey][self.slicekey].create_group('attrs')
                 group = db[self.rodkey][self.slicekey]['attrs']
-            if key in group.keys():
+            if key in list(group.keys()):
                 return numpy.ma.array(group[key][index], mask=group[mkey][index])
             else:
                 return None
@@ -604,36 +604,36 @@ class RodData(FitData):
     def all_attrkeys(self):
         with h5py.File(self.filename, 'a') as db:
             group = db[self.rodkey][self.slicekey]['attrs']
-            return group.keys()
+            return list(group.keys())
 
     def all_from_key(self, key):
         mkey = 'mask{0}'.format(key)
         axes = self.axdict[self.rodkey]
         with h5py.File(self.filename, 'a') as db:
             group = db[self.rodkey][self.slicekey]['attrs']
-            if key in group.keys():
+            if key in list(group.keys()):
                 return binoculars.space.get_axis_values(axes, self.axis, self.resolution), numpy.ma.array(group[key], mask=numpy.array(group[mkey]))
 
     def load_loc(self, index):
         loc = list()
         with h5py.File(self.filename, 'a') as db:
+            count = itertools.count()
+            key = 'guessloc{0}'.format(next(count))
+            while self.load_sliceattr(index, key) != None:
+                loc.append(self.load_sliceattr(index, key))
+                key = 'guessloc{0}'.format(next(count))
+            if len(loc) > 0:
+                return loc
+            else:
                 count = itertools.count()
-                key = 'guessloc{0}'.format(count.next())
+                key = 'loc{0}'.format(next(count))
                 while self.load_sliceattr(index, key) != None:
                     loc.append(self.load_sliceattr(index, key))
-                    key = 'guessloc{0}'.format(count.next())
-             if len(loc) > 0:
-                 return loc
-             else:
-                 count = itertools.count()
-                 key = 'loc{0}'.format(count.next())
-                 while self.load_sliceattr(index, key) != None:
-                     loc.append(self.load_sliceattr(index, key))
-                     key = 'loc{0}'.format(count.next())
-                 if len(loc) > 0:
-                     return loc
-                 else:
-                     return None
+                    key = 'loc{0}'.format(next(count))
+                if len(loc) > 0:
+                    return loc
+                else:
+                    return None
 
     def save_loc(self, index, loc):
         for i, value in enumerate(loc):
@@ -704,7 +704,7 @@ class FitWidget(QtGui.QWidget):
         self.canvas.draw()
 
     def fit(self, index, space, function):
-        print index
+        print(index)
         if not len(space.get_masked().compressed()) == 0:
             loc = self.database.load_loc(index)
             if loc:
@@ -714,7 +714,7 @@ class FitWidget(QtGui.QWidget):
             fit.fitdata.mask = space.get_masked().mask
             self.database.save_data(index, 'fit',  fit.fitdata)
             params = list(line.split(':')[0] for line in fit.summary.split('\n'))
-            print fit.result, fit.variance
+            print(fit.result, fit.variance)
             for key, value in zip(params, fit.result):
                 self.database.save_sliceattr(index, key, value)
             for key, value in zip(params, fit.variance):
@@ -922,7 +922,7 @@ class IntegrateWidget(QtGui.QWidget):
                 interdata[key].mask = numpy.zeros_like(interdata[key])
                 self.database.save_data(index, 'inter',  interdata)
             except Exception as e:
-                print 'Warning error interpolating slice {0}: {1}'.format(index, e.message)
+                print('Warning error interpolating slice {0}: {1}'.format(index, e.message))
                 intensity = numpy.array([])
                 bkg = numpy.array([])
 
@@ -939,7 +939,7 @@ class IntegrateWidget(QtGui.QWidget):
             self.database.save_sliceattr(index, 'sf', structurefactor)
             self.database.save_sliceattr(index, 'nisf', nistructurefactor)
 
-            print 'Structurefactor {0}: {1}'.format(index, structurefactor)
+            print('Structurefactor {0}: {1}'.format(index, structurefactor))
 
     def intkey(self, coords, axes):
 
