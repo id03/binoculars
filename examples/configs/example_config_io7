@@ -1,0 +1,48 @@
+### the DISPATCHER is responsible for job management
+[dispatcher]
+type = singlecore # run locally
+#ncores = 2 # optionally, specify number of cores (autodetect by default)
+
+#send_to_gui = true
+#host = 160.103.228.145
+#port = 55294
+
+# to use the OAR cluster:
+#type = oar
+#tmpdir = /some/globally/available/path
+#oarsub_options = walltime=0:15 # optionally, tweak oarsub parameters
+#executable = /path/to/custom/python /path/to/ivoxprocess # optionally, override default location of python and/or ivoxoar installation
+
+# specificy destination file using scan numbers
+destination = mesh_{first}_{last}.hdf5
+overwrite = true
+# or, by default: numbered files in the form output_###.zpi:
+# destination = output.zpi
+#overwrite = false
+
+### choose an appropriate INPUT class and specify custom options
+[input]
+type = io7:eh1 # refers to class EH1 in ivoxoar/backends/id03.py
+#specfile = test.spec
+datafilefolder = /home/willem/Documents/PhD/diamond
+imagefolder = /home/willem/Documents/PhD/diamond
+
+#wait_for_data = True
+
+## approximate number of images per job, only useful when running on the oar cluster
+target_weight = 500
+
+# technical yadayada for this particular input class
+centralpixel = 92, 215
+xmask=130-330
+ymask=14-165
+pixelsize = 0.172, 0.172
+sdd = 897
+
+### choose PROJECTION plus resolution
+[projection]
+#type = io7:gammadelta
+#resolution=0.01
+type = io7:hklprojection # refers to HKLProjection in ivoxoar/backends/id03.py
+resolution = 0.001, 0.001, 0.001# or just give 1 number for all dimensions
+#limits = [:0,-1:,:], [0:,:-1,:], [:0,:-1,:], [0:,-1:,:]
