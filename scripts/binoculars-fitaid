@@ -61,7 +61,7 @@ class Window(QtGui.QMainWindow):
 
         self.tab_widget = QtGui.QTabWidget(self)
         self.tab_widget.setTabsClosable(True)
-        QtCore.QObject.connect(self.tab_widget, QtCore.SIGNAL("tabCloseRequested(int)"), self.tab_widget.removeTab)
+        self.tab_widget.tabCloseRequested.connect(self.tab_widget.removeTab)
 
         self.setCentralWidget(self.tab_widget)
         self.setMenuBar(menu_bar)
@@ -153,10 +153,12 @@ class TopWidget(QtGui.QWidget):
         self.fitwidget = FitWidget(self.database)
         self.integratewidget = IntegrateWidget(self.database)
         self.plotwidget = OverviewWidget(self.database)
+        self.peakwidget = PeakWidget(self.database)
 
         self.tab_widget.addTab(self.fitwidget, 'Fit')
         self.tab_widget.addTab(self.integratewidget, 'Integrate')
         self.tab_widget.addTab(self.plotwidget, 'plot')
+        self.tab_widget.addTab(self.peakwidget, 'Peaktracker')
 
         self.emptywidget = QtGui.QWidget()
         self.emptywidget.setLayout(vbox)
@@ -223,7 +225,9 @@ class TopWidget(QtGui.QWidget):
         rodkey, axis, resolution = self.table.currentkey()
         newdatabase = RodData(self.database.filename, rodkey, axis, resolution)
         self.integratewidget.database = newdatabase
+        self.peakwidget.database = newdatabase
         self.integratewidget.set_axis()
+        self.peakwidget.set_axis()
         self.fitwidget.database = newdatabase
         self.nav.set_length(newdatabase.rodlength())
         index = newdatabase.load('index')
@@ -639,6 +643,12 @@ class RodData(FitData):
         for i, value in enumerate(loc):
             self.save_sliceattr(index, 'guessloc{0}'.format(i), value) 
 
+    def save_segments(self, index, loc):
+        db[self.rodkey][self.slicekey].create_dataset('segments', data.shape, dtype=data.dtype, compression='gzip').write_direct(data)
+
+    def load_segments(self, index, loc):
+        return    db[self.rodkey][self.slicekey]['segments']
+
     def __iter__(self):
         for index in range(self.rodlength()):
             yield self.space_from_index(index)
@@ -778,12 +788,12 @@ class IntegrateWidget(QtGui.QWidget):
         self.top = QtGui.QDoubleSpinBox()
         self.bottom = QtGui.QDoubleSpinBox()
 
-        QtCore.QObject.connect(self.hsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
-        QtCore.QObject.connect(self.vsize, QtCore.SIGNAL("valueChanged(double)"), self.send)
-        QtCore.QObject.connect(self.left, QtCore.SIGNAL("valueChanged(double)"), self.send)
-        QtCore.QObject.connect(self.right, QtCore.SIGNAL("valueChanged(double)"), self.send)
-        QtCore.QObject.connect(self.top, QtCore.SIGNAL("valueChanged(double)"), self.send)
-        QtCore.QObject.connect(self.bottom, QtCore.SIGNAL("valueChanged(double)"), self.send)
+        self.hsize.valueChanged.connect(self.send)
+        self.vsize.valueChanged.connect(self.send)
+        self.left.valueChanged.connect(self.send)
+        self.right.valueChanged.connect(self.send)
+        self.top.valueChanged.connect(self.send)
+        self.bottom.valueChanged.connect(self.send)
 
         backgroundbox.addWidget(self.aroundroi)
         backgroundbox.addWidget(self.left)
@@ -1212,6 +1222,73 @@ class OverviewWidget(QtGui.QWidget):
         if self.log.checkState():
             self.ax.semilogy()
         self.canvas.draw()
+
+class PeakWidget(QtGui.QWidget):
+    def __init__(self, database,  parent=None):
+        super(PeakWidget, self).__init__(parent)
+        self.database = database
+
+        # create a QTableWidget
+        self.table = QtGui.QTableWidget(1, 3, self)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.verticalHeader().setVisible(False)
+
+        self.btn_add_row = QtGui.QPushButton('+', self)
+        self.btn_add_row.clicked.connect(self.add_row)
+        
+        self.buttonRemove = QtGui.QPushButton('-', self)
+        self.buttonRemove.clicked.connect(self.remove)
+
+        vbox = QtGui.QVBoxLayout()
+        hbox = QtGui.QHBoxLayout()
+
+        hbox.addWidget(self.btn_add_row)
+        hbox.addWidget(self.buttonRemove)
+
+        vbox.addLayout(hbox)
+        vbox.addWidget(self.table)
+        self.setLayout(vbox)
+
+    def set_axis(self):
+        self.axes = self.database.paxes()
+        self.table.setHorizontalHeaderLabels(['{0}'.format(self.database.axis), '{0}'.format(self.axes[0].label), '{0}'.format(self.axes[1].label)])
+
+    def add_row(self):
+        self.table.insertRow(self.table.rowCount())
+
+    def remove(self):
+        self.table.removeRow(self.table.currentRow())
+
+    def axis_coords(self):
+        return numpy.vstack( numpy.array([float(self.table.item(index, 0)), float(self.table.item(index, 1)), float(self.table.item(index, 2))]) for index in range(self.table.rowCount()))
+
+    def get_coords(self, x):
+        coords = self.axis_coords()
+        if coords.shape[0] == 1:
+            return coords[0,1:]
+
+        args = numpy.argsort(coords[:,0])
+        
+        x0 = coords[args,0]
+        x1 = coords[args,1]
+        x2 = coords[args,2]
+        
+        if x < x0.min():
+            first = 0
+            last = 1
+        elif x > x0.max():
+            first = -2
+            last = -1
+        else:
+            first = numpy.searchsorted(x, x0) - 1
+            last = numpy.searchsorted(x, x0)
+
+        a1 = (x1[last] - x1[first]) / (x0[last] - x0[first])
+        b1 = x1[first] - a * x0[first] 
+        a2 = (x2[last] - x2[first]) / (x0[last] - x0[first])
+        b2 = x2[first] - a * x0[first] 
+
+        return numpy.array([a1 * x + b1, a2 * x + b2])
 
 def interpolate(space):
     data = space.get_masked()

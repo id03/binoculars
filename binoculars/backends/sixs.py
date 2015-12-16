@@ -41,6 +41,7 @@ from networkx import DiGraph, dijkstra_path
 
 from .. import backend, errors, util
 
+PY3 = sys.version_info > (3,)
 if PY3:
     from functools import reduce
 else:
