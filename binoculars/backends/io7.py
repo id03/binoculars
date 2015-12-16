@@ -27,7 +27,6 @@ import os
 import itertools
 import numpy
 import time
-import tables
 import math
 import json
 from scipy.misc import imread
@@ -47,10 +46,9 @@ else:
 class HKLProjection(backend.ProjectionBase):
     # scalars: mu, theta, [chi, phi, "omitted"] delta, gamR, gamT, ty, wavelength
     # 3x3 matrix: UB
-    def project(self, energy, UB, pixels, gamma, delta, omega, alpha):
+    def project(self, energy, UB, pixels, gamma, delta, omega, alpha, nu):
         # put the detector at the right position
 
-        nu = 0
         dx,dy,dz = pixels
 
         # convert angles to radians
@@ -216,9 +214,6 @@ class IO7Input(backend.InputBase):
             self.config.ymask = slice(None)
         if self.config.pr:
             self.config.pr = util.parse_tuple(self.config.pr, length=2, type=int)
-        self.config.sdd = config.pop('sdd', None)#Optional sample to detector distance (mm)
-        if self.config.sdd is not None:
-            self.config.sdd = float(self.config.sdd)
         self.config.centralpixel = util.parse_tuple(config.pop('centralpixel'), length=2, type=int)  #x,y
         self.config.maskmatrix = config.pop('maskmatrix', None)#Optional, if supplied pixels where the mask is 0 will be removed
         self.config.pixelsize = util.parse_tuple(config.pop('pixelsize'), length=2, type=float)  # pixel size x/y (mm) (same dimension as sdd)
@@ -242,6 +237,14 @@ class IO7Input(backend.InputBase):
         roi = data[ymask, :]
         return roi[:, xmask]
 
+class EH2(IO7Input):
+    def parse_config(self, config):
+        super(IO7Input, self).parse_config(config)
+        self.config.sdd = float(config.pop('sdd'), None)#Sample to detector distance (mm)
+        if self.config.sdd is not None:
+            self.config.sdd = float(self.config.sdd)
+
+
     def process_image(self, scan, scanparams, pointparams, image):
         gamma, delta, omega, chi, phi, alpha, mon, transm = pointparams#GAM, DEL, OMG, CHI, PHI, ALF, MON, TRANSM
         energy, UB = scanparams
@@ -252,12 +255,13 @@ class IO7Input(backend.InputBase):
 
         # pixels to angles
         pixelsize = numpy.array(self.config.pixelsize)
+            
         if self.config.sdd is None:
             sdd = scan.metadata.diff1detdist
         else:
             sdd = self.config.sdd
 
-        app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
+        nu = scan.metadata.diff2prot
 
         centralpixel = self.config.centralpixel  # (column, row) = (delta, gamma)
 
@@ -283,7 +287,56 @@ class IO7Input(backend.InputBase):
 
         pixels = dx,dy,dz
 
-        return intensity, weights, (energy, UB, pixels, gamma, delta, omega, alpha)
+        return intensity, weights, (energy, UB, pixels, gamma, delta, omega, alpha, nu)
+
+
+class EH1(IO7Input):
+    def parse_config(self, config):
+        super(EH1, self).parse_config(config)
+        self.config.sdd = float(config.pop('sdd'))#Sample to detector distance (mm)
+
+
+    def process_image(self, scan, scanparams, pointparams, image):
+        gamma, delta, omega, chi, phi, alpha, mon, transm = pointparams#GAM, DEL, OMG, CHI, PHI, ALF, MON, TRANSM
+        energy, UB = scanparams
+
+        weights = numpy.ones_like(image)
+
+        util.status('{4}| gamma: {0}, delta: {1}, omega: {2}, mu: {3}'.format(gamma, delta, omega, alpha, time.ctime(time.time())))
+
+        # pixels to angles
+        pixelsize = numpy.array(self.config.pixelsize)
+
+        sdd = self.config.sdd
+
+        nu = scan.metadata.diff1prot
+
+        centralpixel = self.config.centralpixel  # (column, row) = (delta, gamma)
+
+        dz = (numpy.indices(image.shape)[1] - centralpixel[1]) * pixelsize[1]
+        dx = (numpy.indices(image.shape)[0] - centralpixel[0]) * pixelsize[0]
+        dy = numpy.ones(image.shape) * sdd
+
+        # masking
+        if self.config.maskmatrix is not None:
+            if self.config.maskmatrix.shape != data.shape:
+                raise errors.BackendError('The mask matrix does not have the same shape as the images')
+            weights *= self.config.maskmatrix
+
+        intensity = self.apply_mask(image, self.config.xmask, self.config.ymask)
+        weights = self.apply_mask(weights, self.config.xmask, self.config.ymask)
+        dx = self.apply_mask(dx, self.config.xmask, self.config.ymask)
+        dy = self.apply_mask(dy, self.config.xmask, self.config.ymask)
+        dz = self.apply_mask(dz, self.config.xmask, self.config.ymask)
+
+
+        #X,Y = numpy.meshgrid(x,y)
+        #Z = numpy.ones(X.shape) * sdd
+
+        pixels = dx,dy,dz
+
+        return intensity, weights, (energy, UB, pixels, gamma, delta, omega, alpha, nu)
+
 
 def load_matrix(filename):
     if filename == None:
