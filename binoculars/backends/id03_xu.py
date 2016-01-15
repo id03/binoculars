@@ -24,7 +24,7 @@ PY3 = sys.version_info > (3,)
 if PY3:
     pass
 else:
-    import itertools import izip as zip
+    from itertools import izip as zip
 
 try:
     from PyMca import specfilewrapper, EdfFile

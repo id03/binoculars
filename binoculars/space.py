@@ -571,14 +571,13 @@ class Space(object):
 
     def transform_coordinates(self, resolutions, labels, transformation):
         # gather data and transform
-
         coords = self.get_grid()
         transcoords = transformation(*coords)
         intensity = self.get()
         weights = self.contributions
 
         # get rid of invalid coords
-        valid = reduce(numpy.bitwise_and, chain((numpy.isfinite(t) for t in transcoords)), (weights > 0, ))
+        valid = reduce(numpy.bitwise_and, chain((numpy.isfinite(t) for t in transcoords)), (weights > 0))
         transcoords = tuple(t[valid] for t in transcoords)
 
         return self.from_image(resolutions, labels, transcoords, intensity[valid], weights[valid])
@@ -878,7 +877,6 @@ def dstack(spaces, dindices, dlabel, dresolution):
         transformation = util.transformation_from_expressions(space, exprs)
         return space.transform_coordinates(resolutions, labels, transformation)
     return sum(transform(space, dindex) for space, dindex in zip(spaces, dindices))
-
 
 def axis_offset(space, label, offset):
     exprs = list(ax.label for ax in space.axes)

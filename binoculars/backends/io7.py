@@ -329,10 +329,6 @@ class EH1(IO7Input):
         dy = self.apply_mask(dy, self.config.xmask, self.config.ymask)
         dz = self.apply_mask(dz, self.config.xmask, self.config.ymask)
 
-
-        #X,Y = numpy.meshgrid(x,y)
-        #Z = numpy.ones(X.shape) * sdd
-
         pixels = dx,dy,dz
 
         return intensity, weights, (energy, UB, pixels, gamma, delta, omega, alpha, nu)

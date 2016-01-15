@@ -136,7 +136,7 @@ class Split(Main):  # completely ignores the dispatcher, just yields a space per
         for intensity, weights, params in self.input.process_job(job):
             coords = self.projection.project(*params)
             if self.projection.config.limits == None:
-                yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights=weights))
+                yield space.Space.from_image(res, labels, coords, intensity, weights=weights)
             else:
                 yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights=weights, limits=limits) for limits in self.projection.config.limits)
 

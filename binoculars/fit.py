@@ -4,7 +4,6 @@ import scipy.special
 import inspect
 import re
 
-
 class FitBase(object):
     parameters = None
     guess = None
@@ -14,7 +13,10 @@ class FitBase(object):
 
     def __init__(self, space, guess=None):
         self.space = space
-        args = inspect.getargspec(self.func).args
+        code = inspect.getsource(self.func)
+
+        args = tuple( re.findall('\((.*?)\)', line)[0].split(',') for line in code.split('\n')[2:4])
+
         if space.dimension != len(args[0]):
             raise ValueError('dimension mismatch: space has {0}, {1.__class__.__name__} expects {2}'.format(space.dimension, self, len(args[0])))
         self.parameters = args[1]
@@ -145,9 +147,9 @@ def get_class_by_name(name):
 # fitting functions
 class Lorentzian1D(PeakFitBase):
     @staticmethod
-    def func(xxx_todo_changeme, xxx_todo_changeme1):
-        (x, ) = xxx_todo_changeme
-        (I, loc, gamma, slope, offset) = xxx_todo_changeme1
+    def func(grid, params):
+        (x, ) = grid
+        (I, loc, gamma, slope, offset) = params
         return I / ((x - loc)**2 + gamma**2) + offset + x * slope
 
     def set_guess(self, maximum, argmax, linparams):
@@ -157,8 +159,8 @@ class Lorentzian1D(PeakFitBase):
 
 class Lorentzian1DNoBkg(PeakFitBase):
     @staticmethod
-    def func(xxx_todo_changeme2, xxx_todo_changeme3):
-        (x, ) = xxx_todo_changeme2
+    def func(grid, params):
+        (x, ) = grid
         (I, loc, gamma) = xxx_todo_changeme3
         return I / ((x - loc)**2 + gamma**2)
 
@@ -169,9 +171,9 @@ class Lorentzian1DNoBkg(PeakFitBase):
 
 class PolarLorentzian2Dnobkg(PeakFitBase):
     @staticmethod
-    def func(xxx_todo_changeme4, xxx_todo_changeme5):
-        (x, y) = xxx_todo_changeme4
-        (I, loc0, loc1, gamma0, gamma1, th) = xxx_todo_changeme5
+    def func(grid, params):
+        (x, y) = grid
+        (I, loc0, loc1, gamma0, gamma1, th) = params
         a, b = tuple(grid - center for grid, center in zip(rot2d(x, y, th), rot2d(loc0, loc1, th)))
         return (I / (1 + (a / gamma0)**2 + (b / gamma1)**2))
 
@@ -183,9 +185,9 @@ class PolarLorentzian2Dnobkg(PeakFitBase):
 
 class PolarLorentzian2D(PeakFitBase):
     @staticmethod
-    def func(xxx_todo_changeme6, xxx_todo_changeme7):
-        (x, y) = xxx_todo_changeme6
-        (I, loc0, loc1, gamma0, gamma1, th, slope1, slope2, offset) = xxx_todo_changeme7
+    def func(grid, params):
+        (x, y) = grid
+        (I, loc0, loc1, gamma0, gamma1, th, slope1, slope2, offset) = params
         a, b = tuple(grid - center for grid, center in zip(rot2d(x, y, th), rot2d(loc0, loc1, th)))
         return (I / (1 + (a / gamma0)**2 + (b / gamma1)**2) + x * slope1 + y * slope2 + offset)
 
@@ -200,9 +202,9 @@ class PolarLorentzian2D(PeakFitBase):
 
 class Lorentzian2D(PeakFitBase):
     @staticmethod
-    def func(xxx_todo_changeme8, xxx_todo_changeme9):
-        (x, y) = xxx_todo_changeme8
-        (I, loc0, loc1, gamma0, gamma1, th, slope1, slope2, offset) = xxx_todo_changeme9
+    def func(grid, params):
+        (x, y) = grid
+        (I, loc0, loc1, gamma0, gamma1, th, slope1, slope2, offset) = params
         a, b = tuple(grid - center for grid, center in zip(rot2d(x, y, th), rot2d(loc0, loc1, th)))
         return (I / (1 + (a/gamma0)**2) * 1 / (1 + (b/gamma1)**2) + x * slope1 + y * slope2 + offset)
 
@@ -214,9 +216,9 @@ class Lorentzian2D(PeakFitBase):
 
 class Lorentzian2Dnobkg(PeakFitBase):
     @staticmethod
-    def func(xxx_todo_changeme10, xxx_todo_changeme11):
-        (x, y) = xxx_todo_changeme10
-        (I, loc0, loc1, gamma0, gamma1, th) = xxx_todo_changeme11
+    def func(grid, params):
+        (x, y) = grid
+        (I, loc0, loc1, gamma0, gamma1, th) = params
         a, b = tuple(grid - center for grid, center in zip(rot2d(x, y, th), rot2d(loc0, loc1, th)))
         return (I / (1 + (a/gamma0)**2) * 1 / (1 + (b/gamma1)**2))
 
@@ -232,17 +234,17 @@ class Lorentzian(AutoDimensionFit):
 
 class Gaussian1D(PeakFitBase):
     @staticmethod
-    def func(xxx_todo_changeme12, xxx_todo_changeme13):
-        (x,) = xxx_todo_changeme12
-        (loc, I, sigma, offset, slope) = xxx_todo_changeme13
+    def func(grid, params):
+        (x,) = grid
+        (loc, I, sigma, offset, slope) = params
         return I * numpy.exp(-((x-loc)/sigma)**2/2) + offset + x * slope
 
 
 class Voigt1D(PeakFitBase):
     @staticmethod
-    def func(xxx_todo_changeme14, xxx_todo_changeme15):
-        (x, ) = xxx_todo_changeme14
-        (I, loc, sigma, gamma, slope, offset) = xxx_todo_changeme15
+    def func(grid, params):
+        (x, ) = grid
+        (I, loc, sigma, gamma, slope, offset) = params
         z = (x - loc + numpy.complex(0, gamma)) / (sigma * numpy.sqrt(2))
         return I * numpy.real(scipy.special.wofz(z))/(sigma * numpy.sqrt(2 * numpy.pi)) + offset + x * slope
 

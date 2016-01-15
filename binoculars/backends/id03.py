@@ -148,6 +148,7 @@ class QProjection(backend.ProjectionBase):
         return 'qx', 'qy', 'qz'
 
 
+
 class SphericalQProjection(QProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         qz, qy, qx = super(SphericalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
@@ -171,17 +172,9 @@ class CylindricalQProjection(QProjection):
         return 'qpar', 'qz', 'Phi'
 
 
-class nrQProjection(backend.ProjectionBase):
+class nrQProjection(QProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        k0 = 2 * numpy.pi / wavelength
-        delta, gamma = numpy.meshgrid(delta, gamma)
-        mu *= numpy.pi/180
-        delta *= numpy.pi/180
-        gamma *= numpy.pi/180
-
-        qy = k0 * (numpy.cos(gamma) * numpy.cos(delta) - numpy.cos(mu))  # definition of qx, and qy same as spec at theta = 0
-        qx = k0 * (numpy.cos(gamma) * numpy.sin(delta))
-        qz = k0 * (numpy.sin(gamma) + numpy.sin(mu))
+        qx, qy, qz = super(nrQProjection, self).project(wavelength, UB, gamma, delta, 0, mu, chi, phi)
         return (qx, qy, qz)
 
     def get_axis_labels(self):
@@ -236,6 +229,23 @@ class GammaDeltaMu(HKLProjection):  # just passing on the coordinates, makes it 
     def get_axis_labels(self):
         return 'Gamma', 'Delta', 'Mu'
 
+class QTransformation(QProjection):
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        qx, qy, qz = super(QTransformation, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
+
+        M = self.config.matrix
+        q1 = qx * M[0] + qy * M[1] + qz * M[2]
+        q2 = qx * M[3] + qy * M[4] + qz * M[5]
+        q3 = qx * M[6] + qy * M[7] + qz * M[8]
+
+        return (q1, q2, q3)
+
+    def get_axis_labels(self):
+        return 'q1', 'q2', 'q3'
+
+    def parse_config(self, config):
+        super(QTransformation, self).parse_config(config)
+        self.config.matrix = util.parse_tuple(config.pop('matrix'), length=9, type=float)
 
 class ID03Input(backend.InputBase):
     # OFFICIAL API
