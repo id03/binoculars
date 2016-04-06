@@ -169,7 +169,7 @@ def plot(space, fig, ax, log=True, loglog=False, clipping=0.0, fit=None, norm=No
         data = space.get()
         mask = numpy.bitwise_or(~numpy.isfinite(data), data == 0)
         gridx, gridy, gridz = tuple(grid[~mask] for grid in space.get_grid())
-        im = ax.scatter(gridx, gridy, gridz,  c=cmap(norm(data[~mask])), marker=', ', alpha=0.7, linewidths=0)
+        im = ax.scatter(gridx, gridy, gridz,  c=cmap(norm(data[~mask])), marker=',' , alpha=0.7, linewidths=0)
 
         #p1 = ax.plot_surface(gridx[0,:,:], gridy[0,:,:], gridz[0,:,:],  facecolors=cmap(norm(space.project(0).get_masked())), shade=False, cstride=1, rstride=1)
         #p2 = ax.plot_surface(gridx[:,-1,:], gridy[:,-1,:], gridz[:,-1,:], facecolors=cmap(norm(space.project(1).get_masked())), shade=False, cstride=1, rstride=1)

@@ -726,7 +726,7 @@ class FitWidget(QtGui.QWidget):
     def fit(self, index, space, function):
         print(index)
         if not len(space.get_masked().compressed()) == 0:
-            loc = get_loc(index)
+            loc = self.get_loc()
             fit = function(space, loc = loc)
             fit.fitdata.mask = space.get_masked().mask
             self.database.save_data(index, 'fit',  fit.fitdata)

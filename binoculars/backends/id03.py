@@ -470,7 +470,12 @@ class ID03Input(backend.InputBase):
                 UB = numpy.array(self.config.UB)
         else:
             UB = numpy.array(scan.header('G')[2].split(' ')[-9:], dtype=numpy.float)
-        wavelength = float(scan.header('G')[1].split(' ')[-1])
+
+        wavelength = get_wavelength(scan.header('G'), 4, 4)
+        if wavelength is None or wavelength == 0:
+            raise errors.BackendError('No or incorrect wavelength specified in the specfile. Check #G4 4th value')
+            
+        print wavelength
 
         self.metadict['UB'] = UB
         self.metadict['wavelength'] = wavelength
@@ -855,6 +860,13 @@ class GisaxsDetector(ID03Input):
             except ValueError:
                 continue
         return ret
+
+
+def get_wavelength(G, lineno, index):
+    for line in G:
+        if line.startswith('#G{0}'.format(lineno)):
+            return float(line.split(' ')[index])
+    return None
 
 
 def load_matrix(filename):
