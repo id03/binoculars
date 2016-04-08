@@ -340,6 +340,9 @@ class ID03Input(backend.InputBase):
         self.config.pr = config.pop('pr', None)  # Optional, all range by default
         self.config.background = config.pop('background', None)  # Optional, if supplied a space of this image is constructed
         self.config.th_offset = float(config.pop('th_offset', 0))  # Optional; Only used in zapscans, zero by default.
+        self.config.wavelength = config.pop('wavelength', None)  # Optional; Overrides wavelength from specfile.
+        if self.config.wavelength is not None:
+            self.config.wavelength = float(self.config.wavelength)
         if self.config.xmask is None:
             self.config.xmask = slice(None)
         if self.config.ymask is None:
@@ -445,6 +448,12 @@ class ID03Input(backend.InputBase):
         roi = data[ymask, :]
         return roi[:, xmask]
 
+    def get_wavelength(self, G):
+        for line in G:
+            if line.startswith('#G4'):
+                return float(line.split(' ')[4])
+        return None
+
     # MAIN LOGIC
     def get_scan_params(self, scan):
         self.dbg_scanno = scan.number()
@@ -471,12 +480,13 @@ class ID03Input(backend.InputBase):
         else:
             UB = numpy.array(scan.header('G')[2].split(' ')[-9:], dtype=numpy.float)
 
-        wavelength = get_wavelength(scan.header('G'), 4, 4)
-        if wavelength is None or wavelength == 0:
-            raise errors.BackendError('No or incorrect wavelength specified in the specfile. Check #G4 4th value')
-            
-        print wavelength
-
+        if self.config.wavelength is None:
+            wavelength = self.get_wavelength(scan.header('G'))
+            if wavelength is None or wavelength == 0:
+                raise errors.BackendError('No or incorrect wavelength specified in the specfile. Please add wavelength to the configfile in the input section')
+        else:
+            wavelength = self.config.wavelength
+    
         self.metadict['UB'] = UB
         self.metadict['wavelength'] = wavelength
 
@@ -860,14 +870,6 @@ class GisaxsDetector(ID03Input):
             except ValueError:
                 continue
         return ret
-
-
-def get_wavelength(G, lineno, index):
-    for line in G:
-        if line.startswith('#G{0}'.format(lineno)):
-            return float(line.split(' ')[index])
-    return None
-
 
 def load_matrix(filename):
     if filename == None:
