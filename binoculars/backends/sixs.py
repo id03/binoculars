@@ -88,8 +88,6 @@ class HKLProjection(backend.ProjectionBase):
         ki = [1, 0, 0]
         RUB_1 = inv(numpy.dot(R, UB))
         RUB_1P = numpy.dot(RUB_1, P)
-        # rotate the detector around x of 90 degrees
-        RUB_1P = numpy.dot(RUB_1P, M(math.pi/2., [1, 0, 0]))
         kf = normalized(pixels, axis=0)
         hkl_f = numpy.tensordot(RUB_1P, kf, axes=1)
         hkl_i = numpy.dot(RUB_1, ki)
@@ -132,8 +130,6 @@ class QxQyQzProjection(backend.ProjectionBase):
         ki = [1, 0, 0]
         RUB_1 = inv(numpy.dot(R, UB))
         RUB_1P = numpy.dot(RUB_1, P)
-        # rotate the detector around x of 90 degrees
-        #RUB_1P = numpy.dot(RUB_1P, M(math.pi/2., [1, 0, 0]))
         kf = normalized(pixels, axis=0)
         hkl_f = numpy.tensordot(RUB_1P, kf, axes=1)
         hkl_i = numpy.dot(RUB_1, ki)
@@ -419,6 +415,12 @@ class SIXS(backend.InputBase):
         self.config.sdd = float(config.pop('sdd'))  # sample to detector distance (mm)
         self.config.centralpixel = util.parse_tuple(config.pop('centralpixel'), length=2, type=int)  # x,y
         self.config.maskmatrix = config.pop('maskmatrix', None)  # Optional, if supplied pixels where the mask is 0 will be removed
+        self.config.detrot = config.pop('detrot', None)  # detector rotation around x (1, 0, 0)
+        if self.config.detrot is not None:
+            try:
+                self.config.detrot = float(self.config.detrot)
+            except ValueError:
+                self.config.detrot = None
 
     def get_destination_options(self, command):
         if not command:
@@ -484,14 +486,17 @@ class FlyScanUHV(SIXS):
 
         k = 2 * math.pi / dataframe.source.wavelength
 
-        # compute R and P
+        # sample
         s_axes = rotation_axes(dataframe.diffractometer.axes.graph,
                                dataframe.diffractometer.axes.sample)
+        R = reduce(numpy.dot, (zip_with(M, numpy.radians(s_values), s_axes)))
+
+        # detector
         d_axes = rotation_axes(dataframe.diffractometer.axes.graph,
                                dataframe.diffractometer.axes.detector)
-
-        R = reduce(numpy.dot, (zip_with(M, numpy.radians(s_values), s_axes)))
         P = reduce(numpy.dot, (zip_with(M, numpy.radians(d_values), d_axes)))
+        if self.config.detrot is not None:
+            P = numpy.dot(P, M(math.radians(self.config.detrot), [1, 0, 0]))
 
         pdataframe = PDataFrame(pixels, k, dataframe.diffractometer.ub, R, P)
 
