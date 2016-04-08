@@ -26,18 +26,18 @@
            Picca Frédéric-Emmanuel <picca@synchrotron-soleil.fr>
 
 '''
-import sys
-import os
 import itertools
 import numpy
-import tables
 import math
+import os
+import tables
+import sys
 
-from pyFAI.detectors import ALL_DETECTORS
-from math import cos, sin
 from collections import namedtuple
-from numpy.linalg import inv
+from math import cos, sin
 from networkx import DiGraph, dijkstra_path
+from numpy.linalg import inv
+from pyFAI.detectors import ALL_DETECTORS
 
 from .. import backend, errors, util
 
@@ -47,48 +47,45 @@ if PY3:
 else:
     from itertools import izip as zip
 
+# supported diffractometers
+
+ZAXIS = "ZAXIS"
+SOLEIL_SIXS_MED1_2 = "SOLEIL SIXS MED1+2"
+
+PDataFrame = namedtuple("PDataFrame", ["pixels", "k", "ub", "R", "P"])
+
+
 class realspace(backend.ProjectionBase):
-    # scalars: mu, theta, [chi, phi, "omitted"] delta, gamR, gamT, ty, wavelength
-    # 3x3 matrix: UB
-    def project(self, index, dataframe, pixels):
-        return pixels[1], pixels[2]
-        #return numpy.meshgrid(numpy.arange(pixels[0].shape[1]), numpy.arange(pixels[0].shape[0]))
+    # scalars: mu, theta, [chi, phi, "omitted"] delta, gamR, gamT, ty,
+    # wavelength 3x3 matrix: UB
+    def project(self, index, pdataframe):
+        return (pdataframe.pixels[1],
+                pdataframe.pixels[2])
 
     def get_axis_labels(self):
         return 'x', 'y'
 
+
 class Pixels(backend.ProjectionBase):
-    # scalars: mu, theta, [chi, phi, "omitted"] delta, gamR, gamT, ty, wavelength
-    # 3x3 matrix: UB
-    def project(self, index, dataframe, pixels):
-        return numpy.meshgrid(numpy.arange(pixels[0].shape[1]), numpy.arange(pixels[0].shape[0]))
+    # scalars: mu, theta, [chi, phi, "omitted"] delta, gamR, gamT, ty,
+    # wavelength 3x3 matrix: UB
+    def project(self, index, pdataframe):
+        return numpy.meshgrid(numpy.arange(pdataframe.pixels[0].shape[1]),
+                              numpy.arange(pdataframe.pixels[0].shape[0]))
 
     def get_axis_labels(self):
         return 'x', 'y'
 
 
 class HKLProjection(backend.ProjectionBase):
-    # scalars: mu, theta, [chi, phi, "omitted"] delta, gamR, gamT, ty, wavelength
-    # 3x3 matrix: UB
-    def project(self, index, dataframe, pixels):
+    # scalars: mu, theta, [chi, phi, "omitted"] delta, gamR, gamT, ty,
+    # wavelength 3x3 matrix: UB
+    def project(self, index, pdataframe):
         # put the detector at the right position
 
-        UB = dataframe.diffractometer.ub
+        pixels, k, UB, R, P = pdataframe
 
-        s_axes = rotation_axes(dataframe.diffractometer.axes.graph,
-                               dataframe.diffractometer.axes.sample)
-        d_axes = rotation_axes(dataframe.diffractometer.axes.graph,
-                               dataframe.diffractometer.axes.detector)
-
-        # the ki vector should be in the NexusFile or easily extracted
-        # from the hkl library.
         ki = [1, 0, 0]
-        k = 2 * math.pi / dataframe.source.wavelength
-        values = dataframe.mu[index], dataframe.omega[index], dataframe.delta[index], dataframe.gamma[index]
-        s_values = values[0], values[1]
-        d_values = values[0], values[2], values[3]
-        R = reduce(numpy.dot, (zip_with(M, numpy.radians(s_values), s_axes)))
-        P = reduce(numpy.dot, (zip_with(M, numpy.radians(d_values), d_axes)))
         RUB_1 = inv(numpy.dot(R, UB))
         RUB_1P = numpy.dot(RUB_1, P)
         # rotate the detector around x of 90 degrees
@@ -98,49 +95,45 @@ class HKLProjection(backend.ProjectionBase):
         hkl_i = numpy.dot(RUB_1, ki)
         hkl = hkl_f - hkl_i[:, numpy.newaxis, numpy.newaxis]
 
-        h,k,l = hkl * k
+        h, k, l = hkl * k
 
         return (h, k, l)
 
     def get_axis_labels(self):
         return 'H', 'K', 'L'
 
+
 class HKProjection(HKLProjection):
-    def project(self, index, dataframe, pixels):
-        h,k,l = super(HKProjection, self).project(index, dataframe, pixels)
-        return h,k
+    def project(self, index, pdataframe):
+        h, k, l = super(HKProjection, self).project(index, pdataframe)
+        return h, k
 
     def get_axis_labels(self):
         return 'H', 'K'
 
 
 class QxQyQzProjection(backend.ProjectionBase):
-    def project(self, index, dataframe, pixels):
+    def project(self, index, pdataframe):
         # put the detector at the right position
 
-        # TODO factorize with HklProjection
+        pixels, k, _, R, P = pdataframe
+
+        # TODO factorize with HklProjection. Here a trick in order to
+        # compute Qx Qy Qz in the omega basis.
         UB = numpy.array([[2* math.pi, 0           , 0],
                           [0         , 0           , 2* math.pi],
                           [0         , -2 * math.pi, 0]])
 
-        s_axes = rotation_axes(dataframe.diffractometer.axes.graph,
-                               dataframe.diffractometer.axes.sample)
-        d_axes = rotation_axes(dataframe.diffractometer.axes.graph,
-                               dataframe.diffractometer.axes.detector)
-
+        UB = numpy.array([[2* math.pi, 0           , 0],
+                          [0         , 2 * math.pi , 0],
+                          [0         , 0, 2 * math.pi]])
         # the ki vector should be in the NexusFile or easily extracted
         # from the hkl library.
         ki = [1, 0, 0]
-        k = 2 * math.pi / dataframe.source.wavelength
-        values = dataframe.mu[index], dataframe.omega[index], dataframe.delta[index], dataframe.gamma[index]
-        s_values = values[0], values[1]
-        d_values = values[0], values[2], values[3]
-        R = reduce(numpy.dot, (zip_with(M, numpy.radians(s_values), s_axes)))
-        P = reduce(numpy.dot, (zip_with(M, numpy.radians(d_values), d_axes)))
         RUB_1 = inv(numpy.dot(R, UB))
         RUB_1P = numpy.dot(RUB_1, P)
         # rotate the detector around x of 90 degrees
-        RUB_1P = numpy.dot(RUB_1P, M(math.pi/2., [1, 0, 0]))
+        #RUB_1P = numpy.dot(RUB_1P, M(math.pi/2., [1, 0, 0]))
         kf = normalized(pixels, axis=0)
         hkl_f = numpy.tensordot(RUB_1P, kf, axes=1)
         hkl_i = numpy.dot(RUB_1, ki)
@@ -151,6 +144,16 @@ class QxQyQzProjection(backend.ProjectionBase):
 
     def get_axis_labels(self):
         return "Qx", "Qy", "Qz"
+
+
+class QparQperProjection(QxQyQzProjection):
+    def project(self, index, pdataframe):
+        qx, qy, qz = super(QparQperProjection, self).project(index, pdataframe)
+        return numpy.sqrt(qx*qx + qy*qy), qz
+
+    def get_axis_labels(self):
+        return 'Qpar', 'Qper'
+
 
 def get_nxclass(hfile, nxclass, path="/"):
     """
@@ -180,7 +183,7 @@ def get_axes(name):
     sample = []
     detector = []
     graph = DiGraph()
-    if name == 'ZAXIS':
+    if name == ZAXIS:
         # axis
         graph.add_node("mu", transformation=Rotation([0, 0, 1], 0))
         graph.add_node("omega", transformation=Rotation([0, -1, 0], 0))
@@ -193,6 +196,22 @@ def get_axes(name):
 
         sample = dijkstra_path(graph, "mu", "omega")
         detector = dijkstra_path(graph, "mu", "gamma")
+    elif name == SOLEIL_SIXS_MED1_2:
+        # axis
+        graph.add_node("pitch", transformation=Rotation([0, -1, 0], 0))
+        graph.add_node("mu", transformation=Rotation([0, 0, 1], 0))
+        graph.add_node("gamma", transformation=Rotation([0, 0, 1], 0))
+        graph.add_node("delta", transformation=Rotation([0, -1, 0], 0))
+
+        # topology
+        graph.add_edges_from([("pitch", "mu"),
+                              ("pitch", "gamma"), ("gamma", "delta")])
+
+        sample = dijkstra_path(graph, "pitch", "mu")
+        detector = dijkstra_path(graph, "pitch", "delta")
+    else:
+        raise NotImplementedError("not yet supported diffractometer type:"
+                                  + name)
 
     return Axes(sample, detector, graph)
 
@@ -246,8 +265,7 @@ def get_source(hfile):
 
 DataFrame = namedtuple("DataFrame", ["diffractometer",
                                      "sample", "detector", "source",
-                                     "mu", "omega", "delta", "gamma",
-                                     "image", "graph"])
+                                     "graph", "h5_nodes"])
 
 
 def dataframes(hfile, data_path=None):
@@ -256,7 +274,9 @@ def dataframes(hfile, data_path=None):
     detector = get_detector(hfile)
     source = get_source(hfile)
     graph = DiGraph()
-    # this should be generalized
+
+    # this should be generalized (for now not used since we read the
+    # UB matrix from the nexus file)
     for g in [diffractometer.axes.graph, sample.graph]:
         graph.add_nodes_from(g)
         graph.add_edges_from(g.edges())
@@ -265,20 +285,13 @@ def dataframes(hfile, data_path=None):
 
     for group in hfile.get_node('/'):
         scan_data = group._f_get_child("scan_data")
-        dataframe = {
-            "diffractometer": diffractometer,
-            "sample": sample,
-            "detector": detector,
-            "source": source,
-            "graph": graph,
-        }
-
         # now instantiate the pytables objects
+        h5_nodes = {}
         for key, value in data_path.items():
             child = scan_data._f_get_child(value)
-            dataframe[key] = child
+            h5_nodes[key] = child
 
-        yield DataFrame(**dataframe)
+        yield DataFrame(diffractometer, sample, detector, source, graph, h5_nodes)
 
 
 def M(theta, u):
@@ -330,6 +343,7 @@ def rotation_matrix(values, axes):
     """
     return reduce(numpy.dot, (zip_with(M, values, axes)))
 
+
 def get_ki(wavelength):
     """
     for now the direction is always along x
@@ -337,10 +351,12 @@ def get_ki(wavelength):
     TAU = 2 * math.pi
     return numpy.array([TAU / wavelength, 0, 0])
 
+
 def normalized(a, axis=-1, order=2):
     l2 = numpy.atleast_1d(numpy.linalg.norm(a, order, axis))
     l2[l2 == 0] = 1
     return a / numpy.expand_dims(l2, axis)
+
 
 class SIXS(backend.InputBase):
     # OFFICIAL API
@@ -358,15 +374,20 @@ class SIXS(backend.InputBase):
                 pointcount = self.config.pr[1] - self.config.pr[0] + 1
                 start = self.config.pr[0]
             else:
-                # just open the file in order to extract the number of step.
-                with tables.open_file(self.get_filename(scanno), 'r') as scan:
-                    start = 0
-                    pointcount = get_nxclass(scan, "NXdata").UHV_MU.shape[0]
+                start = 0
+                pointcount = self.get_pointcount(scanno)
             if pointcount > self.config.target_weight * 1.4:
-                for s in util.chunk_slicer(pointcount, self.config.target_weight):
-                    yield backend.Job(scan=scanno, firstpoint=start+s.start, lastpoint=start+s.stop-1, weight=s.stop-s.start)
+                for s in util.chunk_slicer(pointcount,
+                                           self.config.target_weight):
+                    yield backend.Job(scan=scanno,
+                                      firstpoint=start+s.start,
+                                      lastpoint=start+s.stop-1,
+                                      weight=s.stop-s.start)
             else:
-                yield backend.Job(scan=scanno, firstpoint=start, lastpoint=start+pointcount-1, weight=pointcount)
+                yield backend.Job(scan=scanno,
+                                  firstpoint=start,
+                                  lastpoint=start+pointcount-1,
+                                  weight=pointcount)
 
     def process_job(self, job):
         super(SIXS, self).process_job(job)
@@ -385,19 +406,20 @@ class SIXS(backend.InputBase):
 
     def parse_config(self, config):
         super(SIXS, self).parse_config(config)
-        self.config.xmask = util.parse_multi_range(config.pop('xmask', None))#Optional, select a subset of the image range in the x direction. all by default
-        self.config.ymask = util.parse_multi_range(config.pop('ymask', None))#Optional, select a subset of the image range in the y direction. all by default
-        self.config.nexusfile = config.pop('nexusfile')#Location of the specfile
-        self.config.pr = config.pop('pr', None) #Optional, all range by default
+        self.config.xmask = util.parse_multi_range(config.pop('xmask', None))  # Optional, select a subset of the image range in the x direction. all by default
+        self.config.ymask = util.parse_multi_range(config.pop('ymask', None))  # Optional, select a subset of the image range in the y direction. all by default
+        self.config.nexusfile = config.pop('nexusfile')  # Location of the specfile
+        self.config.pr = config.pop('pr', None)  # Optional, all range by default
         if self.config.xmask is None:
             self.config.xmask = slice(None)
         if self.config.ymask is None:
             self.config.ymask = slice(None)
         if self.config.pr:
             self.config.pr = util.parse_tuple(self.config.pr, length=2, type=int)
-        self.config.sdd = float(config.pop('sdd'))# sample to detector distance (mm)
-        self.config.centralpixel = util.parse_tuple(config.pop('centralpixel'), length=2, type=int)  #x,y
-        self.config.maskmatrix = config.pop('maskmatrix', None)#Optional, if supplied pixels where the mask is 0 will be removed
+        self.config.sdd = float(config.pop('sdd'))  # sample to detector distance (mm)
+        self.config.centralpixel = util.parse_tuple(config.pop('centralpixel'), length=2, type=int)  # x,y
+        self.config.maskmatrix = config.pop('maskmatrix', None)  # Optional, if supplied pixels where the mask is 0 will be removed
+
     def get_destination_options(self, command):
         if not command:
             return False
@@ -407,16 +429,16 @@ class SIXS(backend.InputBase):
 
     # CONVENIENCE FUNCTIONS
     def get_filename(self, scanno):
-        filename = self.config.nexusfile.format(scanno = str(scanno).zfill(5))
+        filename = self.config.nexusfile.format(scanno=str(scanno).zfill(5))
         if not os.path.exists(filename):
-	    raise errors.ConfigError('nexus filename does not exist: {0}'.format(filename))
-	return filename
-
+            raise errors.ConfigError('nexus filename does not exist: {0}'.format(filename))
+        return filename
 
     @staticmethod
     def apply_mask(data, xmask, ymask):
         roi = data[ymask, :]
         return roi[:, xmask]
+
 
 class FlyScanUHV(SIXS):
     HPATH = {
@@ -427,6 +449,22 @@ class FlyScanUHV(SIXS):
         "gamma": "UHV_GAMMA",
     }
 
+    def get_pointcount(self, scanno):
+        # just open the file in order to extract the number of step
+        with tables.open_file(self.get_filename(scanno), 'r') as scan:
+            return get_nxclass(scan, "NXdata").xpad_image.shape[0]
+
+    def get_values(self, index, h5_nodes):
+        image = h5_nodes['image'][index]
+        mu = h5_nodes['mu'][index]
+        omega = h5_nodes['omega'][index]
+        delta = h5_nodes['delta'][index]
+        gamma = h5_nodes['gamma'][index]
+
+        return (image,
+                (mu, omega),
+                (mu, delta, gamma))
+
     def process_image(self, index, dataframe, pixels):
         util.status(str(index))
         detector = ALL_DETECTORS[dataframe.detector.name]()
@@ -436,12 +474,30 @@ class FlyScanUHV(SIXS):
         else:
             mask = detector.mask
 
-        intensity = dataframe.image[index, ...]
-        weights = numpy.ones_like(intensity)
-        weights *= ~mask 
-        #util.status('{4}| gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu, time.ctime(time.time())))
+        # extract the data from the h5 nodes
 
-        return intensity, weights, (index, dataframe, pixels)
+        h5_nodes = dataframe.h5_nodes
+        intensity, s_values, d_values = self.get_values(index, h5_nodes)
+
+        weights = numpy.ones_like(intensity)
+        weights *= ~mask
+
+        k = 2 * math.pi / dataframe.source.wavelength
+
+        # compute R and P
+        s_axes = rotation_axes(dataframe.diffractometer.axes.graph,
+                               dataframe.diffractometer.axes.sample)
+        d_axes = rotation_axes(dataframe.diffractometer.axes.graph,
+                               dataframe.diffractometer.axes.detector)
+
+        R = reduce(numpy.dot, (zip_with(M, numpy.radians(s_values), s_axes)))
+        P = reduce(numpy.dot, (zip_with(M, numpy.radians(d_values), d_axes)))
+
+        pdataframe = PDataFrame(pixels, k, dataframe.diffractometer.ub, R, P)
+
+        # util.status('{4}| gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu, time.ctime(time.time())))
+
+        return intensity, weights, (index, pdataframe)
 
     def get_pixels(self, detector):
         detector = ALL_DETECTORS[detector.name]()
@@ -456,16 +512,52 @@ class FlyScanUHV(SIXS):
         return numpy.array([-z, -(x - x0), (y - y0)])
 
 
+class FlyScanUHV2(FlyScanUHV):
+    HPATH = {
+        "image": "xpad_image",
+        "mu": "mu",
+        "omega": "omega",
+        "delta": "delta",
+        "gamma": "gamma",
+    }
+
+
+class SBSMedH(FlyScanUHV):
+    HPATH = {
+        "image": "data_03",
+        "pitch": "data_22",
+        "mu": "data_18",
+        "gamma": "data_20",
+        "delta": "data_19",
+        }
+
+    def get_pointcount(self, scanno):
+        # just open the file in order to extract the number of step
+        with tables.open_file(self.get_filename(scanno), 'r') as scan:
+            return get_nxclass(scan, "NXdata").data_03.shape[0]
+
+    def get_values(self, index, h5_nodes):
+        image = h5_nodes['image'][index]
+        pitch = h5_nodes['pitch'][index]
+        mu = h5_nodes['mu'][index]
+        gamma = h5_nodes['gamma'][index]
+        delta = h5_nodes['delta'][index]
+
+        return (image,
+                (pitch, mu),
+                (pitch, gamma, delta))
+
+
 def load_matrix(filename):
-    if filename == None:
+    if filename is None:
         return None
     if os.path.exists(filename):
         ext = os.path.splitext(filename)[-1]
         if ext == '.txt':
-            return numpy.array(numpy.loadtxt(filename), dtype = numpy.bool)
+            return numpy.array(numpy.loadtxt(filename), dtype=numpy.bool)
         elif ext == '.npy':
-            return numpy.array(numpy.load(filename), dtype = numpy.bool)
+            return numpy.array(numpy.load(filename), dtype=numpy.bool)
         else:
             raise ValueError('unknown extension {0}, unable to load matrix!\n'.format(ext))
     else:
-       raise IOError('filename: {0} does not exist. Can not load matrix'.format(filename))
+        raise IOError('filename: {0} does not exist. Can not load matrix'.format(filename))
