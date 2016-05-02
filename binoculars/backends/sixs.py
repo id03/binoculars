@@ -26,7 +26,6 @@
            Picca Frédéric-Emmanuel <picca@synchrotron-soleil.fr>
 
 '''
-import itertools
 import numpy
 import math
 import os
@@ -35,23 +34,11 @@ import sys
 
 from collections import namedtuple
 from math import cos, sin
-from networkx import DiGraph, dijkstra_path
 from numpy.linalg import inv
 from pyFAI.detectors import ALL_DETECTORS
 from gi.repository import Hkl
 
 from .. import backend, errors, util
-
-PY3 = sys.version_info > (3,)
-if PY3:
-    from functools import reduce
-else:
-    from itertools import izip as zip
-
-# supported diffractometers
-
-ZAXIS = "ZAXIS"
-SOLEIL_SIXS_MED1_2 = "SOLEIL SIXS MED1+2"
 
 ###############
 # Projections #
@@ -175,58 +162,10 @@ def get_nxclass(hfile, nxclass, path="/"):
             pass
     return None
 
-Axes = namedtuple("Axes", ["sample", "detector", "graph"])
-
-Rotation = namedtuple("Rotation", ["axis", "value"])
-
-
-def get_axes(name):
-    """
-    :param name: the diffractometer name
-    :type name: str
-    """
-    sample = []
-    detector = []
-    graph = DiGraph()
-    if name == ZAXIS:
-        # axis
-        graph.add_node("mu", transformation=Rotation([0, 0, 1], 0))
-        graph.add_node("omega", transformation=Rotation([0, -1, 0], 0))
-        graph.add_node("delta", transformation=Rotation([0, -1, 0], 0))
-        graph.add_node("gamma", transformation=Rotation([0, 0, 1], 0))
-
-        # topology
-        graph.add_edges_from([("mu", "omega"),
-                              ("mu", "delta"), ("delta", "gamma")])
-
-        sample = dijkstra_path(graph, "mu", "omega")
-        detector = dijkstra_path(graph, "mu", "gamma")
-    elif name == SOLEIL_SIXS_MED1_2:
-        # axis
-        graph.add_node("pitch", transformation=Rotation([0, -1, 0], 0))
-        graph.add_node("mu", transformation=Rotation([0, 0, 1], 0))
-        graph.add_node("gamma", transformation=Rotation([0, 0, 1], 0))
-        graph.add_node("delta", transformation=Rotation([0, -1, 0], 0))
-
-        # topology
-        graph.add_edges_from([("pitch", "mu"),
-                              ("pitch", "gamma"), ("gamma", "delta")])
-
-        sample = dijkstra_path(graph, "pitch", "mu")
-        detector = dijkstra_path(graph, "pitch", "delta")
-    else:
-        raise NotImplementedError("not yet supported diffractometer type:"
-                                  + name)
-
-    return Axes(sample, detector, graph)
-
-
 Diffractometer = namedtuple('Diffractometer',
                             ['name',  # name of the hkl diffractometer
                              'ub',  # the UB matrix
-                             'axes',  # the Axes namedtuple
                              'geometry'])  # the HklGeometry
-
 
 
 def get_diffractometer(hfile):
@@ -235,7 +174,6 @@ def get_diffractometer(hfile):
 
     name = node.type[0][:-1]
     ub = node.UB[:]
-    axes = get_axes(name)
 
     factory = Hkl.factories()[name]
     geometry = factory.create_new_geometry()
@@ -243,22 +181,15 @@ def get_diffractometer(hfile):
     # wavelength = get_nxclass(hfile, 'NXmonochromator').wavelength[0]
     # geometry.wavelength_set(wavelength)
 
-    return Diffractometer(name, ub, axes, geometry)
+    return Diffractometer(name, ub, geometry)
 
 
 Sample = namedtuple("Sample", ["a", "b", "c",
                                "alpha", "beta", "gamma",
-                               "ux", "uy", "uz", "graph", "sample"])
+                               "ux", "uy", "uz", "sample"])
 
 
 def get_sample(hfile):
-    graph = DiGraph()
-    graph.add_node("ux", transformation=Rotation([1, 0, 0], 0))
-    graph.add_node("uy", transformation=Rotation([0, 1, 0], 0))
-    graph.add_node("uz", transformation=Rotation([0, 0, 1], 0))
-    graph.add_edges_from([("ux", "uy"),
-                          ("uy", "uz")])
-
     # hkl sample
     a = b = c = 1.54
     alpha = beta = gamma = 90
@@ -283,7 +214,7 @@ def get_sample(hfile):
     parameter.value_set(uz, Hkl.UnitEnum.USER)
     sample.uz_set(parameter)
 
-    return Sample(1.54, 1.54, 1.54, 90, 90, 90, 0, 0, 0, graph, sample)
+    return Sample(1.54, 1.54, 1.54, 90, 90, 90, 0, 0, 0, sample)
 
 
 Detector = namedtuple("Detector", ["name", "detector"])
@@ -304,7 +235,7 @@ def get_source(hfile):
 
 DataFrame = namedtuple("DataFrame", ["diffractometer",
                                      "sample", "detector", "source",
-                                     "graph", "h5_nodes"])
+                                     "h5_nodes"])
 
 
 def dataframes(hfile, data_path=None):
@@ -312,15 +243,6 @@ def dataframes(hfile, data_path=None):
     sample = get_sample(hfile)
     detector = get_detector(hfile)
     source = get_source(hfile)
-    graph = DiGraph()
-
-    # this should be generalized (for now not used since we read the
-    # UB matrix from the nexus file)
-    for g in [diffractometer.axes.graph, sample.graph]:
-        graph.add_nodes_from(g)
-        graph.add_edges_from(g.edges())
-    # connect the sample with the right axis.
-    graph.add_edge("omega", "ux")
 
     for group in hfile.get_node('/'):
         scan_data = group._f_get_child("scan_data")
@@ -330,7 +252,29 @@ def dataframes(hfile, data_path=None):
             child = scan_data._f_get_child(value)
             h5_nodes[key] = child
 
-        yield DataFrame(diffractometer, sample, detector, source, graph, h5_nodes)
+        yield DataFrame(diffractometer, sample, detector, source, h5_nodes)
+
+
+def get_ki(wavelength):
+    """
+    for now the direction is always along x
+    """
+    TAU = 2 * math.pi
+    return numpy.array([TAU / wavelength, 0, 0])
+
+
+def normalized(a, axis=-1, order=2):
+    l2 = numpy.atleast_1d(numpy.linalg.norm(a, order, axis))
+    l2[l2 == 0] = 1
+    return a / numpy.expand_dims(l2, axis)
+
+
+def hkl_matrix_to_numpy(m):
+    M = numpy.empty((3, 3))
+    for i in range(3):
+        for j in range(3):
+            M[i, j] = m.get(i, j)
+    return M
 
 
 def M(theta, u):
@@ -355,54 +299,6 @@ def M(theta, u):
                          u[1] * u[2] * one_minus_c + u[0] * s,
                          c + u[2]**2 * one_minus_c]])
 
-
-def rotation_axes(graph, nodes):
-    """
-    :param graph: descrition of the diffractometer geometry
-    :type graph: DiGraph
-    :param nodes: list of the nodes to use
-    :type nodes: list(str)
-    :return: the list of the rotation axes expected by zip_with
-    """
-    return [graph.node[idx]["transformation"].axis for idx in nodes]
-
-
-def zip_with(f, *coll):
-    return itertools.starmap(f, zip(*coll))
-
-
-def rotation_matrix(values, axes):
-    """
-    :param values: the rotation axes values in radian
-    :type values: list(float)
-    :param axes: the rotation axes
-    :type axes: list of [x, y, z]
-    :return: the rotation matrix
-    :rtype: numpy.ndarray (3, 3)
-    """
-    return reduce(numpy.dot, (zip_with(M, values, axes)))
-
-
-def get_ki(wavelength):
-    """
-    for now the direction is always along x
-    """
-    TAU = 2 * math.pi
-    return numpy.array([TAU / wavelength, 0, 0])
-
-
-def normalized(a, axis=-1, order=2):
-    l2 = numpy.atleast_1d(numpy.linalg.norm(a, order, axis))
-    l2[l2 == 0] = 1
-    return a / numpy.expand_dims(l2, axis)
-
-
-def hkl_matrix_to_numpy(m):
-    M = numpy.empty((3, 3))
-    for i in range(3):
-        for j in range(3):
-            M[i, j] = m.get(i, j)
-    return M
 
 ##################
 # Input Backends #
@@ -518,8 +414,6 @@ class FlyScanUHV(SIXS):
         gamma = h5_nodes['gamma'][index]
 
         return (image,
-                (mu, omega),
-                (mu, delta, gamma),
                 (mu, omega, delta, gamma))
 
     def process_image(self, index, dataframe, pixels):
@@ -534,8 +428,7 @@ class FlyScanUHV(SIXS):
         # extract the data from the h5 nodes
 
         h5_nodes = dataframe.h5_nodes
-        intensity, s_values, d_values, values =\
-            self.get_values(index, h5_nodes)
+        intensity, values = self.get_values(index, h5_nodes)
 
         weights = numpy.ones_like(intensity)
         weights *= ~mask
@@ -543,23 +436,16 @@ class FlyScanUHV(SIXS):
         k = 2 * math.pi / dataframe.source.wavelength
 
         hkl_geometry = dataframe.diffractometer.geometry
-        hkl_sample = dataframe.sample.sample
-        hkl_detector = dataframe.detector.detector
+        hkl_geometry.axis_values_set(values, Hkl.UnitEnum.USER)
 
         # sample
-        s_axes = rotation_axes(dataframe.diffractometer.axes.graph,
-                               dataframe.diffractometer.axes.sample)
-        R = reduce(numpy.dot, (zip_with(M, numpy.radians(s_values), s_axes)))
+        hkl_sample = dataframe.sample.sample
+        q_sample = hkl_geometry.sample_rotation_get(hkl_sample)
+        R = hkl_matrix_to_numpy(q_sample.to_matrix())
 
         # detector
-        d_axes = rotation_axes(dataframe.diffractometer.axes.graph,
-                               dataframe.diffractometer.axes.detector)
-        P = reduce(numpy.dot, (zip_with(M, numpy.radians(d_values), d_axes)))
-
-        hkl_geometry.axis_values_set(values, Hkl.UnitEnum.USER)
-        q_sample = hkl_geometry.sample_rotation_get(hkl_sample)
+        hkl_detector = dataframe.detector.detector
         q_detector = hkl_geometry.detector_rotation_get(hkl_detector)
-        R = hkl_matrix_to_numpy(q_sample.to_matrix())
         P = hkl_matrix_to_numpy(q_detector.to_matrix())
 
         if self.config.detrot is not None:
@@ -616,8 +502,6 @@ class SBSMedH(FlyScanUHV):
         delta = h5_nodes['delta'][index]
 
         return (image,
-                (pitch, mu),
-                (pitch, gamma, delta),
                 (pitch, mu, gamma, delta))
 
 
