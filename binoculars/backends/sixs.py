@@ -38,6 +38,7 @@ from math import cos, sin
 from networkx import DiGraph, dijkstra_path
 from numpy.linalg import inv
 from pyFAI.detectors import ALL_DETECTORS
+from gi.repository import Hkl
 
 from .. import backend, errors, util
 
@@ -51,6 +52,10 @@ else:
 
 ZAXIS = "ZAXIS"
 SOLEIL_SIXS_MED1_2 = "SOLEIL SIXS MED1+2"
+
+###############
+# Projections #
+###############
 
 PDataFrame = namedtuple("PDataFrame", ["pixels", "k", "ub", "R", "P"])
 
@@ -151,6 +156,10 @@ class QparQperProjection(QxQyQzProjection):
         return 'Qpar', 'Qper'
 
 
+###################
+# Common methodes #
+###################
+
 def get_nxclass(hfile, nxclass, path="/"):
     """
     :param hfile: the hdf5 file.
@@ -215,7 +224,9 @@ def get_axes(name):
 Diffractometer = namedtuple('Diffractometer',
                             ['name',  # name of the hkl diffractometer
                              'ub',  # the UB matrix
-                             'axes'])  # the Axes namedtuple
+                             'axes',  # the Axes namedtuple
+                             'geometry'])  # the HklGeometry
+
 
 
 def get_diffractometer(hfile):
@@ -226,12 +237,18 @@ def get_diffractometer(hfile):
     ub = node.UB[:]
     axes = get_axes(name)
 
-    return Diffractometer(name, ub, axes)
+    factory = Hkl.factories()[name]
+    geometry = factory.create_new_geometry()
+
+    # wavelength = get_nxclass(hfile, 'NXmonochromator').wavelength[0]
+    # geometry.wavelength_set(wavelength)
+
+    return Diffractometer(name, ub, axes, geometry)
 
 
 Sample = namedtuple("Sample", ["a", "b", "c",
                                "alpha", "beta", "gamma",
-                               "ux", "uy", "uz", "graph"])
+                               "ux", "uy", "uz", "graph", "sample"])
 
 
 def get_sample(hfile):
@@ -242,14 +259,40 @@ def get_sample(hfile):
     graph.add_edges_from([("ux", "uy"),
                           ("uy", "uz")])
 
-    return Sample(1.54, 1.54, 1.54, 90, 90, 90, 0, 0, 0, graph)
+    # hkl sample
+    a = b = c = 1.54
+    alpha = beta = gamma = 90
+    ux = uy = uz = 0
+
+    sample = Hkl.Sample.new("test")
+    lattice = Hkl.Lattice.new(a, b, c,
+                              math.radians(alpha),
+                              math.radians(beta),
+                              math.radians(gamma))
+    sample.lattice_set(lattice)
+
+    parameter = sample.ux_get()
+    parameter.value_set(ux, Hkl.UnitEnum.USER)
+    sample.ux_set(parameter)
+
+    parameter = sample.uy_get()
+    parameter.value_set(uy, Hkl.UnitEnum.USER)
+    sample.uy_set(parameter)
+
+    parameter = sample.uz_get()
+    parameter.value_set(uz, Hkl.UnitEnum.USER)
+    sample.uz_set(parameter)
+
+    return Sample(1.54, 1.54, 1.54, 90, 90, 90, 0, 0, 0, graph, sample)
 
 
-Detector = namedtuple("Detector", ["name"])
+Detector = namedtuple("Detector", ["name", "detector"])
 
 
 def get_detector(hfile):
-    return Detector("imxpads140")
+    detector = Hkl.Detector.factory_new(Hkl.DetectorType(0))
+
+    return Detector("imxpads140", detector)
 
 Source = namedtuple("Source", ["wavelength"])
 
@@ -353,6 +396,10 @@ def normalized(a, axis=-1, order=2):
     l2[l2 == 0] = 1
     return a / numpy.expand_dims(l2, axis)
 
+
+##################
+# Input Backends #
+##################
 
 class SIXS(backend.InputBase):
     # OFFICIAL API
