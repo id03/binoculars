@@ -399,6 +399,7 @@ class FlyScanUHV(SIXS):
         "omega": "UHV_OMEGA",
         "delta": "UHV_DELTA",
         "gamma": "UHV_GAMMA",
+        "attenuation": "attenuation",
     }
 
     def get_pointcount(self, scanno):
@@ -412,9 +413,9 @@ class FlyScanUHV(SIXS):
         omega = h5_nodes['omega'][index]
         delta = h5_nodes['delta'][index]
         gamma = h5_nodes['gamma'][index]
+        attenuation = h5_nodes['attenuation'][index]
 
-        return (image,
-                (mu, omega, delta, gamma))
+        return (image, attenuation, (mu, omega, delta, gamma))
 
     def process_image(self, index, dataframe, pixels):
         util.status(str(index))
@@ -428,7 +429,9 @@ class FlyScanUHV(SIXS):
         # extract the data from the h5 nodes
 
         h5_nodes = dataframe.h5_nodes
-        intensity, values = self.get_values(index, h5_nodes)
+        intensity, attenuation, values = self.get_values(index, h5_nodes)
+
+        intensity *= 3.2 ** attenuation
 
         weights = numpy.ones_like(intensity)
         weights *= ~mask
@@ -477,6 +480,7 @@ class FlyScanUHV2(FlyScanUHV):
         "omega": "omega",
         "delta": "delta",
         "gamma": "gamma",
+        "attenuation": "attenuation",
     }
 
 
@@ -487,6 +491,7 @@ class SBSMedH(FlyScanUHV):
         "mu": "data_18",
         "gamma": "data_20",
         "delta": "data_19",
+        "attenuation": "data_xx",
         }
 
     def get_pointcount(self, scanno):
@@ -500,9 +505,9 @@ class SBSMedH(FlyScanUHV):
         mu = h5_nodes['mu'][index]
         gamma = h5_nodes['gamma'][index]
         delta = h5_nodes['delta'][index]
+        attenuation = h5_nodes['attenuation'][index]
 
-        return (image,
-                (pitch, mu, gamma, delta))
+        return (image, attenuation, (pitch, mu, gamma, delta))
 
 
 def load_matrix(filename):
