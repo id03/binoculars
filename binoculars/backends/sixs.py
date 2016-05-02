@@ -397,6 +397,13 @@ def normalized(a, axis=-1, order=2):
     return a / numpy.expand_dims(l2, axis)
 
 
+def hkl_matrix_to_numpy(m):
+    M = numpy.empty((3, 3))
+    for i in range(3):
+        for j in range(3):
+            M[i, j] = m.get(i, j)
+    return M
+
 ##################
 # Input Backends #
 ##################
@@ -512,7 +519,8 @@ class FlyScanUHV(SIXS):
 
         return (image,
                 (mu, omega),
-                (mu, delta, gamma))
+                (mu, delta, gamma),
+                (mu, omega, delta, gamma))
 
     def process_image(self, index, dataframe, pixels):
         util.status(str(index))
@@ -526,12 +534,17 @@ class FlyScanUHV(SIXS):
         # extract the data from the h5 nodes
 
         h5_nodes = dataframe.h5_nodes
-        intensity, s_values, d_values = self.get_values(index, h5_nodes)
+        intensity, s_values, d_values, values =\
+            self.get_values(index, h5_nodes)
 
         weights = numpy.ones_like(intensity)
         weights *= ~mask
 
         k = 2 * math.pi / dataframe.source.wavelength
+
+        hkl_geometry = dataframe.diffractometer.geometry
+        hkl_sample = dataframe.sample.sample
+        hkl_detector = dataframe.detector.detector
 
         # sample
         s_axes = rotation_axes(dataframe.diffractometer.axes.graph,
@@ -542,6 +555,13 @@ class FlyScanUHV(SIXS):
         d_axes = rotation_axes(dataframe.diffractometer.axes.graph,
                                dataframe.diffractometer.axes.detector)
         P = reduce(numpy.dot, (zip_with(M, numpy.radians(d_values), d_axes)))
+
+        hkl_geometry.axis_values_set(values, Hkl.UnitEnum.USER)
+        q_sample = hkl_geometry.sample_rotation_get(hkl_sample)
+        q_detector = hkl_geometry.detector_rotation_get(hkl_detector)
+        R = hkl_matrix_to_numpy(q_sample.to_matrix())
+        P = hkl_matrix_to_numpy(q_detector.to_matrix())
+
         if self.config.detrot is not None:
             P = numpy.dot(P, M(math.radians(self.config.detrot), [1, 0, 0]))
 
@@ -597,7 +617,8 @@ class SBSMedH(FlyScanUHV):
 
         return (image,
                 (pitch, mu),
-                (pitch, gamma, delta))
+                (pitch, gamma, delta),
+                (pitch, mu, gamma, delta))
 
 
 def load_matrix(filename):
