@@ -5,6 +5,7 @@ Section: science
 Priority: extra
 Build-Depends: debhelper (>= 9),
                dh-python,
+               gir1.2-hkl-5.0,
 	       python-numpy,
                python-all-dev,
 	       python-pyfai,
@@ -40,12 +41,13 @@ Section: python
 Depends: ${misc:Depends},
          ${python:Depends},
          ${shlibs:Depends},
-	 python-h5py,
+         gir1.2-hkl-5.0,
+         python-h5py,
          python-matplotlib,
-	 python-pyfai,
-	 pymca,
-	 python-qt4,
-	 python-scipy,
+         python-pyfai,
+         pymca,
+         python-qt4,
+         python-scipy,
 Suggests: python-xrayutilities
 Description: Data reduction and analysis software for two-dimensional detectors in surface X-ray diffraction - Python2
  BINoculars is a tool for data reduction and analysis of large sets of
