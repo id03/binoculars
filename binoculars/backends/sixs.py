@@ -251,8 +251,14 @@ def dataframes(hfile, data_path=None):
         scan_data = group._f_get_child("scan_data")
         # now instantiate the pytables objects
         h5_nodes = {}
-        for key, value in data_path.items():
-            child = scan_data._f_get_child(value)
+        for key, hitem in data_path.items():
+            try:
+                child = scan_data._f_get_child(hitem.name)
+            except tables.exceptions.NoSuchNodeError:
+                if hitem.optional:
+                    child = None
+                else:
+                    raise
             h5_nodes[key] = child
 
         yield DataFrame(diffractometer, sample, detector, source, h5_nodes)
@@ -377,8 +383,13 @@ class SIXS(backend.InputBase):
 
         # attenuation_coefficient (Optional)
         attenuation_coefficient = config.pop('attenuation_coefficient', None)
-        self.config.attenuation_coefficient =\
-            float(attenuation_coefficient) if attenuation_coefficient else None
+        if attenuation_coefficient is not None:
+            try:
+                self.config.attenuation_coefficient = float(attenuation_coefficient)
+            except ValueError:
+                self.config.attenuation_coefficient = None
+        else:
+            self.config.attenuation_coefficient = None
 
     def get_destination_options(self, command):
         if not command:
@@ -400,14 +411,16 @@ class SIXS(backend.InputBase):
         return roi[:, xmask]
 
 
+HItem = namedtuple("HItem", ["name", "optional"])
+
 class FlyScanUHV(SIXS):
     HPATH = {
-        "image": "xpad_image",
-        "mu": "UHV_MU",
-        "omega": "UHV_OMEGA",
-        "delta": "UHV_DELTA",
-        "gamma": "UHV_GAMMA",
-        "attenuation": "attenuation",
+        "image": HItem("xpad_image", False),
+        "mu": HItem("UHV_MU", False),
+        "omega": HItem("UHV_OMEGA", False),
+        "delta": HItem("UHV_DELTA", False),
+        "gamma": HItem("UHV_GAMMA", False),
+        "attenuation": HItem("attenuation", True),
     }
 
     def get_pointcount(self, scanno):
@@ -419,7 +432,11 @@ class FlyScanUHV(SIXS):
         attenuation = None
         if self.config.attenuation_coefficient is not None:
             try:
-                attenuation = h5_nodes['attenuation'][index + offset]
+                node = h5_nodes['attenuation']
+                if node is not None:
+                    attenuation = node[index + offset]
+                else:
+                    raise Exception("you asked for attenuation but the file does not contain attenuation informations.")
             except IndexError:
                 attenuation = WRONG_ATTENUATION
         return attenuation
@@ -505,24 +522,24 @@ class FlyScanUHV(SIXS):
 
 class FlyScanUHV2(FlyScanUHV):
     HPATH = {
-        "image": "xpad_image",
-        "mu": "mu",
-        "omega": "omega",
-        "delta": "delta",
-        "gamma": "gamma",
-        "attenuation": "attenuation",
+        "image": HItem("xpad_image", False),
+        "mu": HItem("mu", False),
+        "omega": HItem("omega", False),
+        "delta": HItem("delta", False),
+        "gamma": HItem("gamma", False),
+        "attenuation": HItem("attenuation", True),
     }
 
 
 class SBSMedH(FlyScanUHV):
     HPATH = {
-        "image": "data_03",
-        "pitch": "data_22",
-        "mu": "data_18",
-        "gamma": "data_20",
-        "delta": "data_19",
-        "attenuation": "data_xx",
-        }
+        "image": HItem("data_03", False),
+        "pitch": HItem("data_22", False),
+        "mu": HItem("data_18", False),
+        "gamma": HItem("data_20", False),
+        "delta": HItem("data_19", False),
+        "attenuation": HItem("data_xx", True),
+    }
 
     def get_pointcount(self, scanno):
         # just open the file in order to extract the number of step
