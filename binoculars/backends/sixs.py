@@ -147,6 +147,9 @@ class QparQperProjection(QxQyQzProjection):
 # Common methodes #
 ###################
 
+WRONG_ATTENUATION = -100
+
+
 def get_nxclass(hfile, nxclass, path="/"):
     """
     :param hfile: the hdf5 file.
@@ -372,6 +375,11 @@ class SIXS(backend.InputBase):
             except ValueError:
                 self.config.detrot = None
 
+        # attenuation_coefficient (Optional)
+        attenuation_coefficient = config.pop('attenuation_coefficient', None)
+        self.config.attenuation_coefficient =\
+            float(attenuation_coefficient) if attenuation_coefficient else None
+
     def get_destination_options(self, command):
         if not command:
             return False
@@ -407,13 +415,22 @@ class FlyScanUHV(SIXS):
         with tables.open_file(self.get_filename(scanno), 'r') as scan:
             return get_nxclass(scan, "NXdata").xpad_image.shape[0]
 
+    def get_attenuation(self, index, h5_nodes, offset):
+        attenuation = None
+        if self.config.attenuation_coefficient is not None:
+            try:
+                attenuation = h5_nodes['attenuation'][index + offset]
+            except IndexError:
+                attenuation = WRONG_ATTENUATION
+        return attenuation
+
     def get_values(self, index, h5_nodes):
         image = h5_nodes['image'][index]
         mu = h5_nodes['mu'][index]
         omega = h5_nodes['omega'][index]
         delta = h5_nodes['delta'][index]
         gamma = h5_nodes['gamma'][index]
-        attenuation = h5_nodes['attenuation'][index]
+        attenuation = self.get_attenuation(index, h5_nodes, 2)
 
         return (image, attenuation, (mu, omega, delta, gamma))
 
@@ -431,10 +448,23 @@ class FlyScanUHV(SIXS):
         h5_nodes = dataframe.h5_nodes
         intensity, attenuation, values = self.get_values(index, h5_nodes)
 
-        intensity *= 3.2 ** attenuation
+        # BEWARE in order to avoid precision problem we convert the
+        # uint16 -> float32. (the size of the mantis is on 23 bits)
+        # enought to contain the uint16. If one day we use uint32, it
+        # should be necessary to convert into float64.
+        intensity = intensity.astype('float32')
 
-        weights = numpy.ones_like(intensity)
-        weights *= ~mask
+        weights = None
+        if self.config.attenuation_coefficient is not None:
+            if attenuation != WRONG_ATTENUATION:
+                intensity *= self.config.attenuation_coefficient ** attenuation
+                weights = numpy.ones_like(intensity)
+                weights *= ~mask
+            else:
+                weights = numpy.zeros_like(intensity)
+        else:
+            weights = numpy.ones_like(intensity)
+            weights *= ~mask
 
         k = 2 * math.pi / dataframe.source.wavelength
 
@@ -505,7 +535,7 @@ class SBSMedH(FlyScanUHV):
         mu = h5_nodes['mu'][index]
         gamma = h5_nodes['gamma'][index]
         delta = h5_nodes['delta'][index]
-        attenuation = h5_nodes['attenuation'][index]
+        attenuation = self.get_attenuation(index, h5_nodes, 2)
 
         return (image, attenuation, (pitch, mu, gamma, delta))
 
