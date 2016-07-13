@@ -531,6 +531,27 @@ class FlyScanUHV2(FlyScanUHV):
     }
 
 
+class FlyMedH(FlyScanUHV):
+    HPATH = {
+        "image": HItem("xpad_image", False),
+        "pitch": HItem("beta", True),
+        "mu": HItem("mu", False),
+        "gamma": HItem("gamma", False),
+        "delta": HItem("delta", False),
+        "attenuation": HItem("attenuation", True),
+    }
+
+    def get_values(self, index, h5_nodes):
+        image = h5_nodes['image'][index]
+        pitch = h5_nodes['pitch'][index] if h5_nodes['pitch'] else 0.3
+        mu = h5_nodes['mu'][index]
+        gamma = h5_nodes['gamma'][index]
+        delta = h5_nodes['delta'][index]
+        attenuation = self.get_attenuation(index, h5_nodes, 2)
+
+        return (image, attenuation, (pitch, mu, gamma, delta))
+
+
 class SBSMedH(FlyScanUHV):
     HPATH = {
         "image": HItem("data_03", False),
