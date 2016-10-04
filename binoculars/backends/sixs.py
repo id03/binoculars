@@ -363,7 +363,8 @@ class SIXS(backend.InputBase):
         super(SIXS, self).parse_config(config)
         self.config.xmask = util.parse_multi_range(config.pop('xmask', None))  # Optional, select a subset of the image range in the x direction. all by default
         self.config.ymask = util.parse_multi_range(config.pop('ymask', None))  # Optional, select a subset of the image range in the y direction. all by default
-        self.config.nexusfile = config.pop('nexusfile')  # Location of the specfile
+        self.config.nexusdir = config.pop('nexusdir', None)  # location of the nexus files (take precedence on nexusfile)
+        self.config.nexusfile = config.pop('nexusfile', None)  # Location of the specfile
         self.config.pr = config.pop('pr', None)  # Optional, all range by default
         if self.config.xmask is None:
             self.config.xmask = slice(None)
@@ -400,7 +401,14 @@ class SIXS(backend.InputBase):
 
     # CONVENIENCE FUNCTIONS
     def get_filename(self, scanno):
-        filename = self.config.nexusfile.format(scanno=str(scanno).zfill(5))
+        filename = None
+        if self.config.nexusdir:
+            dirname = self.config.nexusdir
+            files  = [f for f in os.listdir(dirname) if str(scanno) in f]
+            if files is not []:
+                filename = os.path.join(dirname, files[0])
+        else:
+            filename = self.config.nexusfile.format(scanno=str(scanno).zfill(5))
         if not os.path.exists(filename):
             raise errors.ConfigError('nexus filename does not exist: {0}'.format(filename))
         return filename
