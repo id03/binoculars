@@ -404,7 +404,7 @@ class SIXS(backend.InputBase):
         filename = None
         if self.config.nexusdir:
             dirname = self.config.nexusdir
-            files  = [f for f in os.listdir(dirname) if str(scanno) in f]
+            files  = [f for f in os.listdir(dirname) if str(scanno).zfill(5) in f]
             if files is not []:
                 filename = os.path.join(dirname, files[0])
         else:
