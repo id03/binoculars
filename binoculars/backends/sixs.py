@@ -462,11 +462,10 @@ class FlyScanUHV(SIXS):
     def process_image(self, index, dataframe, pixels):
         util.status(str(index))
         detector = ALL_DETECTORS[dataframe.detector.name]()
+        mask = detector.mask.astype(numpy.bool)
         maskmatrix = load_matrix(self.config.maskmatrix)
         if maskmatrix is not None:
-            mask = numpy.bitwise_or(detector.mask, maskmatrix)
-        else:
-            mask = detector.mask
+            mask = numpy.bitwise_or(mask, maskmatrix)
 
         # extract the data from the h5 nodes
 
