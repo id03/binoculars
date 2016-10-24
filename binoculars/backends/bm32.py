@@ -70,17 +70,17 @@ class QProjection(backend.ProjectionBase):
         sixc.setLambda(wavelength)
         sixc.setUB(UB)
         R = sixc.getQSurface(gamma=gamma, delta=delta, theta=theta, mu=mu, chi=chi, phi=phi)
-        qz = R[0,:].reshape(shape)
+        qx = R[0,:].reshape(shape)
         qy = R[1,:].reshape(shape)
-        qx = R[2,:].reshape(shape)
-        return (qz, qy, qx)
+        qz = R[2,:].reshape(shape)
+        return (qx, qy, qz)
 
     def get_axis_labels(self):
         return 'qx', 'qy', 'qz'
 
 class SphericalQProjection(QProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        qz, qy, qx = super(SphericalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
+        qx, qy, qz = super(SphericalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
         q = numpy.sqrt(qx**2 + qy**2 + qz**2)
         theta = numpy.arccos(qz / q)
         phi = numpy.arctan2(qy, qx)
@@ -91,7 +91,7 @@ class SphericalQProjection(QProjection):
 
 class CylindricalQProjection(QProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        qz, qy, qx = super(CylindricalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
+        qx, qy, qz = super(CylindricalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
         qpar = numpy.sqrt(qx**2 + qy**2)
         phi = numpy.arctan2(qy, qx)
         return (qpar, qz, phi)
@@ -267,7 +267,7 @@ class BM32Input(backend.InputBase):
         return wavelength, UB
 
     def get_images(self, scan, first, last, dry_run=False):
-        imagenos = numpy.array(scan.datacol('img')[slice(first, last + 1)], dtype = numpy.int) + 1##error in spec?!
+        imagenos = numpy.array(scan.datacol('img')[slice(first, last + 1)], dtype = numpy.int)
         if self.config.background:
             if not os.path.exists(self.config.background):
                 raise errors.FileError('could not find background file {0}'.format(self.config.background))
