@@ -585,6 +585,31 @@ class SBSMedH(FlyScanUHV):
         return (image, attenuation, (pitch, mu, gamma, delta))
 
 
+class FlyMedV(FlyScanUHV):
+    HPATH = {
+        "image": HItem("xpad_image", False),
+        "beta": HItem("beta", True),
+        "mu": HItem("mu", False),
+        "omega": HItem("omega", False),
+        "gamma": HItem("gamma", False),
+        "delta": HItem("delta", False),
+        "etaa": HItem("etaa", True),
+        "attenuation": HItem("attenuation", True),
+    }
+
+    def get_values(self, index, h5_nodes):
+        image = h5_nodes['image'][index]
+        beta = h5_nodes['beta'][index] if h5_nodes['beta'] else 0.0
+        mu = h5_nodes['mu'][index]
+        omega = h5_nodes['omega'][index]
+        gamma = h5_nodes['gamma'][index]
+        delta = h5_nodes['delta'][index]
+        etaa = h5_nodes['etaa'][index] if h5_nodes['etaa'] else 0.0
+        attenuation = self.get_attenuation(index, h5_nodes, 2)
+
+        return (image, attenuation, (beta, mu, omega, gamma, delta, etaa))
+
+
 def load_matrix(filename):
     if filename is None:
         return None
