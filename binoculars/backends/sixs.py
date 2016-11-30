@@ -363,7 +363,8 @@ class SIXS(backend.InputBase):
         super(SIXS, self).parse_config(config)
         self.config.xmask = util.parse_multi_range(config.pop('xmask', None))  # Optional, select a subset of the image range in the x direction. all by default
         self.config.ymask = util.parse_multi_range(config.pop('ymask', None))  # Optional, select a subset of the image range in the y direction. all by default
-        self.config.nexusfile = config.pop('nexusfile')  # Location of the specfile
+        self.config.nexusdir = config.pop('nexusdir', None)  # location of the nexus files (take precedence on nexusfile)
+        self.config.nexusfile = config.pop('nexusfile', None)  # Location of the specfile
         self.config.pr = config.pop('pr', None)  # Optional, all range by default
         if self.config.xmask is None:
             self.config.xmask = slice(None)
@@ -400,7 +401,14 @@ class SIXS(backend.InputBase):
 
     # CONVENIENCE FUNCTIONS
     def get_filename(self, scanno):
-        filename = self.config.nexusfile.format(scanno=str(scanno).zfill(5))
+        filename = None
+        if self.config.nexusdir:
+            dirname = self.config.nexusdir
+            files  = [f for f in os.listdir(dirname) if str(scanno).zfill(5) in f]
+            if files is not []:
+                filename = os.path.join(dirname, files[0])
+        else:
+            filename = self.config.nexusfile.format(scanno=str(scanno).zfill(5))
         if not os.path.exists(filename):
             raise errors.ConfigError('nexus filename does not exist: {0}'.format(filename))
         return filename
@@ -454,11 +462,10 @@ class FlyScanUHV(SIXS):
     def process_image(self, index, dataframe, pixels):
         util.status(str(index))
         detector = ALL_DETECTORS[dataframe.detector.name]()
+        mask = detector.mask.astype(numpy.bool)
         maskmatrix = load_matrix(self.config.maskmatrix)
         if maskmatrix is not None:
-            mask = numpy.bitwise_or(detector.mask, maskmatrix)
-        else:
-            mask = detector.mask
+            mask = numpy.bitwise_or(mask, maskmatrix)
 
         # extract the data from the h5 nodes
 
@@ -576,6 +583,31 @@ class SBSMedH(FlyScanUHV):
         attenuation = self.get_attenuation(index, h5_nodes, 2)
 
         return (image, attenuation, (pitch, mu, gamma, delta))
+
+
+class FlyMedV(FlyScanUHV):
+    HPATH = {
+        "image": HItem("xpad_image", False),
+        "beta": HItem("beta", True),
+        "mu": HItem("mu", False),
+        "omega": HItem("omega", False),
+        "gamma": HItem("gamma", False),
+        "delta": HItem("delta", False),
+        "etaa": HItem("etaa", True),
+        "attenuation": HItem("attenuation", True),
+    }
+
+    def get_values(self, index, h5_nodes):
+        image = h5_nodes['image'][index]
+        beta = h5_nodes['beta'][index] if h5_nodes['beta'] else 0.0
+        mu = h5_nodes['mu'][index]
+        omega = h5_nodes['omega'][index]
+        gamma = h5_nodes['gamma'][index]
+        delta = h5_nodes['delta'][index]
+        etaa = h5_nodes['etaa'][index] if h5_nodes['etaa'] else 0.0
+        attenuation = self.get_attenuation(index, h5_nodes, 2)
+
+        return (image, attenuation, (beta, mu, omega, gamma, delta, etaa))
 
 
 def load_matrix(filename):
