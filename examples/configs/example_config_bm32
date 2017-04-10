@@ -1,0 +1,41 @@
+### the DISPATCHER is responsible for job management
+[dispatcher]
+#type = singlecore # run locally
+type= local
+ncores = 2 # optionally, specify number of cores (autodetect by default)
+
+# to use the OAR cluster:
+#type = oar
+#tmpdir = /some/globally/available/path
+#oarsub_options = walltime=0:15 # optionally, tweak oarsub parameters
+#executable = /path/to/custom/python /path/to/ivoxprocess # optionally, override default location of python and/or ivoxoar installation
+
+# specificy destination file using scan numbers
+destination = scans_{first}_{last}.hdf5
+overwrite = true
+# or, by default: numbered files in the form output_###.zpi:
+# destination = output.zpi
+#overwrite = false
+
+### choose an appropriate INPUT class and specify custom options
+[input]
+type = bm32:eh1 # refers to class EH1 in binoculars/backends/bm32.py
+specfile =  /path/of/SPECFILE
+imagefolder = /path/to/image/folder/{rUCCD[0]}
+
+xmask = 0-1250
+ymask = 123-133
+#maskmatrix= pathtofle.npy #or edf or txt. 1 = accept, 0 = reject
+
+## approximate number of images per job, only useful when running on the oar cluster
+target_weight = 50
+
+# technical yadayada for this particular input class
+
+pixelsize = 0.055, 0.055
+
+### choose PROJECTION plus resolution
+[projection]
+type = bm32:hklprojection # refers to HKLProjection in backends/bm32.py
+resolution = 0.0007, 0.0007, 0.001 # or just give 1 number for all dimensions
+

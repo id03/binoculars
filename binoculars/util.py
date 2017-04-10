@@ -525,7 +525,7 @@ class ConfigFile(MetaBase):
                 if 'command' in config.attrs:
                     configobj.command = json.loads(config.attrs['command'].decode('utf8'))
                 for section in config:
-                    if isinstance(config[section],  h5py._hl.group.Group):  # new
+                    if isinstance(config[section],  h5py.Group):  # new
                         setattr(configobj, section, dict((key, config[section][key].value) for key in config[section]))
                     else:  # old
                         setattr(configobj, section, dict(config[section]))
@@ -712,7 +712,7 @@ def space_to_txt(space, filename):
 
 @contextlib.contextmanager
 def open_h5py(fn, mode):
-    if isinstance(fn, h5py._hl.group.Group):
+    if isinstance(fn, h5py.Group):
         yield fn
     else:
         with h5py.File(fn, mode) as fp:
@@ -865,7 +865,7 @@ def atomic_write(filename):
             fp.write(...)
     """
 
-    if isinstance(filename, h5py._hl.group.Group):
+    if isinstance(filename, h5py.Group):
         yield filename
     else:
         tmpfile = '{0}-{1}.tmp'.format(os.path.splitext(filename)[0], uniqid())
