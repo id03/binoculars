@@ -27,7 +27,7 @@ sddy_offset= -1288.5  # sample detector distance Y offset
 sddx_offset= 0 # detector X offset
 sddz_offset= 0 # detector Z offset
 ccdth_offset= -0.05
-pixelsize=0.06552, 0.06552  # in microns
+pixelsize=0.06552, 0.06552  # in mm
 
 ### choose PROJECTION plus resolution
 [projection]

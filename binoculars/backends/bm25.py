@@ -33,7 +33,7 @@ class HKLProjection(backend.ProjectionBase):
     def project(self, mu, theta, phi, chi, ccdty, ccdtx, ccdtz, ccdth, ccdtr, wavelength, UB, qconv):
         qconv.wavelength = wavelength
         h, k, l = qconv.area(mu, theta, phi, chi, 
-                             ccdty, ccdtx, ccdtz, ccdth,
+                             ccdty, ccdtx, ccdtz, ccdth, ccdtr,
                              UB=UB.reshape((3, 3)))
         return (h, k, l)
 
