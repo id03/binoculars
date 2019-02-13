@@ -1,0 +1,40 @@
+changes in backend id03.py:
+	improved calculation of Delta and Gamma in id03 backend (EH1, EH2, GisaxsDetector)
+	added calculation of standard deviations in id03 backend using Poisson statistics (EH1, EH2, GisaxsDetector)
+		added in function process_image(), which now returns a 4-tuple (intensity, weights, variances, params)
+		if you use another backend you should change the process_image() function in the same way (calculate variances and return them as well)
+
+changes in binoculars-fitaid:
+	structure factor calculation
+		the non interpolated structure factor now also includes proper error propagation, if the loaded space provides variances. If not, recreate the space with BINoculars. Otherwise 0 is assumed for missing variances.
+		the interpolated structure factor overestimates the error (linear instead of Gaussian error propagation used)
+		the fitted structure factor does not provide any error propagation
+	smaller fixes (parameter names, peak tracker, ...)
+	spaces are now stored in memory during operation (speeds up fitaid a lot) and not read/written from/to file all the time
+	fitaid now supports PyQt4, PyQt5, PySide and PySide2
+	Python 3 support added
+
+changes in binoculars-gui:
+	removed subtraction of spaces
+	fixed merging of spaces
+
+
+fixed lots of small errors and typos
+fixed peak fitting
+fixed trim() (export of spaces in binoculars-gui)
+3d plots show a rebinned version of space due to speed reasons
+
+
+tested with:
+
+Environment		Debian 8.11 (rnice)				Windows 10
+Python(64bit)	2.7.9 / 3.4.2 					3.7.1
+numpy			1.8.2							1.16.0
+scipy			0.14.0							1.2.0
+h5py			2.7.1							2.9.0
+PyQt4			4.11.2							4.11.4
+PyQt5			5.3.2							5.11.3
+PyMca5			5.4.3							5.4.3
+Matplotlib		3.0.2							3.0.2
+
+

@@ -1,10 +1,16 @@
-import numpy
+import numpy as np
 import scipy.optimize
 import scipy.special
-import inspect
 import re
 
 class FitBase(object):
+    """Important attributes:
+        xdata       2-tuple of 2D arrays with all x-values of the space (up to axis limits)
+        ydata       masked 2D-array of space (mask provided by space)
+        cxdata      2-tuple of 1D arrays with x-values from data points (all
+                    points not masked in ydata, this is most likely less then xdata)
+        cydata      1D array with intensities from the smallest rectangle
+                    containing data points (as defined by cxdata)"""
     parameters = None
     guess = None
     result = None
@@ -13,9 +19,7 @@ class FitBase(object):
 
     def __init__(self, space, guess=None):
         self.space = space
-        code = inspect.getsource(self.func)
-
-        args = tuple( re.findall('\((.*?)\)', line)[0].split(',') for line in code.split('\n')[2:4])
+        args = self.get_param_names()
 
         if space.dimension != len(args[0]):
             raise ValueError('dimension mismatch: space has {0}, {1.__class__.__name__} expects {2}'.format(space.dimension, self, len(args[0])))
@@ -32,7 +36,7 @@ class FitBase(object):
 
     @staticmethod
     def _prepare(space):
-        ydata = space.get_masked()
+        ydata = space.get_norm_intensity()
         cydata = ydata.compressed()
         imask = ~ydata.mask
         xdata = space.get_grid()
@@ -40,25 +44,31 @@ class FitBase(object):
         return xdata, ydata, cxdata, cydata
 
     def _guess(self):
-        # the implementation should use space and/or self.xdata/self.ydata and/or the cxdata/cydata maskless versions to obtain guess
+        # the implementation should use space and/or self.xdata/self.ydata
+        # and/or the cxdata/cydata maskless versions to obtain guess
         raise NotImplementedError
 
     def _fitfunc(self, params):
         return self.cydata - self.func(self.cxdata, params)
 
     def _fit(self):
-        result = scipy.optimize.leastsq(self._fitfunc, self.guess, full_output=True, epsfcn=0.000001)
+        # check here if the number of data points is greater than the number of fit parameters
+        ndatapoints = np.count_nonzero(self.cydata)
+        if ndatapoints < len(self.parameters):
+            print('not enough data points ({}) to fit function ({}) with {} parameters'.format(ndatapoints, self._fitfunc, len(self.parameters)))
+            return False
+        result = scipy.optimize.leastsq(self._fitfunc, self.guess, full_output=True, epsfcn=1e-6)
 
-        self.message = re.sub('\s{2,}', ' ', result[3].strip())
-        self.result = result[0]
-        errdata = result[2]['fvec']
+        self.message = re.sub('\s{2,}', ' ', result[3].strip()) # cause of failure
+        self.result = result[0]             # best parameter values
+        errdata = result[2]['fvec']         # best function value
         if result[1] is None:
-            self.variance = numpy.zeros(len(self.result))
+            self.variance = np.zeros(len(self.result))
         else:
-            self.variance = numpy.diagonal(result[1] * (errdata**2).sum() / (len(errdata) - len(self.result)))
+            self.variance = np.diagonal(result[1] * (errdata**2).sum() / (len(errdata) - len(self.result)))
 
-        self.fitdata = numpy.ma.array(self.func(self.xdata, self.result), mask=self.ydata.mask)
-        self.summary = '\n'.join('%s: %.4g +/- %.4g' % (n, p, v) for (n, p, v) in zip(self.parameters, self.result, self.variance))
+        self.fitdata = np.ma.array(self.func(self.xdata, self.result), mask=self.ydata.mask)
+        self.summary = '\n'.join('{}: {:.4g} +/- {:.4g}'.format(p, r, v) for (p, r, v) in zip(self.parameters, self.result, self.variance))
 
         return result[4] in (1, 2, 3, 4)  # corresponds to True on success, False on failure
 
@@ -68,7 +78,7 @@ class FitBase(object):
 
 class PeakFitBase(FitBase):
     def __init__(self, space, guess=None, loc=None):
-        if loc != None:
+        if loc is not None:
             self.argmax = tuple(loc)
         else:
             self.argmax = None
@@ -77,38 +87,37 @@ class PeakFitBase(FitBase):
     def _guess(self):
         maximum = self.cydata.max()  # for background determination
 
-        background = self.cydata < (numpy.median(self.cydata) + maximum) / 2
+        background = self.cydata < (np.median(self.cydata) + maximum) / 2
 
-        if any(background == True):  # the fit will fail if background is flas for all
+        if any(background == True):  # the fit will fail if background is flat for all
             linparams = self._linfit(list(grid[background] for grid in self.cxdata), self.cydata[background])
         else:
-            linparams = numpy.zeros(len(self.cxdata) + 1)
+            linparams = np.zeros(len(self.cxdata) + 1)
 
-        simbackground = linparams[-1] + numpy.sum(numpy.vstack(param * grid.flatten() for (param, grid) in zip(linparams[:-1], self.cxdata)), axis=0)
+        simbackground = linparams[-1] + np.sum(np.vstack([param * grid.flatten() for (param, grid) in zip(linparams[:-1], self.cxdata)]), axis=0)
         signal = self.cydata - simbackground
 
-        if self.argmax != None:
+        if self.argmax is not None:
             argmax = self.argmax
         else:
             argmax = tuple((signal * grid).sum() / signal.sum() for grid in self.cxdata)
 
-        argmax_bkg = linparams[-1] + numpy.sum(numpy.vstack(param * grid.flatten() for (param, grid) in zip(linparams[:-1], argmax)))
+        argmax_bkg = linparams[-1] + np.sum(np.vstack([param * grid.flatten() for (param, grid) in zip(linparams[:-1], argmax)]))
 
         try:
-            maximum = self.space[argmax] - argmax_bkg
+            maximum = self.space[tuple(float(l) for l in argmax)] - argmax_bkg
         except ValueError:
             maximum = self.cydata.max()
 
-        if numpy.isnan(maximum):
+        if np.isnan(maximum):
             maximum = self.cydata.max()
-
         self.set_guess(maximum, argmax, linparams)
 
     def _linfit(self, coordinates, intensity):
         coordinates = list(coordinates)
-        coordinates.append(numpy.ones_like(coordinates[0]))
-        matrix = numpy.vstack(coords.flatten() for coords in coordinates).T
-        return numpy.linalg.lstsq(matrix, intensity)[0]
+        coordinates.append(np.ones_like(coordinates[0]))
+        matrix = np.vstack([coords.flatten() for coords in coordinates]).T
+        return np.linalg.lstsq(matrix, intensity, rcond=-1)[0]
 
 
 class AutoDimensionFit(FitBase):
@@ -121,15 +130,15 @@ class AutoDimensionFit(FitBase):
 
 # utility functions
 def rot2d(x, y, th):
-    xrot = x * numpy.cos(th) + y * numpy.sin(th)
-    yrot = - x * numpy.sin(th) + y * numpy.cos(th)
+    xrot = x * np.cos(th) + y * np.sin(th)
+    yrot = - x * np.sin(th) + y * np.cos(th)
     return xrot, yrot
 
 
 def rot3d(x, y, z, th, ph):
-    xrot = numpy.cos(th) * x + numpy.sin(th) * numpy.sin(ph) * y + numpy.sin(th) * numpy.cos(ph) * z
-    yrot = numpy.cos(ph) * y - numpy.sin(ph) * z
-    zrot = -numpy.sin(th) * x + numpy.cos(th) * numpy.sin(ph) * y + numpy.cos(th) * numpy.cos(ph) * z
+    xrot = np.cos(th) * x + np.sin(th) * np.sin(ph) * y + np.sin(th) * np.cos(ph) * z
+    yrot = np.cos(ph) * y - np.sin(ph) * z
+    zrot = -np.sin(th) * x + np.cos(th) * np.sin(ph) * y + np.cos(th) * np.cos(ph) * z
     return xrot, yrot, zrot
 
 
@@ -156,17 +165,23 @@ class Lorentzian1D(PeakFitBase):
         gamma0 = 5 * self.space.axes[0].res  # estimated FWHM on 10 pixels
         self.guess = [maximum, argmax[0], gamma0, linparams[0], linparams[1]]
 
+    def get_param_names(self):
+        return (('x', ), ('I', 'loc', 'gamma', 'slope', 'offset'))
 
-class Lorentzian1DNoBkg(PeakFitBase):
+
+class Lorentzian1DNoBkg(PeakFitBase):   # should work now
     @staticmethod
     def func(grid, params):
         (x, ) = grid
-        (I, loc, gamma) = xxx_todo_changeme3
+        (I, loc, gamma) = params
         return I / ((x - loc)**2 + gamma**2)
 
     def set_guess(self, maximum, argmax, linparams):
         gamma0 = 5 * self.space.axes[0].res  # estimated FWHM on 10 pixels
         self.guess = [maximum, argmax[0], gamma0]
+
+    def get_param_names(self):
+        return (('x', ), ('I', 'loc', 'gamma'))
 
 
 class PolarLorentzian2Dnobkg(PeakFitBase):
@@ -182,6 +197,8 @@ class PolarLorentzian2Dnobkg(PeakFitBase):
         gamma1 = self.space.axes[1].res
         self.guess = [maximum, argmax[0], argmax[1], gamma0, gamma1, 0]
 
+    def get_param_names(self):
+        return (('x', 'y'), ('I', 'loc0', 'loc1', 'gamma0', 'gamma1', 'th'))
 
 class PolarLorentzian2D(PeakFitBase):
     @staticmethod
@@ -195,6 +212,9 @@ class PolarLorentzian2D(PeakFitBase):
         gamma0 = self.space.axes[0].res  # estimated FWHM on 10 pixels
         gamma1 = self.space.axes[1].res
         self.guess = [maximum, argmax[0], argmax[1], gamma0, gamma1, 0, linparams[0], linparams[1], linparams[2]]
+
+    def get_param_names(self):
+        return (('x', 'y'), ('I', 'loc0', 'loc1', 'gamma0', 'gamma1', 'th', 'slope1', 'slope2', 'offset'))
 
     def integrate_signal(self):
         return self.func(self.cxdata, (self.result[0], self.result[1], self.result[2], self.result[3], self.result[4], self.result[5], 0, 0, 0)).sum()
@@ -213,6 +233,9 @@ class Lorentzian2D(PeakFitBase):
         gamma1 = 5 * self.space.axes[1].res
         self.guess = [maximum, argmax[0], argmax[1], gamma0, gamma1, 0, linparams[0], linparams[1], linparams[2]]
 
+    def get_param_names(self):
+        return (('x', 'y'), ('I', 'loc0', 'loc1', 'gamma0', 'gamma1', 'th', 'slope1', 'slope2', 'offset'))
+
 
 class Lorentzian2Dnobkg(PeakFitBase):
     @staticmethod
@@ -227,6 +250,8 @@ class Lorentzian2Dnobkg(PeakFitBase):
         gamma1 = 5 * self.space.axes[1].res
         self.guess = [maximum, argmax[0], argmax[1], gamma0, gamma1, 0]
 
+    def get_param_names(self):
+        return (('x', 'y'), ('I', 'loc0', 'loc1', 'gamma0', 'gamma1', 'th'))
 
 class Lorentzian(AutoDimensionFit):
     dimensions = {1: Lorentzian1D, 2: PolarLorentzian2D}
@@ -237,7 +262,10 @@ class Gaussian1D(PeakFitBase):
     def func(grid, params):
         (x,) = grid
         (loc, I, sigma, offset, slope) = params
-        return I * numpy.exp(-((x-loc)/sigma)**2/2) + offset + x * slope
+        return I * np.exp(-((x-loc)/sigma)**2/2) + offset + x * slope
+
+    def get_param_names(self):
+        return (('x', ), ('loc', 'I', 'sigma', 'offset', 'slope'))
 
 
 class Voigt1D(PeakFitBase):
@@ -245,9 +273,12 @@ class Voigt1D(PeakFitBase):
     def func(grid, params):
         (x, ) = grid
         (I, loc, sigma, gamma, slope, offset) = params
-        z = (x - loc + numpy.complex(0, gamma)) / (sigma * numpy.sqrt(2))
-        return I * numpy.real(scipy.special.wofz(z))/(sigma * numpy.sqrt(2 * numpy.pi)) + offset + x * slope
+        z = (x - loc + np.complex(0, gamma)) / (sigma * np.sqrt(2))
+        return I * np.real(scipy.special.wofz(z))/(sigma * np.sqrt(2 * np.pi)) + offset + x * slope
 
     def set_guess(self, maximum, argmax, linparams):
         gamma0 = 5 * self.space.axes[0].res  # estimated FWHM on 10 pixels
         self.guess = [maximum, argmax[0], 0.01, gamma0, linparams[0], linparams[1]]
+
+    def get_param_names(self):
+        return (('x', ), ('I', 'loc', 'sigma', 'gamma', 'slope', 'offset'))

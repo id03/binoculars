@@ -2,16 +2,14 @@ import sys
 import os
 import itertools
 import glob
-import numpy
 import time
-
-#python3 support
-PY3 = sys.version_info > (3,)
+PY3 = sys.version_info > (3,)   # python3 support
 if PY3:
     pass
 else:
     from itertools import izip as zip
 
+import numpy as np
 try:
     from PyMca import specfilewrapper, EdfFile, SixCircle, specfile
 except ImportError:
@@ -22,7 +20,7 @@ from .. import backend, errors, util
 
 class pixels(backend.ProjectionBase):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        y, x = numpy.mgrid[slice(None, gamma.shape[0]), slice(None, delta.shape[0])]
+        y, x = np.mgrid[slice(None, gamma.shape[0]), slice(None, delta.shape[0])]
         return (y, x)
 
     def get_axis_labels(self):
@@ -55,23 +53,23 @@ class HKProjection(HKLProjection):
 
 class specularangles(backend.ProjectionBase):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        delta, gamma = numpy.meshgrid(delta, gamma)
-        mu *= numpy.pi/180
-        delta *= numpy.pi/180
-        gamma *= numpy.pi/180
-        chi *= numpy.pi/180
-        phi *= numpy.pi/180
-        theta *= numpy.pi/180
+        delta, gamma = np.meshgrid(delta, gamma)
+        mu *= np.pi/180
+        delta *= np.pi/180
+        gamma *= np.pi/180
+        chi *= np.pi/180
+        phi *= np.pi/180
+        theta *= np.pi/180
 
         def mat(u, th):
             ux, uy, uz = u[0], u[1], u[2]
-            sint = numpy.sin(th)
-            cost = numpy.cos(th)
-            mcost = (1 - numpy.cos(th))
+            sint = np.sin(th)
+            cost = np.cos(th)
+            mcost = (1 - np.cos(th))
 
-            return numpy.matrix([[cost + ux**2 * mcost, ux * uy * mcost - uz * sint, ux * uz * mcost + uy * sint],
-                             [uy * ux * mcost + uz * sint, cost + uy**2 * mcost, uy * uz - ux * sint],
-                             [uz * ux * mcost - uy * sint, uz * uy * mcost + ux * sint, cost + uz**2 * mcost]])
+            return np.matrix([[cost + ux**2 * mcost, ux * uy * mcost - uz * sint, ux * uz * mcost + uy * sint],
+                              [uy * ux * mcost + uz * sint, cost + uy**2 * mcost, uy * uz - ux * sint],
+                              [uz * ux * mcost - uy * sint, uz * uy * mcost + ux * sint, cost + uz**2 * mcost]])
 
         def rot(vx, vy, vz, u, th):
             R = mat(u, th)
@@ -80,37 +78,39 @@ class specularangles(backend.ProjectionBase):
         #what are the angles of kin and kout in the sample frame?
 
         #angles in the hexapod frame
-        koutx, kouty, koutz = numpy.sin(- numpy.pi / 2 + gamma) * numpy.cos(delta), numpy.sin(- numpy.pi / 2 + gamma) * numpy.sin(delta), numpy.cos(- numpy.pi / 2 + gamma)
-        kinx, kiny, kinz = numpy.sin(numpy.pi / 2 - mu), 0, numpy.cos(numpy.pi / 2 - mu)
+        koutx = np.sin(- np.pi / 2 + gamma) * np.cos(delta)
+        kouty = np.sin(- np.pi / 2 + gamma) * np.sin(delta)
+        koutz = np.cos(- np.pi / 2 + gamma)
+        kinx, kiny, kinz = np.sin(np.pi / 2 - mu), 0, np.cos(np.pi / 2 - mu)
 
         #now we rotate the frame around hexapod rotation th
-        xaxis = numpy.array(rot(1, 0, 0, numpy.array([0, 0, 1]), theta))
-        yaxis = numpy.array(rot(0, 1, 0, numpy.array([0, 0, 1]), theta))
+        xaxis = np.array(rot(1, 0, 0, np.array([0, 0, 1]), theta))
+        yaxis = np.array(rot(0, 1, 0, np.array([0, 0, 1]), theta))
 
         #first we rotate the sample around the xaxis
-        koutx, kouty, koutz = rot(koutx, kouty, koutz, xaxis,  chi)
+        koutx, kouty, koutz = rot(koutx, kouty, koutz, xaxis, chi)
         kinx, kiny, kinz = rot(kinx, kiny, kinz, xaxis, chi)
-        yaxis = numpy.array(rot(yaxis[0], yaxis[1], yaxis[2], xaxis, chi))  # we also have to rotate the yaxis
+        yaxis = np.array(rot(yaxis[0], yaxis[1], yaxis[2], xaxis, chi))  # we also have to rotate the yaxis
 
         #then we rotate the sample around the yaxis
-        koutx, kouty, koutz = rot(koutx, kouty, koutz, yaxis,  phi)
+        koutx, kouty, koutz = rot(koutx, kouty, koutz, yaxis, phi)
         kinx, kiny, kinz = rot(kinx, kiny, kinz, yaxis, phi)
 
         #to calculate the equivalent gamma, delta and mu in the sample frame we rotate the frame around the sample z which is 0,0,1
-        back = numpy.arctan2(kiny, kinx)
-        koutx, kouty, koutz = rot(koutx, kouty, koutz, numpy.array([0, 0, 1]),  -back)
-        kinx, kiny, kinz = rot(kinx, kiny, kinz, numpy.array([0, 0, 1]), -back)
+        back = np.arctan2(kiny, kinx)
+        koutx, kouty, koutz = rot(koutx, kouty, koutz, np.array([0, 0, 1]), -back)
+        kinx, kiny, kinz = rot(kinx, kiny, kinz, np.array([0, 0, 1]), -back)
 
-        mu = numpy.arctan2(kinz, kinx) * numpy.ones_like(delta)
-        delta = numpy.pi - numpy.arctan2(kouty, koutx)
-        gamma = numpy.pi - numpy.arctan2(koutz, koutx)
+        mu = np.arctan2(kinz, kinx) * np.ones_like(delta)
+        delta = np.pi - np.arctan2(kouty, koutx)
+        gamma = np.pi - np.arctan2(koutz, koutx)
 
-        delta[delta > numpy.pi] -= 2 * numpy.pi
-        gamma[gamma > numpy.pi] -= 2 * numpy.pi
+        delta[delta > np.pi] -= 2 * np.pi
+        gamma[gamma > np.pi] -= 2 * np.pi
 
-        mu *= 1 / numpy.pi * 180
-        delta *= 1 / numpy.pi * 180
-        gamma *= 1 / numpy.pi * 180
+        mu *= 1 / np.pi * 180
+        delta *= 1 / np.pi * 180
+        gamma *= 1 / np.pi * 180
 
         return (gamma - mu, gamma + mu, delta)
 
@@ -125,7 +125,7 @@ class ThetaLProjection(backend.ProjectionBase):
         R = SixCircle.getHKL(wavelength, UB, gamma=gamma, delta=delta, theta=theta, mu=mu, chi=chi, phi=phi)
         shape = gamma.size, delta.size
         L = R[2, :].reshape(shape)
-        theta_array = numpy.ones_like(L) * theta
+        theta_array = np.ones_like(L) * theta
         return (theta_array, L)
 
     def get_axis_labels(self):
@@ -152,9 +152,9 @@ class QProjection(backend.ProjectionBase):
 class SphericalQProjection(QProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         qz, qy, qx = super(SphericalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
-        q = numpy.sqrt(qx**2 + qy**2 + qz**2)
-        theta = numpy.arccos(qz / q)
-        phi = numpy.arctan2(qy, qx)
+        q = np.sqrt(qx**2 + qy**2 + qz**2)
+        theta = np.arccos(qz / q)
+        phi = np.arctan2(qy, qx)
         return (q, theta, phi)
 
     def get_axis_labels(self):
@@ -164,8 +164,8 @@ class SphericalQProjection(QProjection):
 class CylindricalQProjection(QProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         qz, qy, qx = super(CylindricalQProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
-        qpar = numpy.sqrt(qx**2 + qy**2)
-        phi = numpy.arctan2(qy, qx)
+        qpar = np.sqrt(qx**2 + qy**2)
+        phi = np.arctan2(qy, qx)
         return (qpar, qz, phi)
 
     def get_axis_labels(self):
@@ -184,7 +184,7 @@ class nrQProjection(QProjection):
 class TwoThetaProjection(SphericalQProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         q, theta, phi = super(TwoThetaProjection, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
-        return 2 * numpy.arcsin(q * wavelength / (4 * numpy.pi)) / numpy.pi * 180,  # note: we need to return a 1-tuple?
+        return (2 * np.arcsin(q * wavelength / (4 * np.pi)) / np.pi * 180,)
 
     def get_axis_labels(self):
         return 'TwoTheta'
@@ -193,8 +193,8 @@ class TwoThetaProjection(SphericalQProjection):
 class Qpp(nrQProjection):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         qx, qy, qz = super(Qpp, self).project(wavelength, UB, gamma, delta, theta, mu, chi, phi)
-        qpar = numpy.sqrt(qx**2 + qy**2)
-        qpar[numpy.sign(qx) == -1] *= -1
+        qpar = np.sqrt(qx**2 + qy**2)
+        qpar[np.sign(qx) == -1] *= -1
         return (qpar, qz)
 
     def get_axis_labels(self):
@@ -203,17 +203,26 @@ class Qpp(nrQProjection):
 
 class GammaDeltaTheta(HKLProjection):  # just passing on the coordinates, makes it easy to accurately test the theta correction
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        delta, gamma = numpy.meshgrid(delta, gamma)
-        theta = theta * numpy.ones_like(delta)
+        delta, gamma = np.meshgrid(delta, gamma)
+        theta = theta * np.ones_like(delta)
         return (gamma, delta, theta)
 
     def get_axis_labels(self):
         return 'Gamma', 'Delta', 'Theta'
 
 
+class DeltaGamma(HKLProjection):#just passing on the coordinates, makes it easy to accurately test the theta correction
+    def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
+        delta, gamma = np.meshgrid(delta, gamma)
+        return (delta, gamma)
+
+    def get_axis_labels(self):
+        return 'Delta', 'Gamma'
+
+
 class GammaDelta(HKLProjection):  # just passing on the coordinates, makes it easy to accurately test the theta correction
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        delta, gamma = numpy.meshgrid(delta, gamma)
+        delta, gamma = np.meshgrid(delta, gamma)
         return (gamma, delta)
 
     def get_axis_labels(self):
@@ -222,8 +231,8 @@ class GammaDelta(HKLProjection):  # just passing on the coordinates, makes it ea
 
 class GammaDeltaMu(HKLProjection):  # just passing on the coordinates, makes it easy to accurately test the theta correction
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
-        delta, gamma = numpy.meshgrid(delta, gamma)
-        mu = mu * numpy.ones_like(delta)
+        delta, gamma = np.meshgrid(delta, gamma)
+        mu = mu * np.ones_like(delta)
         return (gamma, delta, mu)
 
     def get_axis_labels(self):
@@ -333,24 +342,24 @@ class ID03Input(backend.InputBase):
 
     def parse_config(self, config):
         super(ID03Input, self).parse_config(config)
-        self.config.xmask = util.parse_multi_range(config.pop('xmask', None))  # Optional, select a subset of the image range in the x direction. all by default
-        self.config.ymask = util.parse_multi_range(config.pop('ymask', None))  # Optional, select a subset of the image range in the y direction. all by default
-        self.config.specfile = config.pop('specfile')  # Location of the specfile
-        self.config.imagefolder = config.pop('imagefolder', None)  # Optional, takes specfile folder tag by default
-        self.config.pr = config.pop('pr', None)  # Optional, all range by default
-        self.config.background = config.pop('background', None)  # Optional, if supplied a space of this image is constructed
-        self.config.th_offset = float(config.pop('th_offset', 0))  # Optional; Only used in zapscans, zero by default.
-        self.config.wavelength = config.pop('wavelength', None)  # Optional; Overrides wavelength from specfile.
+        self.config.xmask = util.parse_multi_range(config.pop('xmask', None))   # Optional, select a subset of the image range in the x direction. all by default
+        self.config.ymask = util.parse_multi_range(config.pop('ymask', None))   # Optional, select a subset of the image range in the y direction. all by default
+        self.config.specfile = config.pop('specfile')                           # Location of the specfile
+        self.config.imagefolder = config.pop('imagefolder', None)               # Optional, takes specfile folder tag by default
+        self.config.pr = config.pop('pr', None)                                 # Optional, all range by default
+        self.config.background = config.pop('background', None)                 # Optional, if supplied a space of this image is constructed
+        self.config.th_offset = float(config.pop('th_offset', 0))               # Optional; Only used in zapscans, zero by default.
+        self.config.wavelength = config.pop('wavelength', None)                 # Optional; Overrides wavelength from specfile.
         if self.config.wavelength is not None:
             self.config.wavelength = float(self.config.wavelength)
         if self.config.xmask is None:
             self.config.xmask = slice(None)
         if self.config.ymask is None:
             self.config.ymask = slice(None)
-        self.config.maskmatrix = load_matrix(config.pop('maskmatrix', None))  # Optional, if supplied pixels where the mask is 0 will be removed
+        self.config.maskmatrix = load_matrix(config.pop('maskmatrix', None))    # Optional, if supplied pixels where the mask is 0 will be removed
         if self.config.pr:
             self.config.pr = util.parse_tuple(self.config.pr, length=2, type=int)
-        self.config.sdd = float(config.pop('sdd'))  # sample to detector distance (mm)
+        self.config.sdd = float(config.pop('sdd'))                              # sample to detector distance (mm)
         self.config.pixelsize = util.parse_tuple(config.pop('pixelsize'), length=2, type=float)  # pixel size x/y (mm) (same dimension as sdd)
         self.config.wait_for_data = util.parse_bool(config.pop('wait_for_data', 'false'))  # Optional, if true wait until the data appears
         self.config.timeout = int(config.pop('timeout', 180))  # Optional, how long the script wait until it assumes the scan is not continuing
@@ -406,21 +415,36 @@ class ID03Input(backend.InputBase):
     def target(self, scan):
         if any(tuple(scan.command().startswith(pattern) for pattern in ['hklscan', 'a2scan', 'ascan', 'ringscan'])):
             return int(scan.command().split()[-2]) + 1
-        elif scan.command().startswith('mesh'):
+        if scan.command().startswith('mesh'):
             return int(scan.command().split()[-6]) * int(scan.command().split()[-2]) + 1
-        elif scan.command().startswith('loopscan'):
+        if scan.command().startswith('loopscan'):
             return int(scan.command().split()[-3])
-        elif scan.command().startswith('xascan'):
-            params = numpy.array(scan.command().split()[-6:]).astype(float)
+        if scan.command().startswith('xascan'):
+            params = np.array(scan.command().split()[-6:]).astype(float)
             return int(params[2] + 1 + (params[4] - 1) / params[5] * params[2])
-        elif self.is_zap(scan):
+        if self.is_zap(scan):
             return int(scan.command().split()[-2])
-        else:
-            return -1
+        return -1
 
     @staticmethod
     def is_zap(scan):
         return scan.command().startswith('zap')
+
+    @staticmethod
+    def is_ccoscan(scan):
+        return scan.command().startswith('ccoscan')
+
+    @staticmethod
+    def is_zapgam(scan):
+        return scan.command().startswith('zapgamidd')
+
+    @staticmethod
+    def is_zapline(scan):
+        return scan.command().startswith('zapline')
+
+    @staticmethod
+    def is_anglescan(scan):
+        return scan.command().startswith('anglescan')
 
     @staticmethod
     def is_aborted(scan):
@@ -467,7 +491,7 @@ class ID03Input(backend.InputBase):
                 except specfilewrapper.specfile.error:
                     break
                 try:
-                    UB = numpy.array(ubscan.header('G')[2].split(' ')[-9:], dtype=numpy.float)
+                    UB = np.array(ubscan.header('G')[2].split(' ')[-9:], dtype=np.float)
                 except:
                     scanno -= 1
                 else:
@@ -476,9 +500,9 @@ class ID03Input(backend.InputBase):
                 # fall back to UB matrix from the configfile
                 if not self.config.UB:
                     raise errors.ConfigError('UB matrix must be specified in configuration file when processing zapscans')
-                UB = numpy.array(self.config.UB)
+                UB = np.array(self.config.UB)
         else:
-            UB = numpy.array(scan.header('G')[2].split(' ')[-9:], dtype=numpy.float)
+            UB = np.array(scan.header('G')[2].split(' ')[-9:], dtype=np.float)
 
         if self.config.wavelength is None:
             wavelength = self.get_wavelength(scan.header('G'))
@@ -486,7 +510,7 @@ class ID03Input(backend.InputBase):
                 raise errors.BackendError('No or incorrect wavelength specified in the specfile. Please add wavelength to the configfile in the input section')
         else:
             wavelength = self.config.wavelength
-    
+
         self.metadict['UB'] = UB
         self.metadict['wavelength'] = wavelength
 
@@ -504,7 +528,7 @@ class ID03Input(backend.InputBase):
                     self.dbg_pointno = i
                     yield edf.GetData(0)
         else:
-            if self.is_zap(scan):
+            if self.is_zap(scan) or self.is_anglescan(scan) or self.is_ccoscan(scan):
                 scanheaderC = scan.header('C')
                 zapscanno = int(scanheaderC[2].split(' ')[-1])  # is different from scanno should be changed in spec!
                 try:
@@ -562,7 +586,7 @@ class ID03Input(backend.InputBase):
 
 
 class EH1(ID03Input):
-    monitor_counter = 'mon'
+    scanname = None
 
     def parse_config(self, config):
         super(EH1, self).parse_config(config)
@@ -578,56 +602,78 @@ class EH1(ID03Input):
         gamma, delta, theta, chi, phi, mu, mon, transm, hrx, hry = pointparams
         wavelength, UB = scanparams
 
-        weights = numpy.ones_like(image)
+        if self.scanname is None:
+            self.scanname = self.get_scan(self.dbg_scanno)
+        if mon == 0:
+            if self.is_zap(self.scanname):
+            # zap scans do not have a mon counter, use mon = 1 instead
+                mon = 1
+            else:
+                raise errors.BackendError('Monitor is zero, this results in empty output. Scannumber = {0}, pointnumber = {1}. Did you forget to open the shutter?'.format(self.dbg_scanno, self.dbg_pointno))
+
+        weights = np.ones_like(image)
 
         if self.config.hr:
             zerohrx, zerohry = self.config.hr
-            chi = (hrx - zerohrx) / numpy.pi * 180. / 1000
-            phi = (hry - zerohry) / numpy.pi * 180. / 1000
+            chi = (hrx - zerohrx) / np.pi * 180. / 1000      # hrx, hry, hrz are in mrad
+            phi = (hry - zerohry) / np.pi * 180. / 1000
 
-        if self.config.background:
-            data = image / mon
-        else:
-            data = image / mon / transm
-
-        if mon == 0:
-            raise errors.BackendError('Monitor is zero, this results in empty output. Scannumber = {0}, pointnumber = {1}. Did you forget to open the shutter?'.format(self.dbg_scanno, self.dbg_pointno))
+        # variance of a Poisson distribution is ~counts (squared standard
+        # deviation before any normalization (monitor, filterbox, etc).
+        variances = (image + 1) / mon**2
+        data = image / mon
+        # if no background is given normalize by transmission
+        if not self.config.background:
+            data /= transm
+            variances /= transm**2
 
         util.status('{4}| gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu, time.ctime(time.time())))
 
         # pixels to angles
-        pixelsize = numpy.array(self.config.pixelsize)
+        pixelsize = np.array(self.config.pixelsize)
         sdd = self.config.sdd
-
-        app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
-
         centralpixel = self.config.centralpixel  # (column, row) = (delta, gamma)
-        gamma_range = -app[1] * (numpy.arange(data.shape[1]) - centralpixel[1]) + gamma
-        delta_range = app[0] * (numpy.arange(data.shape[0]) - centralpixel[0]) + delta
 
-        # masking
+        # the old calculation of delta and gamma is wrong, since
+        # n*arctan(x) != arctan(n*x). But the error is about 0.16%
+        # for 1000 pixels away from the central pixel.
+#        app = np.arctan(pixelsize / sdd) * 180 / np.pi    # 'angle of one pixel on the detector'
+#        delta_range = app[0] * (np.arange(data.shape[0]) - centralpixel[0]) + delta
+#        gamma_range = -app[1] * (np.arange(data.shape[1]) - centralpixel[1]) + gamma
+        # this should be more accurate
+        delta_range_px = np.arange(data.shape[0]) - centralpixel[0]
+        gamma_range_px = np.arange(data.shape[1]) - centralpixel[1]
+        delta_range = np.arctan(delta_range_px * pixelsize[0] / sdd) * 180 / np.pi + delta
+        gamma_range = -np.arctan(gamma_range_px * pixelsize[1] / sdd) * 180 / np.pi + gamma
+
+
+        # masking using maskfile
         if self.config.maskmatrix is not None:
             if self.config.maskmatrix.shape != data.shape:
-                raise errors.BackendError('The mask matrix does not have the same shape as the images')
+                raise errors.BackendError('The mask matrix ({0}) does not have the same shape as the images ({1}).'.format(self.config.maskmatrix.shape, data.shape))
             weights *= self.config.maskmatrix
+            data *= self.config.maskmatrix              ## unneeded? masked points are thrown away in binning anyway?
+            variances *= self.config.maskmatrix
 
         gamma_range = gamma_range[self.config.ymask]
         delta_range = delta_range[self.config.xmask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
         weights = self.apply_mask(weights, self.config.xmask, self.config.ymask)
+        variances = self.apply_mask(variances, self.config.xmask, self.config.ymask)
 
-        #polarisation correction
-        delta_grid, gamma_grid = numpy.meshgrid(delta_range, gamma_range)
-        Pver = 1 - numpy.sin(delta_grid * numpy.pi / 180.)**2 * numpy.cos(gamma_grid * numpy.pi / 180.)**2
+        # polarisation correction
+        delta_grid, gamma_grid = np.meshgrid(delta_range, gamma_range)
+        Pver = 1 - np.sin(delta_grid * np.pi / 180.)**2 * np.cos(gamma_grid * np.pi / 180.)**2
         intensity /= Pver
+        variances /= Pver**2
 
-        return intensity, weights, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
+        return intensity, weights, variances, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
 
     def get_point_params(self, scan, first, last):
         sl = slice(first, last+1)
 
         GAM, DEL, TH, CHI, PHI, MU, MON, TRANSM, HRX, HRY = list(range(10))
-        params = numpy.zeros((last - first + 1, 10))  # gamma delta theta chi phi mu mon transm
+        params = np.zeros((last - first + 1, 10))  # gamma delta theta chi phi mu mon transm
         params[:, CHI] = scan.motorpos('Chi')
         params[:, PHI] = scan.motorpos('Phi')
 
@@ -638,10 +684,10 @@ class EH1(ID03Input):
             raise errors.BackendError('The specfile does not accept hrx and hry as a motor label. Have you selected the right hutch? Scannumber = {0}, pointnumber = {1}'.format(self.dbg_scanno, self.dbg_pointno))
 
         if self.is_zap(scan):
-            if 'th' in scan.alllabels():
+            if 'th' in scan.alllabels():    #alllabels() = list of counternames
                 th = scan.datacol('th')[sl]
                 if len(th) > 1:
-                    sign = numpy.sign(th[1] - th[0])
+                    sign = np.sign(th[1] - th[0])
                 else:
                     sign = 1
                 # correction for difference between back and forth in th motor
@@ -649,15 +695,44 @@ class EH1(ID03Input):
             else:
                 params[:, TH] = scan.motorpos('Theta')
 
-            params[:, GAM] = scan.motorpos('Gam')
-            params[:, DEL] = scan.motorpos('Delta')
+            if self.is_zapgam(scan):
+                params[:, DEL] = scan.motorpos('Deltaidd')
+                params[:, GAM] = scan.datacol('gamidd')[sl]
+            if self.is_zapline(scan):
+                params[:, DEL] = scan.motorpos('Deltaidd')
+                params[:, GAM] = scan.motorpos('Gamidd')
+            else:
+                params[:, DEL] = scan.datacol('delidd')[sl]
+                params[:, GAM] = scan.motorpos('Gam')
             params[:, MU] = scan.motorpos('Mu')
 
-            params[:, MON] = scan.datacol('zap_mon')[sl]
-
-            transm = scan.datacol('zap_transm')
+            transm = scan.datacol('zap_transm')[sl]
             transm[-1] = transm[-2]  # bug in specfile
             params[:, TRANSM] = transm[sl]
+
+        elif self.is_ccoscan(scan):
+            params[:, GAM] = scan.datacol('zap_gamcnt')[sl]
+            params[:, DEL] = scan.datacol('zap_delcnt')[sl]
+            params[:, TH] = scan.datacol('zap_thcnt')[sl]
+            params[:, MU] = scan.datacol('zap_mucnt')[sl]
+            params[:, MON] = scan.datacol('zap_mon')[sl]
+
+            transm = scan.datacol('zap_transm')[sl]
+            transm[-1] = transm[-2]  # bug in specfile
+            params[:, TRANSM] = transm[sl]
+
+        elif self.is_anglescan(scan):
+
+            params[:, GAM] = scan.datacol('zap_gamidd')[sl] - scan.datacol('zap_mu')[sl]  # this is for reflectivity only!
+            params[:, DEL] = scan.motorpos('Delta')
+            params[:, TH] = scan.motorpos('Theta')
+            params[:, MU] = scan.datacol('zap_mu')[sl]
+            params[:, MON] = scan.datacol('zap_mon')[sl]
+
+            transm = scan.datacol('zap_transm')[sl]
+            transm[-1] = transm[-2]  # bug in specfile
+            params[:, TRANSM] = transm[sl]
+
         else:
             if 'hrx' in scan.alllabels():
                 params[:, HRX] = scan.datacol('hrx')[sl]
@@ -668,10 +743,7 @@ class EH1(ID03Input):
             params[:, GAM] = scan.datacol('gamcnt')[sl]
             params[:, DEL] = scan.datacol('delcnt')[sl]
 
-            try:
-                params[:, MON] = scan.datacol(self.monitor_counter)[sl]  # differs in EH1/EH2
-            except:
-                raise errors.BackendError('The specfile does not accept {2} as a monitor label. Have you selected the right hutch? Scannumber = {0}, pointnumber = {1}'.format(self.dbg_scanno, self.dbg_pointno, self.monitor_counter))
+#            params[:, MON] = scan.datacol('mon')[sl]  # differs in EH1/EH2
 
             params[:, TRANSM] = scan.datacol('transm')[sl]
             params[:, MU] = scan.datacol('mucnt')[sl]
@@ -680,7 +752,6 @@ class EH1(ID03Input):
 
 
 class EH2(ID03Input):
-    monitor_counter = 'Monitor'
 
     def parse_config(self, config):
         super(EH2, self).parse_config(config)
@@ -693,58 +764,82 @@ class EH2(ID03Input):
         gamma, delta, theta, chi, phi, mu, mon, transm = pointparams
         wavelength, UB = scanparams
 
-        weights = numpy.ones_like(image)
-
-        if self.config.background:
-            data = image / mon
-        else:
-            data = image / mon / transm
+        weights = np.ones_like(image)
 
         if mon == 0:
             raise errors.BackendError('Monitor is zero, this results in empty output. Scannumber = {0}, pointnumber = {1}. Did you forget to open the shutter?'.format(self.dbg_scanno, self.dbg_pointno))
 
+        # variance of a Poisson distribution is ~counts (squared standard
+        # deviation before any normalization (monitor, filterbox, etc).
+        variances = (image + 1) / mon**2
+        data = image / mon
+        # if no background is given normalize by transmission
+        if not self.config.background:
+            data /= transm
+            variances /= transm**2
+
         util.status('{4}| gamma: {0}, delta: {1}, theta: {2}, mu: {3}'.format(gamma, delta, theta, mu, time.ctime(time.time())))
 
-        # area correction
-        sdd = self.config.sdd / numpy.cos(gamma * numpy.pi / 180)
+        # In EH2 sdd is not constant when moving gamma. Changing sdd (gamma)
+        # changes the measured intensity on the detector (and of course the
+        # resolution, but this cannot be corrected).
+        # The correction of sdd here is not perfect, since the detector plane
+        # is offset from the gamma rotation (gamR, not the pseudo motor gam).
+        # However, the error made here is small (for sdd 500 mm, offset 20 mm
+        # and gamma=20 deg, it is about 0.23%)
+        sdd = self.config.sdd / np.cos(gamma * np.pi / 180)
         data *= (self.config.sdd / sdd)**2
+        variances *= (self.config.sdd / sdd)**4
 
-        # pixels to angles
-        pixelsize = numpy.array(self.config.pixelsize)
-        app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
-
+        pixelsize = np.array(self.config.pixelsize)
         centralpixel = self.config.centralpixel  # (row, column) = (gamma, delta)
-        gamma_range = - 1 * app[0] * (numpy.arange(data.shape[0]) - centralpixel[0]) + gamma
-        delta_range = app[1] * (numpy.arange(data.shape[1]) - centralpixel[1]) + delta
+
+        # the old calculation of delta and gamma is wrong, since
+        # n*arctan(x) != arctan(n*x). But the error is about 0.16%
+        # for 1000 pixels away from the central pixel.
+#        app = np.arctan(pixelsize / sdd) * 180 / np.pi
+#        gamma_range = - 1 * app[0] * (np.arange(data.shape[0]) - centralpixel[0]) + gamma
+#        delta_range = app[1] * (np.arange(data.shape[1]) - centralpixel[1]) + delta
+        # this should be more accurate
+        delta_range_px = np.arange(data.shape[1]) - centralpixel[1]
+        gamma_range_px = np.arange(data.shape[0]) - centralpixel[0]
+        delta_range = np.arctan(delta_range_px * pixelsize[1] / sdd) * 180 / np.pi + delta
+        gamma_range = -np.arctan(gamma_range_px * pixelsize[0] / sdd) * 180 / np.pi + gamma
 
         # masking
         if self.config.maskmatrix is not None:
             if self.config.maskmatrix.shape != data.shape:
-                raise errors.BackendError('The mask matrix does not have the same shape as the images')
+                raise errors.BackendError('The mask matrix ({0}) does not have the same shape as the images ({1}).'.format(self.config.maskmatrix.shape, data.shape))
             weights *= self.config.maskmatrix
+            data *= self.config.maskmatrix              ## unneeded? masked points are thrown away in binning anyway?
+            variances *= self.config.maskmatrix
 
         gamma_range = gamma_range[self.config.xmask]
         delta_range = delta_range[self.config.ymask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
         weights = self.apply_mask(weights, self.config.xmask, self.config.ymask)
+        variances = self.apply_mask(variances, self.config.xmask, self.config.ymask)
 
-        intensity = numpy.fliplr(intensity)
-        intensity = numpy.rot90(intensity)
-        weights = numpy.fliplr(weights)  # TODO: should be done more efficiently. Will prob change with new HKL calculations
-        weights = numpy.rot90(weights)
+        intensity = np.fliplr(intensity)
+        intensity = np.rot90(intensity)
+        weights = np.fliplr(weights)  # should be done more efficiently. Will prob change with new HKL calculations
+        weights = np.rot90(weights)
+        variances = np.fliplr(variances)
+        variances = np.rot90(variances)
 
-        #polarisation correction
-        delta_grid, gamma_grid = numpy.meshgrid(delta_range, gamma_range)
-        Phor = 1 - (numpy.sin(mu * numpy.pi / 180.) * numpy.sin(delta_grid * numpy.pi / 180.) * numpy.cos(gamma_grid * numpy.pi / 180.) + numpy.cos(mu * numpy.pi / 180.) * numpy.sin(gamma_grid * numpy.pi / 180.))**2
+        # polarisation correction
+        delta_grid, gamma_grid = np.meshgrid(delta_range, gamma_range)
+        Phor = 1 - (np.sin(mu * np.pi / 180.) * np.sin(delta_grid * np.pi / 180.) * np.cos(gamma_grid * np.pi / 180.) + np.cos(mu * np.pi / 180.) * np.sin(gamma_grid * np.pi / 180.))**2
         intensity /= Phor
+        variances /= Phor**2
 
-        return intensity, weights, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
+        return intensity, weights, variances, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
 
     def get_point_params(self, scan, first, last):
         sl = slice(first, last+1)
 
         GAM, DEL, TH, CHI, PHI, MU, MON, TRANSM = list(range(8))
-        params = numpy.zeros((last - first + 1, 8))  # gamma delta theta chi phi mu mon transm
+        params = np.zeros((last - first + 1, 8))  # gamma delta theta chi phi mu mon transm
         params[:, CHI] = scan.motorpos('Chi')
         params[:, PHI] = scan.motorpos('Phi')
 
@@ -752,7 +847,7 @@ class EH2(ID03Input):
             if 'th' in scan.alllabels():
                 th = scan.datacol('th')[sl]
                 if len(th) > 1:
-                    sign = numpy.sign(th[1] - th[0])
+                    sign = np.sign(th[1] - th[0])
                 else:
                     sign = 1
                 # correction for difference between back and forth in th motor
@@ -773,10 +868,7 @@ class EH2(ID03Input):
             params[:, GAM] = scan.datacol('gamcnt')[sl]
             params[:, DEL] = scan.datacol('delcnt')[sl]
 
-            try:
-                params[:, MON] = scan.datacol(self.monitor_counter)[sl]  # differs in EH1/EH2
-            except:
-                raise errors.BackendError('The specfile does not accept {2} as a monitor label. Have you selected the right hutch? Scannumber = {0}, pointnumber = {1}'.format(self.dbg_scanno, self.dbg_pointno, self.monitor_counter))
+            params[:, MON] = scan.datacol('Monitor')[sl]  # differs in EH1/EH2
 
             params[:, TRANSM] = scan.datacol('transm')[sl]
             params[:, MU] = scan.datacol('mucnt')[sl]
@@ -784,63 +876,73 @@ class EH2(ID03Input):
 
 
 class GisaxsDetector(ID03Input):
-    monitor_counter = 'mon'
+    # GISAXS detector setup in EH1. For EH2 gamma and delta need to be changed
 
     def process_image(self, scanparams, pointparams, image):
         ccdy, ccdz, theta, chi, phi, mu, mon, transm = pointparams
 
-        weights = numpy.ones_like(image)
+        weights = np.ones_like(image)
 
         wavelength, UB = scanparams
-
-        if self.config.background:
-            data = image / mon
-        else:
-            data = image / mon / transm
 
         if mon == 0:
             raise errors.BackendError('Monitor is zero, this results in empty output. Scannumber = {0}, pointnumber = {1}. Did you forget to open the shutter?'.format(self.dbg_scanno, self.dbg_pointno))
 
+        # variance of a Poisson distribution is ~counts (squared standard
+        # deviation before any normalization (monitor, filterbox, etc).
+        variances = (image + 1) / mon**2
+        data = image / mon
+        # if no background is given normalize by transmission
+        if not self.config.background:
+            data /= transm
+            variances /= transm**2
+
         util.status('{4}| ccdy: {0}, ccdz: {1}, theta: {2}, mu: {3}'.format(ccdy, ccdz, theta, mu, time.ctime(time.time())))
 
         # pixels to angles
-        pixelsize = numpy.array(self.config.pixelsize)
+        pixelsize = np.array(self.config.pixelsize)
         sdd = self.config.sdd
 
-        directbeam = (self.config.directbeam[0] - (ccdy - self.config.directbeam_coords[0]) * pixelsize[0], self.config.directbeam[1] - (ccdz - self.config.directbeam_coords[1]) * pixelsize[1])
-        gamma_distance = - pixelsize[1] * (numpy.arange(data.shape[1]) - directbeam[1])
-        delta_distance = - pixelsize[0] * (numpy.arange(data.shape[0]) - directbeam[0])
+        # direct beam position at current ccdy and ccdz position (in pixels)
+        directbeam = (self.config.directbeam[0] - (ccdy - self.config.directbeam_coords[0]) / pixelsize[0],
+                      self.config.directbeam[1] - (ccdz - self.config.directbeam_coords[1]) / pixelsize[1])
+        gamma_distance = -pixelsize[1] * (np.arange(data.shape[1]) - directbeam[1])
+        delta_distance = -pixelsize[0] * (np.arange(data.shape[0]) - directbeam[0])
 
-        gamma_range = numpy.arctan2(gamma_distance, sdd) / numpy.pi * 180 - mu
-        delta_range = numpy.arctan2(delta_distance, sdd) / numpy.pi * 180
+        gamma_range = np.arctan2(gamma_distance, sdd) / np.pi * 180 - mu
+        delta_range = np.arctan2(delta_distance, sdd) / np.pi * 180
 
-        #sample pixel distance
-        spd = numpy.sqrt(gamma_distance**2 + delta_distance**2 + sdd**2)
-        data *= spd**2 / sdd
+        # correct intensity due to differences in sample pixel distances
+        scale = sdd**2 / (gamma_distance**2 + delta_distance**2 + sdd**2)
+        data *= scale
+        variances *= scale**2
 
         # masking
         if self.config.maskmatrix is not None:
             if self.config.maskmatrix.shape != data.shape:
-                raise errors.BackendError('The mask matrix does not have the same shape as the images')
+                raise errors.BackendError('The mask matrix ({0}) does not have the same shape as the images ({1}).'.format(self.config.maskmatrix.shape, data.shape))
             weights *= self.config.maskmatrix
+            data *= self.config.maskmatrix              ## unneeded? masked points are thrown away in binning anyway?
+            variances *= self.config.maskmatrix
 
         gamma_range = gamma_range[self.config.ymask]
         delta_range = delta_range[self.config.xmask]
         intensity = self.apply_mask(data, self.config.xmask, self.config.ymask)
         weights = self.apply_mask(weights, self.config.xmask, self.config.ymask)
+        variances = self.apply_mask(variances, self.config.xmask, self.config.ymask)
 
-        return intensity, weights, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
+        return intensity, weights, variances, (wavelength, UB, gamma_range, delta_range, theta, mu, chi, phi)
 
     def parse_config(self, config):
         super(GisaxsDetector, self).parse_config(config)
-        self.config.directbeam = util.parse_tuple(config.pop('directbeam'), length=2, type=int)
-        self.config.directbeam_coords = util.parse_tuple(config.pop('directbeam_coords'), length=2, type=float)  # Coordinates of ccdy and ccdz at the direct beam position
+        self.config.directbeam = util.parse_tuple(config.pop('centralpixel'), length=2, type=int)
+        self.config.directbeam_coords = util.parse_tuple(config.pop('directbeam_coords'), length=2, type=float)  # Coordinates of ccdy and ccdz at the direct beam position (in mm)
 
     def get_point_params(self, scan, first, last):
         sl = slice(first, last+1)
 
         CCDY, CCDZ, TH, CHI, PHI, MU, MON, TRANSM = list(range(8))
-        params = numpy.zeros((last - first + 1, 8))  # gamma delta theta chi phi mu mon transm
+        params = np.zeros((last - first + 1, 8))  # gamma delta theta chi phi mu mon transm
         params[:, CHI] = scan.motorpos('Chi')
         params[:, PHI] = scan.motorpos('Phi')
         params[:, CCDY] = scan.motorpos('ccdy')
@@ -848,10 +950,7 @@ class GisaxsDetector(ID03Input):
 
         params[:, TH] = scan.datacol('thcnt')[sl]
 
-        try:
-            params[:, MON] = scan.datacol(self.monitor_counter)[sl]  # differs in EH1/EH2
-        except:
-            raise errors.BackendError('The specfile does not accept {2} as a monitor label. Have you selected the right hutch? Scannumber = {0}, pointnumber = {1}'.format(self.dbg_scanno, self.dbg_pointno, self.monitor_counter))
+        params[:, MON] = scan.datacol('mon')[sl]  # differs in EH1/EH2
 
         params[:, TRANSM] = scan.datacol('transm')[sl]
         params[:, MU] = scan.datacol('mucnt')[sl]
@@ -877,12 +976,13 @@ def load_matrix(filename):
     if os.path.exists(filename):
         ext = os.path.splitext(filename)[-1]
         if ext == '.txt':
-            return numpy.array(numpy.loadtxt(filename), dtype=numpy.bool)
-        elif ext == '.npy':
-            return numpy.array(numpy.load(filename), dtype=numpy.bool)
-        elif ext == '.edf':
-            return numpy.array(EdfFile.EdfFile(filename).getData(0), dtype=numpy.bool)
-        else:
-            raise ValueError('unknown extension {0}, unable to load matrix!\n'.format(ext))
-    else:
-        raise IOError('filename: {0} does not exist. Can not load matrix'.format(filename))
+            return np.array(np.loadtxt(filename), dtype=np.bool)
+        if ext == '.npy':
+            return np.array(np.load(filename), dtype=np.bool)
+        if ext == '.edf':
+            try:		# getData() was renamed in some version of PyMca5 to GetData()
+                return np.array(EdfFile.EdfFile(filename).getData(0), dtype=np.bool)
+            except:
+                return np.array(EdfFile.EdfFile(filename).GetData(0), dtype=np.bool)
+        raise ValueError('unknown extension {0}, unable to load matrix!\n'.format(ext))
+    raise IOError('filename: {0} does not exist. Cannot load matrix'.format(filename))

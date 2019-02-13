@@ -2,19 +2,23 @@
 """
 binoculars gui for data processing
 Created on 2015-06-04
-author: Remy Nencib (remy.nencib@esrf.r)
+author: Remy Nencib (remy.nencib@esrf.fr)
 """
 
 import sys
-import os
+import os.path as osp
 import time
 
 from PyQt4 import QtGui, QtCore
+PY3 = sys.version_info > (3,)
+if PY3:
+    QString = str
+    QStringList = list
+else:
+    from PyQt4.QtCore import QString, QStringList
 
 
 def set_src():
-    import sys
-    import os.path as osp
     dirpath = osp.join(osp.dirname(osp.abspath(__file__)), osp.pardir)
     sys.path.insert(0, osp.abspath(dirpath))
 
@@ -72,7 +76,7 @@ class Window(QtGui.QMainWindow):
         palette = QtGui.QPalette()
         palette.setColor(QtGui.QPalette.Background, QtCore.Qt.gray)
         self.setPalette(palette)
-        self.setGeometry(50, 100, 700, 700)
+        self.setGeometry(50, 100, 1400, 700)
         self.setWindowTitle('Binoculars processgui')
         self.show()
 
@@ -143,19 +147,19 @@ class Window(QtGui.QMainWindow):
             self.ListCommand.clear()
             self.ListCommand.setRowCount(0)
         except BaseException as e:
-                #cfg = self.ListCommand.item(index,1).cfg
-                #print cfg
-                QtGui.QMessageBox.about(self, "Error", "There was an error processing one of the scans: {0}".format(e))
+            #cfg = self.ListCommand.item(index,1).cfg
+            #print cfg
+            QtGui.QMessageBox.about(self, "Error", "There was an error processing one of the scans: {0}".format(e))
 
         finally:
-                pd.close()
+            pd.close()
 
     #we call the load function
     def ShowFile(self):
         filename = QtGui.QFileDialog.getOpenFileName(self, 'Open File', '')
         confwidget = Conf_Tab(self)
         confwidget.read_data(str(filename))
-        newIndex = self.tab_widget.addTab(confwidget, os.path.basename(str(filename)))
+        newIndex = self.tab_widget.addTab(confwidget, osp.basename(str(filename)))
         QtCore.QObject.connect(confwidget, QtCore.SIGNAL("command"), self.Add_To_Liste)
         self.tab_widget.setCurrentIndex(newIndex)
 
@@ -176,7 +180,7 @@ class Window(QtGui.QMainWindow):
 
 
 class Table(QtGui.QWidget):
-    def __init__(self, label,  parent=None):
+    def __init__(self, label, parent=None):
         super(Table, self).__init__()
 
         # create a QTableWidget
@@ -188,7 +192,7 @@ class Table(QtGui.QWidget):
         #create combobox
         self.combobox = QtGui.QComboBox()
         #add items
-        self.cell = QtGui.QTableWidgetItem(QtCore.QString("type"))
+        self.cell = QtGui.QTableWidgetItem(QString('type'))
         self.table.setItem(0, 0, self.cell)
         self.table.setCellWidget(0, 1, self.combobox)
         #we create pushbuttons and we call the method when we clic on
@@ -216,12 +220,12 @@ class Table(QtGui.QWidget):
         self.table.removeRow(self.table.currentRow())
 
     def get_keys(self):
-        return list(str(self.table.item(index, 0).text()) for index in range(self.table.rowCount()))
+        return [str(self.table.item(index, 0).text()) for index in range(self.table.rowCount())]
 
     #Here we take all values from tables
     def getParam(self):
         for index in range(self.table.rowCount()):
-            if not self.table.item == None:
+            if self.table.item is not None:
                 key = str(self.table.item(index, 0).text())
                 comment = str(self.table.item(index, 0).toolTip())
                 if index == 0:
@@ -239,7 +243,7 @@ class Table(QtGui.QWidget):
                 if len(value) > 1:
                     box.setCurrentIndex(box.findText(value[1], QtCore.Qt.MatchFixedString))
                 else:
-                        box.setCurrentIndex(box.findText(cfg[item], QtCore.Qt.MatchFixedString))
+                    box.setCurrentIndex(box.findText(cfg[item], QtCore.Qt.MatchFixedString))
             elif item not in self.get_keys():
                 self.add_row()
                 row = self.table.rowCount()
@@ -259,7 +263,7 @@ class Table(QtGui.QWidget):
         newconfigs = dict((option[0], '') for option in options if option[0] not in keys)
         self.addData(newconfigs)
 
-        names = list(option[0] for option in options)
+        names = [option[0] for option in options]
 
         for index, key in enumerate(self.get_keys()):
             if str(key) in names:
@@ -287,9 +291,9 @@ class Conf_Tab(QtGui.QWidget):
         self.Inp = Table(QtGui.QLabel('<strong>Input :</strong>'))
         self.Pro = Table(QtGui.QLabel('<strong>Projection :<strong>'))
         self.select = QtGui.QComboBox()
-        backends = list(backend.lower() for backend in binoculars.util.get_backends())
+        backends = [backend.lower() for backend in binoculars.util.get_backends()]
         #we add the list of different backends on the select combobox
-        self.select.addItems(QtCore.QStringList(backends))
+        self.select.addItems(QStringList(backends))
         self.add = QtGui.QPushButton('add')
         self.connect(self.add, QtCore.SIGNAL("clicked()"), self.AddCommand)
         self.scan = QtGui.QLineEdit()
@@ -325,15 +329,15 @@ class Conf_Tab(QtGui.QWidget):
         self.setLayout(vbox)
 
         #Here we call all methods for selected an ellement on differents combobox
-        self.Dis.add_to_combo(QtCore.QStringList(binoculars.util.get_dispatchers()))
+        self.Dis.add_to_combo(QStringList(binoculars.util.get_dispatchers()))
         self.select.activated['QString'].connect(self.DataCombo)
         self.Inp.combobox.activated.connect(self.DataTableInp)
         self.Pro.combobox.activated.connect(self.DataTableInpPro)
         self.Dis.combobox.activated.connect(self.DataTableInpDis)
 
     def DataCombo(self, text):
-        self.Inp.add_to_combo(QtCore.QStringList(binoculars.util.get_inputs(str(text))))
-        self.Pro.add_to_combo(QtCore.QStringList(binoculars.util.get_projections(str(text))))
+        self.Inp.add_to_combo(QStringList(binoculars.util.get_inputs(str(text))))
+        self.Pro.add_to_combo(QStringList(binoculars.util.get_projections(str(text))))
         self.DataTableInp()
         self.DataTableInpPro()
         self.DataTableInpDis()

@@ -41,7 +41,7 @@ class InputBase(util.ConfigurableObject):
 
     def parse_config(self, config):
         super(InputBase, self).parse_config(config)
-        self.config.target_weight = int(config.pop('target_weight', 1000))  # # approximate number of images per job, only useful when running on the oar cluster
+        self.config.target_weight = int(config.pop('target_weight', 1000))  # approximate number of images per job, only useful when running on the oar cluster
 
     def generate_jobs(self, command):
         """Receives command from user, yields Job() instances"""
@@ -75,7 +75,6 @@ def get_projection(config, default=None):
 def _get_backend(config, section, basecls, default=None, args=[], kwargs={}):
     if isinstance(config, util.ConfigSection):
         return config.class_(config, *args, **kwargs)
-
     type = config.pop('type', default)
     if type is None:
         raise errors.ConfigError("required option 'type' not given in section '{0}'".format(section))
@@ -84,8 +83,8 @@ def _get_backend(config, section, basecls, default=None, args=[], kwargs={}):
     if ':' in type:
         try:
             modname, clsname = type.split(':')
-        except ValueError:
-            raise errors.ConfigError("invalid type '{0}' in section '{1}'".format(type, section))
+        except ValueError as e:
+            raise errors.ConfigError("invalid type '{0}' in section '{1}', error {}".format(type, section, e))
         try:
             backend = __import__('backends.{0}'.format(modname), globals(), locals(), [], 1)
         except ImportError as e:
@@ -96,12 +95,10 @@ def _get_backend(config, section, basecls, default=None, args=[], kwargs={}):
         clsname = type
     else:
         raise errors.ConfigError("invalid type '{0}' in section '{1}'".format(type, section))
-
     clsname = clsname.lower()
     names = dict((name.lower(), name) for name in dir(module))
     if clsname in names:
         cls = getattr(module, names[clsname])
-
         if issubclass(cls, basecls):
             return cls(config, *args, **kwargs)
         else:

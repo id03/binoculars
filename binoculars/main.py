@@ -1,6 +1,9 @@
 import os
 import sys
 import argparse
+import warnings
+
+import numpy as np
 
 from . import space, backend, util, errors
 
@@ -65,7 +68,6 @@ class Main(object):
                 fp.seek(0)
                 configobj = util.zpi_load(fp)
         if not configobj:
-            # reopen args.configfile as text
             configobj = util.ConfigFile.fromtxtfile(args.configfile, command=args.command, overrides=args.c)
         return cls(configobj, args.command)
 
@@ -92,12 +94,20 @@ class Main(object):
         def generator():
             res = self.projection.config.resolution
             labels = self.projection.get_axis_labels()
-            for intensity, weights, params in self.input.process_job(job):
+            for processedjob in self.input.process_job(job):
+                # old backends do not provide variances
+                if len(processedjob) == 3:
+                    intensity, weights, params = processedjob
+                    variances = np.full_like(intensity, np.nan)
+                    warnings.warn('variances not found, consider changing your backend')
+                # new backends do provide variances
+                elif len(processedjob) == 4:
+                    intensity, weights, variances, params = processedjob
                 coords = self.projection.project(*params)
                 if self.projection.config.limits == None:
-                    yield space.Multiverse((space.Space.from_image(res, labels, coords, intensity, weights=weights), ))
+                    yield space.Multiverse((space.Space.from_image(res, labels, coords, intensity, weights=weights, variances=variances), ))
                 else:
-                    yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights=weights, limits=limits) for limits in self.projection.config.limits)
+                    yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights=weights, variances=variances, limits=limits) for limits in self.projection.config.limits)
         jobverse = space.chunked_sum(generator(), chunksize=25)
         for sp in jobverse.spaces:
             if isinstance(sp, space.Space):
@@ -133,12 +143,20 @@ class Split(Main):  # completely ignores the dispatcher, just yields a space per
     def process_job(self, job):
         res = self.projection.config.resolution
         labels = self.projection.get_axis_labels()
-        for intensity, weights, params in self.input.process_job(job):
+        for processedjob in self.input.process_job(job):
+            # old backends do not provide variances
+            if len(processedjob) == 3:
+                intensity, weights, params = processedjob
+                variances = np.full_like(intensity, np.nan)
+                warnings.warn('variances not found, consider changing your backend')
+            # new backends do provide variances
+            elif len(processedjob) == 4:
+                intensity, weights, variances, params = processedjob
             coords = self.projection.project(*params)
             if self.projection.config.limits == None:
-                yield space.Space.from_image(res, labels, coords, intensity, weights=weights)
+                yield space.Space.from_image(res, labels, coords, intensity, weights=weights, variances=variances)
             else:
-                yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights=weights, limits=limits) for limits in self.projection.config.limits)
+                yield space.Multiverse(space.Space.from_image(res, labels, coords, intensity, weights=weights, variances=variances, limits=limits) for limits in self.projection.config.limits)
 
     def run(self):
         for job in self.input.generate_jobs(self.command):

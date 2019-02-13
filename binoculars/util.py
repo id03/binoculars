@@ -8,20 +8,20 @@ import random
 import inspect
 import time
 import copy
-import numpy
 import contextlib
 import argparse
-import h5py
 import glob
-from . import errors
 import struct
 import json
 import socket
 import binascii
 import re
+import warnings
 
-### ARGUMENT HANDLING
+import numpy as np
+import h5py
 
+from . import errors
 
 #python3 support
 PY3 = sys.version_info > (3,)
@@ -30,10 +30,12 @@ if PY3:
     import io
     import configparser
 else:
-    import StringIO as io 
-    import Queue as queue
+    import StringIO as io
     import cPickle as pickle
     import ConfigParser as configparser
+
+
+### ARGUMENT HANDLING
 
 class OrderedOperation(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
@@ -138,10 +140,10 @@ def handle_ordered_operations(space, args, auto3to2=False):
             space = space.rebin(factors)
 
         else:
-            raise ValueError("unsported Ordered Operation '{0}'".format(command))
+            raise ValueError("unsupported Ordered Operation '{0}'".format(command))
 
     if auto3to2 and space.dimension == 3:  # automatic projection on smallest axis
-        projectaxis = numpy.argmin(space.photons.shape)
+        projectaxis = np.argmin(space.photons.shape)
         info.append('projected on {0}'.format(space.axes[projectaxis].label))
         space = space.project(projectaxis)
 
@@ -301,10 +303,9 @@ def parse_range(r):
     if '-' in r:
         a, b = r.split('-')
         return list(range(int(a), int(b)+1))
-    elif r:
+    if r:
         return [int(r)]
-    else:
-        return []
+    return []
 
 
 def parse_multi_range(s):
@@ -330,7 +331,7 @@ def parse_bool(s):
     l = s.lower()
     if l in ('1', 'true', 'yes', 'on'):
         return True
-    elif l in ('0', 'false', 'no', 'off'):
+    if l in ('0', 'false', 'no', 'off'):
         return False
     raise ValueError("invalid input for boolean: '{0}'".format(s))
 
@@ -398,9 +399,9 @@ class MetaBase(object):
             section_dict = {}
             attr = getattr(self, section)
             for key in list(attr.keys()):
-                if isinstance(attr[key], numpy.ndarray):  # to be able to include numpy arrays in the serialisation
+                if isinstance(attr[key], np.ndarray):  # to be able to include numpy arrays in the serialisation
                     sio = io.StringIO()
-                    numpy.save(sio, attr[key])
+                    np.save(sio, attr[key])
                     sio.seek(0)
                     section_dict[key] = binascii.b2a_hex(sio.read())  # hex codation is needed to let json work with the string
                 else:
@@ -420,7 +421,7 @@ class MetaBase(object):
                         sio = io.StringIO()
                         sio.write(binascii.a2b_hex(section_dict[key]))
                         sio.seek(0)
-                        section_dict[key] = numpy.load(sio)
+                        section_dict[key] = np.load(sio)
             setattr(obj, section, data[section])
             if section not in obj.sections:
                 obj.sections.append(section)
@@ -523,9 +524,13 @@ class ConfigFile(MetaBase):
             try:
                 config = fp['configuration']
                 if 'command' in config.attrs:
-                    configobj.command = json.loads(config.attrs['command'].decode('utf8'))
+                    com = config.attrs['command']
+                    if isinstance(com, str):
+                        configobj.command = json.loads(com)
+                    else:
+                        configobj.command = json.loads(com.decode('utf8'))
                 for section in config:
-                    if isinstance(config[section],  h5py.Group):  # new
+                    if isinstance(config[section], h5py.Group):  # new
                         setattr(configobj, section, dict((key, config[section][key].value) for key in config[section]))
                     else:  # old
                         setattr(configobj, section, dict(config[section]))
@@ -534,7 +539,7 @@ class ConfigFile(MetaBase):
         return configobj
 
     @classmethod
-    def fromtxtfile(cls, filename, command=[],  overrides=[]):
+    def fromtxtfile(cls, filename, command=[], overrides=[]):
         if not os.path.exists(filename):
             raise IOError('Error importing configuration file. filename {0} does not exist'.format(filename))
 
@@ -546,7 +551,9 @@ class ConfigFile(MetaBase):
 
         configobj = cls(filename, command=command)
         for section in configobj.sections:
-            setattr(configobj, section, dict((k, v.split('#')[0].strip()) for (k, v) in config.items(section)))
+            configdict = dict((k, v.split('#')[0].strip()) for (k, v) in config.items(section))
+#            configdict['command'] = command            # why?
+            setattr(configobj, section, configdict)
         return configobj
 
     def tofile(self, filename):
@@ -558,7 +565,10 @@ class ConfigFile(MetaBase):
                 sectiongroup = conf.create_group(section)
                 s = getattr(self, section)
                 for key in list(s.keys()):
-                    sectiongroup.create_dataset(key, data=s[key])
+                    try:
+                        sectiongroup.create_dataset(key, data=s[key])
+                    except TypeError as e:
+                        warnings.warn('Cannot save config data: {} : {},\nmessage: {}'.format(key, s[key], e))
 
     def totxtfile(self, filename):
         with open(filename, 'w') as fp:
@@ -696,18 +706,18 @@ def space_to_edf(space, filename):
     for a in space.axes:
         header[str(a.label)] = '{0} {1} {2}'.format(a.min, a.max, a.res)
     edf = EdfFile.EdfFile(filename)
-    edf.WriteImage(header, space.get_masked().filled(0), DataType="Float")
+    edf.WriteImage(header, space.get_norm_intensity().filled(0), DataType="Float")
 
 
 def space_to_txt(space, filename):
     data = [coord.flatten() for coord in space.get_grid()]
-    data.append(space.get_masked().filled(0).flatten())
-    data = numpy.array(data).T
+    data.append(space.get_norm_intensity().filled(0).flatten())
+    data = np.array(data).T
 
     with open(filename, 'w') as fp:
         fp.write('\t'.join(ax.label for ax in space.axes))
         fp.write('\tintensity\n')
-        numpy.savetxt(fp, data, fmt='%.6g', delimiter='\t')
+        np.savetxt(fp, data, fmt='%.6g', delimiter='\t')
 
 
 @contextlib.contextmanager
@@ -753,8 +763,8 @@ def get_python_executable():
 
 def chunk_slicer(count, chunksize):
     """yields slice() objects that split an array of length 'count' into equal sized chunks of at most 'chunksize'"""
-    chunkcount = int(numpy.ceil(float(count) / chunksize))
-    realchunksize = int(numpy.ceil(float(count) / chunkcount))
+    chunkcount = int(np.ceil(float(count) / chunksize))
+    realchunksize = int(np.ceil(float(count) / chunkcount))
     for i in range(chunkcount):
         yield slice(i*realchunksize, min(count, (i+1)*realchunksize))
 
@@ -791,7 +801,8 @@ def cluster_jobs2(jobs, target_weight):
 
 
 def loop_delayer(delay):
-    """Delay a loop such that it runs at most once every 'delay' seconds. Usage example:
+    """Delay a loop such that it runs at most once every 'delay' seconds.
+    Usage example:
     delay = loop_delayer(5)
     while some_condition:
         next(delay)
@@ -810,7 +821,7 @@ def loop_delayer(delay):
 
 def transformation_from_expressions(space, exprs):
     def transformation(*coords):
-        ns = dict((i, getattr(numpy, i)) for i in dir(numpy))
+        ns = dict((i, getattr(np, i)) for i in dir(np))
         ns.update(**dict((ax.label, coord) for ax, coord in zip(space.axes, coords)))
         return tuple(eval(expr, ns) for expr in exprs)
     return transformation
@@ -818,7 +829,7 @@ def transformation_from_expressions(space, exprs):
 
 def format_bytes(bytes):
     units = 'kB', 'MB', 'GB', 'TB'
-    exp = min(max(int(numpy.log(bytes) / numpy.log(1024.)), 1), 4)
+    exp = min(max(int(np.log(bytes) / np.log(1024.)), 1), 4)
     return '{0:.1f} {1}'.format(bytes / 1024**exp, units[exp-1])
 
 
@@ -901,30 +912,42 @@ def zpi_load(filename):
 
 
 def serialize(space, command):
-    # first 48 bytes contain length of the message, whereby the first 8 give the length of the command, the second 8 the length of the configfile etc..
+#    # first 48 bytes contain length of the message, whereby the first 8 give the length of the command, the second 8 the length of the configfile etc..
+    # first 56 bytes contain length of the message, whereby the first 8 give the length of the command, the second 8 the length of the configfile etc..
     message = io.StringIO()
-    message.write(struct.pack('QQQQQQ', 0, 0, 0, 0, 0, 0))
+#    message.write(struct.pack('QQQQQQ', 0, 0, 0, 0, 0, 0))
+    message.write(struct.pack('QQQQQQQ', 0, 0, 0, 0, 0, 0, 0))
 
     message.write(command)
-    commandlength = message.len - 48
+#    commandlength = message.len - 48
+    commandlength = message.len - 56
 
     message.write(space.config.serialize())
-    configlength = message.len - commandlength - 48
+#    configlength = message.len - commandlength - 48
+    configlength = message.len - commandlength - 56
 
     message.write(space.metadata.serialize())
-    metalength = message.len - configlength - commandlength - 48
+#    metalength = message.len - configlength - commandlength - 48
+    metalength = message.len - configlength - commandlength - 56
 
-    numpy.save(message, space.axes.toarray())
-    arraylength = message.len - metalength - configlength - commandlength - 48
+    np.save(message, space.axes.toarray())
+#    arraylength = message.len - metalength - configlength - commandlength - 48
+    arraylength = message.len - metalength - configlength - commandlength - 56
 
-    numpy.save(message, space.photons)
-    photonlength = message.len - arraylength - metalength - configlength - commandlength - 48
+    np.save(message, space.photons)
+#    photonlength = message.len - arraylength - metalength - configlength - commandlength - 48
+    photonlength = message.len - arraylength - metalength - configlength - commandlength - 56
 
-    numpy.save(message, space.contributions)
-    contributionlength = message.len - photonlength - arraylength - metalength - configlength - commandlength - 48
+    np.save(message, space.contributions)
+#    contributionlength = message.len - photonlength - arraylength - metalength - configlength - commandlength - 48
+    contributionlength = message.len - photonlength - arraylength - metalength - configlength - commandlength - 56
+
+    np.save(message, space.variances)
+    variancelength = message.len - contributionlength - photonlength - arraylength - metalength - configlength - commandlength - 56
 
     message.seek(0)
-    message.write(struct.pack('QQQQQQ', commandlength, configlength, metalength, arraylength, photonlength, contributionlength))
+#    message.write(struct.pack('QQQQQQ', commandlength, configlength, metalength, arraylength, photonlength, contributionlength))
+    message.write(struct.pack('QQQQQQQ', commandlength, configlength, metalength, arraylength, photonlength, contributionlength, variancelength))
     message.seek(0)
 
     return message
@@ -939,13 +962,15 @@ def packet_slicer(length, size=1024):  # limit the communication to 1024 bytes
 
 def socket_send(ip, port, mssg):
     try:
-        mssglengths = struct.unpack('QQQQQQ', mssg.read(48))  # the lengths of all the components
+#        mssglengths = struct.unpack('QQQQQQ', mssg.read(48))  # the lengths of all the components
+        mssglengths = struct.unpack('QQQQQQQ', mssg.read(56))  # the lengths of all the components
         mssg.seek(0)
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((ip, port))
 
-        sock.send(mssg.read(48))
+#        sock.send(mssg.read(48))
+        sock.send(mssg.read(56))
         for l in mssglengths:
             for packet in packet_slicer(l):
                 sock.send(mssg.read(packet))
@@ -954,16 +979,18 @@ def socket_send(ip, port, mssg):
         pass
 
 
-def socket_recieve(RequestHandler):  # pass one the handler to deal with incoming data
+def socket_receive(RequestHandler):  # pass on the handler to deal with incoming data
     def get_msg(length):
         msg = io.StringIO()
         for packet in packet_slicer(length):
             p = RequestHandler.request.recv(packet, socket.MSG_WAITALL)  # wait for full mssg
             msg.write(p)
         if msg.len != length:
-            raise  errors.CommunicationError('recieved message is too short. expected length {0}, recieved length {1}'.format(length, msg.len))
+            raise  errors.CommunicationError('received message is too short. expected length {0}, received length {1}'.format(length, msg.len))
         msg.seek(0)
         return msg
 
-    command, config, metadata, axes, photons, contributions = tuple(get_msg(msglength) for msglength in struct.unpack('QQQQQQ', RequestHandler.request.recv(48, socket.MSG_WAITALL)))
-    return command.read(), config.read(), metadata.read(), numpy.load(axes), numpy.load(photons), numpy.load(contributions)
+#    command, config, metadata, axes, photons, contributions = tuple(get_msg(msglength) for msglength in struct.unpack('QQQQQQ', RequestHandler.request.recv(48, socket.MSG_WAITALL)))
+#    return command.read(), config.read(), metadata.read(), np.load(axes), np.load(photons), np.load(contributions)
+    command, config, metadata, axes, photons, contributions, variances = tuple(get_msg(msglength) for msglength in struct.unpack('QQQQQQQ', RequestHandler.request.recv(56, socket.MSG_WAITALL)))
+    return command.read(), config.read(), metadata.read(), np.load(axes), np.load(photons), np.load(contributions), np.load(variances)
