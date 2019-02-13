@@ -127,22 +127,22 @@ def plotspace(space, log=True, clipping=0.0, fit=None, norm=None, colorbar=True,
         >>> binoculars.plotspace('test.hdf5')
     '''
 
-    import matplotlib.pyplot as pyplot
+    import matplotlib.pyplot as plt
     import binoculars.plot
     import binoculars.space
 
     if isinstance(space, binoculars.space.Space):
         if space.dimension == 3:
             from mpl_toolkits.mplot3d import Axes3D
-            ax = pyplot.gcf().gca(projection='3d')
-            return binoculars.plot.plot(space, pyplot.gcf(), ax, log=log, clipping=clipping, fit=None, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
+            ax = plt.gcf().gca(projection='3d')
+            return binoculars.plot.plot(space, plt.gcf(), ax, log=log, clipping=clipping, fit=None, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
         if fit is not None and space.dimension == 2:
-            ax = pyplot.gcf().add_subplot(121)
-            binoculars.plot.plot(space, pyplot.gcf(), ax, log=log, clipping=clipping, fit=None, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
-            ax = pyplot.gcf().add_subplot(122)
-            return binoculars.plot.plot(space, pyplot.gcf(), ax, log=log, clipping=clipping, fit=fit, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
+            ax = plt.gcf().add_subplot(121)
+            binoculars.plot.plot(space, plt.gcf(), ax, log=log, clipping=clipping, fit=None, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
+            ax = plt.gcf().add_subplot(122)
+            return binoculars.plot.plot(space, plt.gcf(), ax, log=log, clipping=clipping, fit=fit, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
         else:
-            return binoculars.plot.plot(space, pyplot.gcf(), pyplot.gca(), log=log, clipping=clipping, fit=fit, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
+            return binoculars.plot.plot(space, plt.gcf(), plt.gca(), log=log, clipping=clipping, fit=fit, norm=norm, colorbar=colorbar, labels=labels, **plotopts)
     else:
         raise TypeError("'{0!r}' is not a binoculars space".format(space))
 

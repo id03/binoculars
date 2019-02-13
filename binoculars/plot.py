@@ -1,4 +1,4 @@
-import numpy
+import numpy as np
 import matplotlib.colors
 import matplotlib.cm
 import mpl_toolkits.mplot3d
@@ -54,21 +54,21 @@ class DraggableColorbar(object):
         self.press = event.x, event.y
 
         if isinstance(self.cbar.norm, matplotlib.colors.LogNorm):
-            scale = 0.999 * numpy.log10(self.cbar.norm.vmax / self.cbar.norm.vmin)
+            scale = 0.999 * np.log10(self.cbar.norm.vmax / self.cbar.norm.vmin)
             if event.button == 1:
-                self.cbar.norm.vmin *= scale**numpy.sign(dy)
-                self.cbar.norm.vmax *= scale**numpy.sign(dy)
+                self.cbar.norm.vmin *= scale**np.sign(dy)
+                self.cbar.norm.vmax *= scale**np.sign(dy)
             elif event.button == 3:
-                self.cbar.norm.vmin *= scale**numpy.sign(dy)
-                self.cbar.norm.vmax /= scale**numpy.sign(dy)
+                self.cbar.norm.vmin *= scale**np.sign(dy)
+                self.cbar.norm.vmax /= scale**np.sign(dy)
         else:
             scale = 0.03 * (self.cbar.norm.vmax - self.cbar.norm.vmin)
             if event.button == 1:
-                self.cbar.norm.vmin -= scale*numpy.sign(dy)
-                self.cbar.norm.vmax -= scale*numpy.sign(dy)
+                self.cbar.norm.vmin -= scale*np.sign(dy)
+                self.cbar.norm.vmax -= scale*np.sign(dy)
             elif event.button == 3:
-                self.cbar.norm.vmin -= scale*numpy.sign(dy)
-                self.cbar.norm.vmax += scale*numpy.sign(dy)
+                self.cbar.norm.vmin -= scale*np.sign(dy)
+                self.cbar.norm.vmax += scale*np.sign(dy)
 
         self.mappable.set_norm(self.cbar.norm)
         self.canvas.draw()
@@ -88,7 +88,7 @@ def get_clipped_norm(data, clipping=0.0, log=True):
 
     if log:
         data = data[data > 0]
-        if numpy.alen(data) == 0:
+        if np.alen(data) == 0:
             return matplotlib.colors.LogNorm(1, 10)
 
     if clipping:
@@ -100,14 +100,13 @@ def get_clipped_norm(data, clipping=0.0, log=True):
 
     if log:
         return matplotlib.colors.LogNorm(vmin, vmax)
-    else:
-        return matplotlib.colors.Normalize(vmin, vmax)
+    return matplotlib.colors.Normalize(vmin, vmax)
 
 
 def plot(space, fig, ax, log=True, loglog=False, clipping=0.0, fit=None, norm=None, colorbar=True, labels=True, interpolation='nearest', **plotopts):
     if space.dimension == 1:
-        data = space.get_masked()
-        xrange = numpy.ma.array(space.axes[0][:], mask=data.mask)
+        data = space.get_norm_intensity()
+        xrange = np.ma.array(space.axes[0][:], mask=data.mask)
         if fit is not None:
             if log:
                 p1 = ax.semilogy(xrange, data, 'wo', **plotopts)
@@ -133,7 +132,7 @@ def plot(space, fig, ax, log=True, loglog=False, clipping=0.0, fit=None, norm=No
         return p1 + p2
 
     elif space.dimension == 2:
-        data = space.get_masked()
+        data = space.get_norm_intensity()
 
         # 2D IMSHOW PLOT
         xmin = space.axes[0].min
@@ -147,7 +146,7 @@ def plot(space, fig, ax, log=True, loglog=False, clipping=0.0, fit=None, norm=No
         if fit is not None:
             im = ax.imshow(fit.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=norm, interpolation=interpolation, **plotopts)
         else:
-            im = ax.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=norm, interpolation=interpolation,  **plotopts)
+            im = ax.imshow(data.transpose(), origin='lower', extent=(xmin, xmax, ymin, ymax), aspect='auto', norm=norm, interpolation=interpolation, **plotopts)
 
         if labels:
             ax.set_xlabel(space.axes[0].label)
@@ -160,20 +159,20 @@ def plot(space, fig, ax, log=True, loglog=False, clipping=0.0, fit=None, norm=No
 
     elif space.dimension == 3:
         if not isinstance(ax, mpl_toolkits.mplot3d.Axes3D):
-            raise ValueError("For 3D plots, the 'ax' parameter must be an Axes3D instance (use for example gca(projection='3d') to get one)")
+            raise ValueError("Did you forget to check the 3d checkbox? For 3D plots, the 'ax' parameter must be an Axes3D instance (use for example gca(projection='3d') to get one)")
 
         cmap = getattr(matplotlib.cm, plotopts.pop('cmap', 'jet'))
         if norm is None:
-            norm = get_clipped_norm(space.get_masked(), clipping, log)
+            norm = get_clipped_norm(space.get_norm_intensity(), clipping, log)
 
-        data = space.get()
-        mask = numpy.bitwise_or(~numpy.isfinite(data), data == 0)
+        data = space.photons / space.contributions
+        mask = np.bitwise_or(~np.isfinite(data), data == 0)
         gridx, gridy, gridz = tuple(grid[~mask] for grid in space.get_grid())
-        im = ax.scatter(gridx, gridy, gridz,  c=cmap(norm(data[~mask])), marker=',' , alpha=0.7, linewidths=0)
+        im = ax.scatter(gridx, gridy, gridz, c=cmap(norm(data[~mask])), marker=',', alpha=0.7, linewidths=0)
 
-        #p1 = ax.plot_surface(gridx[0,:,:], gridy[0,:,:], gridz[0,:,:],  facecolors=cmap(norm(space.project(0).get_masked())), shade=False, cstride=1, rstride=1)
-        #p2 = ax.plot_surface(gridx[:,-1,:], gridy[:,-1,:], gridz[:,-1,:], facecolors=cmap(norm(space.project(1).get_masked())), shade=False, cstride=1, rstride=1)
-        #p3 = ax.plot_surface(gridx[:,:,0], gridy[:,:,0], gridz[:,:,0],  facecolors=cmap(norm(space.project(2).get_masked())), shade=False, cstride=1, rstride=1)
+        #p1 = ax.plot_surface(gridx[0,:,:], gridy[0,:,:], gridz[0,:,:],  facecolors=cmap(norm(space.project(0).get_norm_intensity())), shade=False, cstride=1, rstride=1)
+        #p2 = ax.plot_surface(gridx[:,-1,:], gridy[:,-1,:], gridz[:,-1,:], facecolors=cmap(norm(space.project(1).get_norm_intensity())), shade=False, cstride=1, rstride=1)
+        #p3 = ax.plot_surface(gridx[:,:,0], gridy[:,:,0], gridz[:,:,0],  facecolors=cmap(norm(space.project(2).get_norm_intensity())), shade=False, cstride=1, rstride=1)
 
         if labels:
             ax.set_xlabel(space.axes[0].label)

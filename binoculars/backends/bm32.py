@@ -23,7 +23,7 @@ from .. import backend, errors, util
 class pixels(backend.ProjectionBase):
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         y,x = numpy.mgrid[slice(None,gamma.shape[0]), slice(None,delta.shape[0])]
-        return (y, x)        
+        return (y, x)
 
     def get_axis_labels(self):
         return 'y','x'
@@ -137,7 +137,7 @@ class GammaDeltaTheta(HKLProjection):#just passing on the coordinates, makes it 
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         delta,gamma = numpy.meshgrid(delta,gamma)
         theta = theta * numpy.ones_like(delta)
-        return (gamma, delta, theta)        
+        return (gamma, delta, theta)
 
     def get_axis_labels(self):
         return 'Gamma','Delta','Theta'
@@ -145,7 +145,7 @@ class GammaDeltaTheta(HKLProjection):#just passing on the coordinates, makes it 
 class GammaDelta(HKLProjection):#just passing on the coordinates, makes it easy to accurately test the theta correction
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         delta,gamma = numpy.meshgrid(delta,gamma)
-        return (gamma, delta)        
+        return (gamma, delta)
 
     def get_axis_labels(self):
         return 'Gamma','Delta'
@@ -155,7 +155,7 @@ class GammaDeltaMu(HKLProjection):#just passing on the coordinates, makes it eas
     def project(self, wavelength, UB, gamma, delta, theta, mu, chi, phi):
         delta,gamma = numpy.meshgrid(delta,gamma)
         mu = mu * numpy.ones_like(delta)
-        return (gamma, delta, mu)        
+        return (gamma, delta, mu)
 
     def get_axis_labels(self):
         return 'Gamma','Delta','Mu'
@@ -197,7 +197,7 @@ class BM32Input(backend.InputBase):
             scanparams = self.get_scan_params(scan) # wavelength, UB
             pointparams = self.get_point_params(scan, job.firstpoint, job.lastpoint) # 2D array of diffractometer angles + mon + transm
             images = self.get_images(scan, job.firstpoint, job.lastpoint) # iterator!
-        
+
             for pp, image in zip(pointparams, images):
                 yield self.process_image(scanparams, pp, image)
             util.statuseol()
@@ -235,7 +235,7 @@ class BM32Input(backend.InputBase):
     _spec = None
     def get_scan(self, scannumber):
         if self._spec is None:
-            self._spec = specfilewrapper.Specfile(self.config.specfile) 
+            self._spec = specfilewrapper.Specfile(self.config.specfile)
         return self._spec.select('{0}.1'.format(scannumber))
 
     def find_edfs(self, pattern):
@@ -250,7 +250,7 @@ class BM32Input(backend.InputBase):
                 continue
         return ret
 
-    @staticmethod 
+    @staticmethod
     def apply_mask(data, xmask, ymask):
         roi = data[ymask, :]
         return roi[:, xmask]
@@ -267,7 +267,7 @@ class BM32Input(backend.InputBase):
         return wavelength, UB
 
     def get_images(self, scan, first, last, dry_run=False):
-        imagenos = numpy.array(scan.datacol('img')[slice(first, last + 1)], dtype = numpy.int)
+        imagenos = numpy.array(scan.datacol('img')[slice(first, last + 1)], dtype = numpy.int) + 1 #error in spec?
         if self.config.background:
             if not os.path.exists(self.config.background):
                 raise errors.FileError('could not find background file {0}'.format(self.config.background))
@@ -285,7 +285,7 @@ class BM32Input(backend.InputBase):
             except:
                 print('warning: UCCD tag not found, use imagefolder for proper file specification')
                 UCCD = []
-            pattern = self._get_pattern(UCCD) 
+            pattern = self._get_pattern(UCCD)
             matches = self.find_edfs(pattern)
             if not set(imagenos).issubset(set(matches.keys())):
                 raise errors.FileError("incorrect number of matches for scan {0} using pattern {1}".format(scan.number(), pattern))
@@ -306,19 +306,19 @@ class BM32Input(backend.InputBase):
                raise errors.ConfigError("invalid 'imagefolder' specification '{0}': {1}".format(self.config.imagefolder, e))
            else:
                if not os.path.exists(imagefolder):
-                   raise errors.ConfigError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))               
+                   raise errors.ConfigError("invalid 'imagefolder' specification '{0}'. Path {1} does not exist".format(self.config.imagefolder, imagefolder))
        else:
            imagefolder = os.path.join(*UCCD)
            if not os.path.exists(imagefolder):
                raise errors.ConfigError("invalid UCCD tag '{0}'. The UCCD tag in the specfile does not point to an existing folder. Specify the imagefolder in the configuration file.".format(imagefolder))
        return os.path.join(imagefolder, '*')
-       
+
 class EH1(BM32Input):
     def parse_config(self, config):
         super(EH1, self).parse_config(config)
         self.config.centralpixel = util.parse_tuple(config.pop('centralpixel', None), length=2, type=int)
         self.config.UB = util.parse_tuple(config.pop('ub', None), length=9, type=float)
-      
+
     def process_image(self, scanparams, pointparams, edf):
         delta, omega, alfa, beta, chi, phi, mon, transm = pointparams
         wavelength, UB = scanparams
@@ -339,13 +339,13 @@ class EH1(BM32Input):
             data = image / mon / transm
 
         if mon == 0:
-            raise errors.BackendError('Monitor is zero, this results in empty output. Scannumber = {0}, pointnumber = {1}. Did you forget to open the shutter?'.format(self.dbg_scanno, self.dbg_pointno)) 
+            raise errors.BackendError('Monitor is zero, this results in empty output. Scannumber = {0}, pointnumber = {1}. Did you forget to open the shutter?'.format(self.dbg_scanno, self.dbg_pointno))
 
         util.status('{4}| beta: {0:.3f}, delta: {1:.3f}, omega: {2:.3f}, alfa: {3:.3f}'.format(beta, delta, omega, alfa, time.ctime(time.time())))
 
         # pixels to angles
         pixelsize = numpy.array(self.config.pixelsize)
-        sdd = self.config.sdd 
+        sdd = self.config.sdd
 
         app = numpy.arctan(pixelsize / sdd) * 180 / numpy.pi
 
@@ -377,7 +377,7 @@ class EH1(BM32Input):
         delta_grid, beta_grid = numpy.meshgrid(delta_range, beta_range)
         Pver = 1 - numpy.sin(delta_grid * numpy.pi / 180.)**2 * numpy.cos(beta_grid * numpy.pi / 180.)**2
         #intensity /= Pver
- 
+
         return intensity, weights, (wavelength, UB, beta_range, delta_range, omega, alfa, chi, phi)
 
     def get_point_params(self, scan, first, last):
@@ -398,7 +398,7 @@ class EH1(BM32Input):
 
         params[:, ALF] = scan.datacol('alfcnt')[sl]
         return params
-        
+
 def load_matrix(filename):
     if filename == None:
         return None
@@ -411,7 +411,7 @@ def load_matrix(filename):
         elif ext == '.edf':
             return numpy.array(EdfFile.EdfFile(filename).getData(0),dtype = numpy.bool)
         else:
-            raise ValueError('unknown extension {0}, unable to load matrix!\n'.format(ext))        
+            raise ValueError('unknown extension {0}, unable to load matrix!\n'.format(ext))
     else:
        raise IOError('filename: {0} does not exist. Can not load matrix'.format(filename))
 
