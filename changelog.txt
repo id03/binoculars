@@ -1,3 +1,5 @@
+13/02/2019
+
 changes in backend id03.py:
 	improved calculation of Delta and Gamma in id03 backend (EH1, EH2, GisaxsDetector)
 	added calculation of standard deviations in id03 backend using Poisson statistics (EH1, EH2, GisaxsDetector)
