@@ -699,12 +699,26 @@ class EH1(ID03Input):
                 params[:, DEL] = scan.motorpos('Deltaidd')
                 params[:, GAM] = scan.datacol('gamidd')[sl]
             if self.is_zapline(scan):
-                params[:, DEL] = scan.motorpos('Deltaidd')
-                params[:, GAM] = scan.motorpos('Gamidd')
+                # 'th' already handled in line 687
+                if scan.alllabels()[0] == 'mu':
+                    params[:, GAM] = scan.motorpos('Gamidd')
+                    params[:, DEL] = scan.motorpos('Deltaidd')
+                    params[:, MU] = scan.datacol('mu')[sl]
+                elif scan.alllabels()[0] == 'delidd':
+                    params[:, GAM] = scan.motorpos('Gamidd')
+                    params[:, DEL] = scan.datacol('delidd')[sl]
+                    params[:, MU] = scan.motorpos('Mu')
+                elif scan.alllabels()[0] == 'gamidd':
+                    params[:, GAM] = scan.datacol('gamidd')[sl]
+                    params[:, DEL] = scan.motorpos('Deltaidd')
+                    params[:, MU] = scan.motorpos('Mu')
+                else:
+                    print('this zapline scan is not implemented {0}'.format(scan))
             else:
                 params[:, DEL] = scan.datacol('delidd')[sl]
                 params[:, GAM] = scan.motorpos('Gam')
-            params[:, MU] = scan.motorpos('Mu')
+            if np.count_nonzero(params[:, MU]) == 0:
+                params[:, MU] = scan.motorpos('Mu')
 
             transm = scan.datacol('zap_transm')[sl]
             transm[-1] = transm[-2]  # bug in specfile

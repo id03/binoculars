@@ -12,7 +12,7 @@ Grab the [latest sourcecode as zip](https://github.com/id03/binoculars/archive/m
 
 ## Usage
 
-The [BINoculars wiki](https://github.com/id03/binoculars/wiki) contains a detailed tutorial to get started.
+The [BINoculars wiki](https://github.com/id03/binoculars/wiki) contains a detailed tutorial to get started. For Windows users there is a complete python package available at https://cloud.esrf.fr/index.php/s/NUeWHQRvbX2xWPF (binoculars folder inside should be updated with latest version from github)
 
 
 ## Scripting
@@ -23,3 +23,7 @@ If you want more complex operations than offered by the command line or GUI tool
 ## Extending BINoculars
 
 If you want to use BINoculars with your beamline, you need to write a `backend` module. The code contains an [example implementation](https://github.com/id03/binoculars/blob/master/BINoculars/backends/example.py) with many hints and comments.
+
+## Changelog
+
+12/02/2019 - Major changes in the code, please look in changelog.txt

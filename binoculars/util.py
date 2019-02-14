@@ -700,7 +700,10 @@ def wait_for_file(file, timeout=None):
 
 
 def space_to_edf(space, filename):
-    from PyMca import EdfFile
+    try:
+        from PyMca import EdfFile
+    except ImportError:
+        from PyMca5.PyMca import EdfFile
 
     header = {}
     for a in space.axes:
